@@ -8,7 +8,10 @@ import superAdminRoutes from './routes/super-admin';
 const app = new Hono();
 
 // Middleware
-app.use('*', cors());
+app.use('*', cors({
+  origin: (origin) => origin,
+  credentials: true,
+}));
 
 // Routes
 app.route('/api/super-admin', superAdminRoutes);
