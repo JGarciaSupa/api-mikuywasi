@@ -12,8 +12,8 @@ import {
   socialLinks 
 } from '../db/schema';
 import { eq, and, desc, asc } from 'drizzle-orm';
-import { sign, verify } from 'hono/jwt';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { generateAccessToken, generateRefreshToken, verifyToken } from '../utils/jwt';
 
 type Variables = {
   jwtPayload: any;
@@ -22,24 +22,22 @@ type Variables = {
 
 const admin = new Hono<{ Variables: Variables }>();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
-
 // Middleware to protect routes and inject tenantId
 const authMiddleware = async (c: any, next: any) => {
-  const token = getCookie(c, 'adminAccessToken');
+  const token = getCookie(c, 'adminAccessToken') || c.req.header('Authorization')?.replace('Bearer ', '');
   
   if (!token) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  try {
-    const payload = await verify(token, JWT_SECRET, 'HS256') as any;
-    c.set('jwtPayload', payload);
-    c.set('tenantId', payload.tenantId as number);
-    await next();
-  } catch (error) {
+  const payload = await verifyToken(token) as any;
+  if (!payload) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
+
+  c.set('jwtPayload', payload);
+  c.set('tenantId', payload.tenantId as number);
+  await next();
 };
 
 // Auth
@@ -50,7 +48,14 @@ admin.post('/login', async (c) => {
     where: eq(users.email, email),
   });
 
-  if (!user || user.password !== password) {
+  if (!user) {
+    return c.json({ error: 'Invalid credentials' }, 401);
+  }
+
+  // Support both hashed and plain text (for existing users if any, though they should be hashed)
+  const isPasswordValid = await Bun.password.verify(password, user.password).catch(() => user.password === password);
+
+  if (!isPasswordValid) {
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
@@ -63,23 +68,17 @@ admin.post('/login', async (c) => {
     email: user.email,
     tenantId: user.tenantId,
     role: user.role,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2, // 2 hours
   };
 
-  const refreshTokenPayload = {
-    id: user.id,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
-  };
-
-  const accessToken = await sign(payload, JWT_SECRET);
-  const refreshToken = await sign(refreshTokenPayload, JWT_SECRET);
+  const accessToken = await generateAccessToken(payload);
+  const refreshToken = await generateRefreshToken({ id: user.id });
 
   setCookie(c, 'adminAccessToken', accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax',
     path: '/',
-    maxAge: 60 * 60 * 2,
+    maxAge: 60 * 15, // 15 min
   });
 
   setCookie(c, 'adminRefreshToken', refreshToken, {
@@ -87,12 +86,117 @@ admin.post('/login', async (c) => {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 60 * 60 * 24 * 7, // 7 days
   });
 
   return c.json({ 
     success: true, 
     user: { id: user.id, name: user.name, email: user.email, tenantId: user.tenantId } 
+  });
+});
+
+admin.post('/refresh-token', async (c) => {
+  const refreshToken = getCookie(c, 'adminRefreshToken');
+  if (!refreshToken) return c.json({ error: 'No refresh token' }, 401);
+
+  const payload = await verifyToken(refreshToken) as any;
+  if (!payload || !payload.id) return c.json({ error: 'Invalid refresh token' }, 401);
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, payload.id),
+  });
+
+  if (!user || user.role !== 'admin') return c.json({ error: 'Invalid user' }, 401);
+
+  const newPayload = {
+    id: user.id,
+    email: user.email,
+    tenantId: user.tenantId,
+    role: user.role,
+  };
+
+  const newAccessToken = await generateAccessToken(newPayload);
+  const newRefreshToken = await generateRefreshToken({ id: user.id });
+
+  setCookie(c, 'adminAccessToken', newAccessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 60 * 15,
+  });
+
+  setCookie(c, 'adminRefreshToken', newRefreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  return c.json({ success: true });
+});
+
+// Mobile Auth Endpoints
+admin.post('/mobile/login', async (c) => {
+  const { email, password } = await c.req.json();
+  
+  const user = await db.query.users.findFirst({
+    where: eq(users.email, email),
+  });
+
+  if (!user) return c.json({ error: 'Invalid credentials' }, 401);
+
+  const isPasswordValid = await Bun.password.verify(password, user.password).catch(() => user.password === password);
+  if (!isPasswordValid) return c.json({ error: 'Invalid credentials' }, 401);
+
+  if (user.role !== 'admin') return c.json({ error: 'Access denied' }, 403);
+
+  const payload = {
+    id: user.id,
+    email: user.email,
+    tenantId: user.tenantId,
+    role: user.role,
+  };
+
+  const accessToken = await generateAccessToken(payload);
+  const refreshToken = await generateRefreshToken({ id: user.id });
+
+  return c.json({ 
+    success: true, 
+    accessToken,
+    refreshToken,
+    user: { id: user.id, name: user.name, email: user.email, tenantId: user.tenantId } 
+  });
+});
+
+admin.post('/mobile/refresh-token', async (c) => {
+  const { refreshToken } = await c.req.json();
+  if (!refreshToken) return c.json({ error: 'No refresh token' }, 401);
+
+  const payload = await verifyToken(refreshToken) as any;
+  if (!payload || !payload.id) return c.json({ error: 'Invalid refresh token' }, 401);
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, payload.id),
+  });
+
+  if (!user || user.role !== 'admin') return c.json({ error: 'Invalid user' }, 401);
+
+  const newPayload = {
+    id: user.id,
+    email: user.email,
+    tenantId: user.tenantId,
+    role: user.role,
+  };
+
+  const newAccessToken = await generateAccessToken(newPayload);
+  const newRefreshToken = await generateRefreshToken({ id: user.id });
+
+  return c.json({ 
+    success: true,
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken
   });
 });
 
@@ -170,12 +274,16 @@ admin.get('/categories', authMiddleware, async (c) => {
 
 admin.post('/categories', authMiddleware, async (c) => {
   const tenantId = c.get('tenantId');
-  const { name, order } = await c.req.json();
+  const { name, order, isActive, startTime, endTime, availableDays } = await c.req.json();
   
   const [newCategory] = await db.insert(categories).values({
     name: name as string,
     tenantId: tenantId,
     order: (order as number) || 0,
+    isActive: isActive !== undefined ? isActive : true,
+    startTime: startTime || null,
+    endTime: endTime || null,
+    availableDays: availableDays || [1,2,3,4,5,6,7],
   }).returning();
 
   return c.json(newCategory, 201);
@@ -184,10 +292,10 @@ admin.post('/categories', authMiddleware, async (c) => {
 admin.patch('/categories/:id', authMiddleware, async (c) => {
   const tenantId = c.get('tenantId');
   const id = parseInt(c.req.param('id'));
-  const { name, order } = await c.req.json();
+  const { name, order, isActive, startTime, endTime, availableDays } = await c.req.json();
 
   const [updatedCategory] = await db.update(categories)
-    .set({ name, order })
+    .set({ name, order, isActive, startTime, endTime, availableDays })
     .where(and(eq(categories.id, id), eq(categories.tenantId, tenantId)))
     .returning();
 
@@ -235,6 +343,7 @@ admin.post('/products', authMiddleware, async (c) => {
         order: (productData.order as number) || 0,
         categoryId: productData.categoryId as number,
         tenantId,
+        isActive: productData.isActive !== undefined ? productData.isActive : true,
       }).returning();
 
       if (alternatives && alternatives.length > 0) {
@@ -284,6 +393,7 @@ admin.patch('/products/:id', authMiddleware, async (c) => {
           image: productData.image as string,
           order: (productData.order as number) || 0,
           categoryId: productData.categoryId as number,
+          isActive: productData.isActive,
         })
         .where(and(eq(products.id, id), eq(products.tenantId, tenantId)))
         .returning();

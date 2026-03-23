@@ -1,4 +1,4 @@
-import { pgTable, serial, text, decimal, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const tenants = pgTable('tenants', {
@@ -16,7 +16,7 @@ export const tenants = pgTable('tenants', {
   address: text('address'),
   planId: integer('plan_id').references(() => plans.id),
   trialEnding: timestamp('trial_ending'),
-  status: text('status').default('active').notNull(), // 'active', 'inactive'
+  status: text('status').default('active').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => {
@@ -60,8 +60,12 @@ export const socialLinks = pgTable('social_links', {
 export const categories = pgTable('categories', {
   id: serial('id').primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id),
-  name: text('name').notNull(),
+  name: varchar('name', { length: 50 }).notNull(),
   order: integer('order').default(0),
+  isActive: boolean('is_active').default(true).notNull(),
+  startTime: time('start_time'), 
+  endTime: time('end_time'),     
+  availableDays: jsonb('available_days').default([0,1,2,3,4,5,6]), 
 }, (table) => {
   return {
     tenantIdIdx: index('categories_tenant_id_idx').on(table.tenantId),
@@ -71,13 +75,16 @@ export const categories = pgTable('categories', {
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id),
-  categoryId: integer('category_id').references(() => categories.id),
-  name: text('name').notNull(),
+  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  name: varchar('name', { length: 150 }).notNull(),
   description: text('description'),
   price: decimal('price', { precision: 10, scale: 2 }).notNull(),
   discountPrice: decimal('discount_price', { precision: 10, scale: 2 }),
   image: text('image'),
   order: integer('order').default(0),
+  // Estado para mostrar o Cultar el producto en la carta
+  isActive: boolean('is_active').default(true).notNull(),
+  
 }, (table) => {
   return {
     tenantIdIdx: index('products_tenant_id_idx').on(table.tenantId),
@@ -203,9 +210,18 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 }));
 
 export const productsRelations = relations(products, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [products.tenantId], references: [tenants.id] }),
   category: one(categories, { fields: [products.categoryId], references: [categories.id] }),
   alternatives: many(productAlternatives),
   sides: many(productSides),
+}));
+
+export const bannersRelations = relations(banners, ({ one }) => ({
+  tenant: one(tenants, { fields: [banners.tenantId], references: [tenants.id] }),
+}));
+
+export const socialLinksRelations = relations(socialLinks, ({ one }) => ({
+  tenant: one(tenants, { fields: [socialLinks.tenantId], references: [tenants.id] }),
 }));
 
 export const productAlternativesRelations = relations(productAlternatives, ({ one }) => ({

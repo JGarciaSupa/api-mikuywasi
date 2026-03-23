@@ -4,7 +4,7 @@ import { plans } from './schema';
 async function seedPlans() {
   console.log('Seeding plans...');
 
-  await db.delete(plans); // Clear existing plans to start fresh
+  await db.delete(plans);
 
   await db.insert(plans).values([
     {

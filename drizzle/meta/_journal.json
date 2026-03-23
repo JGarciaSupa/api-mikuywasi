@@ -22,6 +22,20 @@
       "when": 1774235897076,
       "tag": "0002_unusual_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774275905606,
+      "tag": "0003_same_supernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774277255095,
+      "tag": "0004_damp_dracula",
+      "breakpoints": true
     }
   ]
 }
