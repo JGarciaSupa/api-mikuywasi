@@ -15,6 +15,13 @@
       "when": 1774142539064,
       "tag": "0001_damp_boomer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774235897076,
+      "tag": "0002_unusual_patriot",
+      "breakpoints": true
     }
   ]
 }

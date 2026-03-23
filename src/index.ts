@@ -4,6 +4,7 @@ import { db } from './db';
 import { tenants, categories, products, orders, orderItems } from './db/schema';
 import { eq } from 'drizzle-orm';
 import superAdminRoutes from './routes/super-admin';
+import adminRoutes from './routes/admin';
 
 const app = new Hono();
 
@@ -15,6 +16,7 @@ app.use('*', cors({
 
 // Routes
 app.route('/api/super-admin', superAdminRoutes);
+app.route('/api/admin', adminRoutes);
 
 // Health Check
 app.get('/', (c) => c.text('Sistema Pedidos QR API is running!'));

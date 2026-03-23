@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { tenants, plans, superAdmins } from '../db/schema';
+import { tenants, plans, superAdmins, users } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { sign, verify } from 'hono/jwt';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
@@ -146,16 +146,43 @@ superAdmin.get('/tenants', authMiddleware, async (c) => {
 
 superAdmin.post('/tenants', authMiddleware, async (c) => {
   const body = await c.req.json();
+  const { 
+    name, 
+    slug, 
+    planId, 
+    status, 
+    trialEnding,
+    userName,
+    userEmail,
+    userPassword
+  } = body;
+
   try {
-    const [newTenant] = await db.insert(tenants).values({
-      name: body.name,
-      slug: body.slug,
-      planId: body.planId || null,
-      status: body.status || 'active',
-      trialEnding: body.trialEnding ? new Date(body.trialEnding) : null,
-    }).returning();
-    return c.json(newTenant, 201);
+    const result = await db.transaction(async (tx) => {
+      const [newTenant] = await tx.insert(tenants).values({
+        name,
+        slug,
+        planId: planId || null,
+        status: status || 'active',
+        trialEnding: trialEnding ? new Date(trialEnding) : null,
+      }).returning();
+
+      if (userEmail && userPassword && userName) {
+        await tx.insert(users).values({
+          tenantId: newTenant.id,
+          name: userName,
+          email: userEmail,
+          password: userPassword, // Note: In production, hash this password
+          role: 'admin',
+        });
+      }
+
+      return newTenant;
+    });
+
+    return c.json(result, 201);
   } catch (error) {
+    console.error(error);
     return c.json({ error: 'Failed to create tenant' }, 500);
   }
 });
