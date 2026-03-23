@@ -9,22 +9,7 @@ const superAdmin = new Hono();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
-// Middleware to protect routes
-const authMiddleware = async (c: any, next: any) => {
-  const token = getCookie(c, 'accessToken');
-  
-  if (!token) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  try {
-    const payload = await verify(token, JWT_SECRET, 'HS256');
-    c.set('jwtPayload', payload);
-    await next();
-  } catch (error) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-};
+import { superAdminAuthMiddleware as authMiddleware } from '../middleware/auth';
 
 // Auth
 superAdmin.post('/login', async (c) => {

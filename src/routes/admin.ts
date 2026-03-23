@@ -15,30 +15,9 @@ import { eq, and, desc, asc } from 'drizzle-orm';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { generateAccessToken, generateRefreshToken, verifyToken } from '../utils/jwt';
 
-type Variables = {
-  jwtPayload: any;
-  tenantId: number;
-};
+import { adminAuthMiddleware as authMiddleware } from '../middleware/auth';
 
-const admin = new Hono<{ Variables: Variables }>();
-
-// Middleware to protect routes and inject tenantId
-const authMiddleware = async (c: any, next: any) => {
-  const token = getCookie(c, 'adminAccessToken') || c.req.header('Authorization')?.replace('Bearer ', '');
-  
-  if (!token) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  const payload = await verifyToken(token) as any;
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  c.set('jwtPayload', payload);
-  c.set('tenantId', payload.tenantId as number);
-  await next();
-};
+const admin = new Hono<{ Variables: { jwtPayload: any, tenantId: number } }>();
 
 // Auth
 admin.post('/login', async (c) => {
