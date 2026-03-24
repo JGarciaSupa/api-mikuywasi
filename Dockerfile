@@ -5,7 +5,7 @@ WORKDIR /app
 # Stage 1: Install dependencies
 FROM base AS install
 RUN mkdir -p /temp/dev
-COPY package.json bun.lock /temp/dev/
+COPY package.json bun.lock* /temp/dev/
 RUN cd /temp/dev && bun install --frozen-lockfile
 
 # Stage 2: Final image
