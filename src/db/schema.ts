@@ -1,11 +1,10 @@
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, unique } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const tenants = pgTable('tenants', {
   id: serial('id').primaryKey(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
-  category: text('category'),
   logo: text('logo'),
   primaryColor: text('primary_color'),
   secondaryColor: text('secondary_color'),
@@ -13,17 +12,25 @@ export const tenants = pgTable('tenants', {
   phone: text('phone'),
   whatsapp: text('whatsapp'),
   email: text('email'),
-  address: text('address'),
+  category: text('category'),
+  address: jsonb('address').$type<{
+    fullAddress: string;
+    lat: number;
+    lng: number;
+  }>(),
+  schedules: jsonb('schedules').$type<{
+    day: string;
+    time: string;
+    closed: boolean;
+  }[]>().default([]),
   planId: integer('plan_id').references(() => plans.id),
   trialEnding: timestamp('trial_ending'),
   status: text('status').default('active').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => {
-  return {
-    planIdIdx: index('tenants_plan_id_idx').on(table.planId),
-  }
-});
+}, (table) => ({
+  planIdIdx: index('tenants_plan_id_idx').on(table.planId),
+}));
 
 export const plans = pgTable('plans', {
   id: serial('id').primaryKey(),
@@ -37,11 +44,13 @@ export const plans = pgTable('plans', {
 
 export const banners = pgTable('banners', {
   id: serial('id').primaryKey(),
-  tenantId: integer('tenant_id').references(() => tenants.id),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
   url: text('url').notNull(),
+  order: integer('order').notNull().default(0), 
 }, (table) => {
   return {
     tenantIdIdx: index('banners_tenant_id_idx').on(table.tenantId),
+    tenantOrderUnique: unique('banners_tenant_order_unique').on(table.tenantId, table.order),
   }
 });
 
@@ -51,6 +60,8 @@ export const socialLinks = pgTable('social_links', {
   platform: text('platform').notNull(),
   url: text('url').notNull(),
   color: text('color'),
+  order: integer('order').notNull().default(0),
+  isActive: boolean('is_active').default(true).notNull(),
 }, (table) => {
   return {
     tenantIdIdx: index('social_links_tenant_id_idx').on(table.tenantId),
