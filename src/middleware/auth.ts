@@ -2,7 +2,7 @@ import { getCookie } from 'hono/cookie';
 import { verifyToken } from '../utils/jwt';
 import { verify } from 'hono/jwt';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 /**
  * Middleware for Admin routes

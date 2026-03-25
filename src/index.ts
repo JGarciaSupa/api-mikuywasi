@@ -14,7 +14,12 @@ app.use('*', cors({
 app.route('/api', routes);
 
 // Health Check
-app.get('/', (c) => c.text('Sistema Pedidos QR API is running!'));
+app.get('/', (c) => {
+  return c.json({
+    success: true,
+    message: "Sistema Pedidos QR API is running!"
+  })
+});
 
 const port = process.env.PORT || 3000;
 
