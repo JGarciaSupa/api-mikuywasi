@@ -6,7 +6,9 @@ import { users } from "../../db/schema";
 
 const routes = new Hono<{ Variables: { jwtPayload: any, tenantId: number } }>();
 
-routes.get('/', adminAuthMiddleware, async (c) => {
+routes.use("*", adminAuthMiddleware);
+
+routes.get('/', async (c) => {
   const payload = c.get('jwtPayload');
   const user = await db.query.users.findFirst({
     where: eq(users.id, payload.id),
