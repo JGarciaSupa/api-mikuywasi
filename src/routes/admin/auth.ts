@@ -58,8 +58,14 @@ routes.post('/web/login', async (c) => {
   });
 
   return c.json({ 
-    success: true, 
-    user: { id: user.id, name: user.name, email: user.email, tenantId: user.tenantId } 
+    success: true,
+    user: { 
+      id: user.id, 
+      name: user.name, 
+      email: user.email, 
+      tenantId: user.tenantId,
+      role: user.role 
+    } 
   });
 });
 
@@ -134,7 +140,13 @@ routes.post('/mobile/login', async (c) => {
     success: true, 
     accessToken,
     refreshToken,
-    user: { id: user.id, name: user.name, email: user.email, tenantId: user.tenantId } 
+    user: { 
+      id: user.id, 
+      name: user.name, 
+      email: user.email, 
+      tenantId: user.tenantId,
+      role: user.role
+    } 
   });
 });
 

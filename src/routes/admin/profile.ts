@@ -17,11 +17,14 @@ routes.get('/', adminAuthMiddleware, async (c) => {
   }
 
   return c.json({ 
-    id: user.id, 
-    name: user.name, 
-    email: user.email, 
-    tenantId: user.tenantId,
-    role: user.role 
+    success: true,
+    user: {
+      id: user.id, 
+      name: user.name, 
+      email: user.email, 
+      tenantId: user.tenantId,
+      role: user.role 
+    }
   });
 });
 
