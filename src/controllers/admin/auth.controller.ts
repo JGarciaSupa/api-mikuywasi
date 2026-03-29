@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { getConnInfo } from 'hono/bun';
 import { login, refreshAccessToken, logout, getProfile, AuthError } from '../../services/admin/auth.service';
 
 // ────────────────────────────────────────────
@@ -33,8 +34,8 @@ export async function loginController(c: Context) {
   try {
     const { email, password } = c.req.valid('json' as never);
     const platform = getPlatform(c);
-    const userAgent = c.req.header('user-agent');
-    const ipAddress = c.req.header('x-forwarded-for') || c.req.header('cf-connecting-ip') || '';
+    const userAgent = c.req.header('user-agent') || '';
+    const ipAddress = getConnInfo(c).remote.address || '';
 
     const result = await login(email, password, userAgent, ipAddress);
 
@@ -94,8 +95,8 @@ export async function refreshController(c: Context) {
       }, 401);
     }
 
-    const userAgent = c.req.header('user-agent');
-    const ipAddress = c.req.header('x-forwarded-for') || c.req.header('cf-connecting-ip') || '';
+    const userAgent = c.req.header('user-agent') || '';
+    const ipAddress = getConnInfo(c).remote.address || '';
 
     const result = await refreshAccessToken(rawRefreshToken, userAgent, ipAddress);
 
