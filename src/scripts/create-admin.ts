@@ -1,5 +1,5 @@
-import { db } from './index';
-import { superAdmins } from './schema';
+import { db } from '../db';
+import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 // CONFIGURATION: Modifica este objeto con los datos del admin que deseas crear
@@ -17,8 +17,8 @@ async function createAdmin() {
     process.exit(1);
   }
 
-  const existing = await db.query.superAdmins.findFirst({
-    where: eq(superAdmins.email, email),
+  const existing = await db.query.users.findFirst({
+    where: eq(users.email, email),
   });
 
   if (existing) {
@@ -26,10 +26,14 @@ async function createAdmin() {
     process.exit(1);
   }
 
-  await db.insert(superAdmins).values({
+  const hashedPassword = await Bun.password.hash(password);
+
+  await db.insert(users).values({
     email,
-    password,
+    password: hashedPassword,
     name,
+    role: 'super-admin',
+    // tenantId es null para super-admin (por el check constraint)
   });
 
   console.log(`✅ Super Admin creado con éxito: ${name} (${email})`);
