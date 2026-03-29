@@ -15,12 +15,12 @@ const routes = new Hono();
 // Rate limiter: 10 intentos por minuto por IP
 const authLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minuto
-  limit: 10, // 10 intentos
-  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
+  limit: 100, // 10 intentos
+  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous', // Genera la key por IP
   message: {
     success: false,
     message: 'Demasiados intentos, intente de nuevo en 1 minuto'
-  },
+  }
 });
 
 routes.post('/login', authLimiter, validateLogin, loginController);

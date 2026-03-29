@@ -13,6 +13,13 @@ app.use('*', cors({
 // Routes
 app.route('/api', routes);
 
+app.get('/', (c) => {
+  return c.json({
+    success: true,
+    message: "Sistema Pedidos QR API is running!"
+  })
+});
+
 // Health Check
 app.get('/', (c) => {
   return c.json({

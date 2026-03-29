@@ -15,16 +15,14 @@ function setRefreshTokenCookie(c: Context, refreshToken: string) {
   setCookie(c, 'refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'None',
-    path: '/api/admin',
-    maxAge: 15 * 24 * 60 * 60
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 15 * 24 * 60 * 60 // 15 días
   });
 }
 
 function clearRefreshTokenCookie(c: Context) {
-  deleteCookie(c, 'refreshToken', {
-    path: '/api/admin'
-  });
+  deleteCookie(c, 'refreshToken', { path: '/' });
 }
 
 // ────────────────────────────────────────────

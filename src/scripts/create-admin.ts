@@ -2,17 +2,22 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
-// CONFIGURATION: Modifica este objeto con los datos del admin que deseas crear
 const NEW_ADMIN = {
-  email: 'admin@gmail.com',
+  email: 'devrenatonavarro@gmail.com',
   password: '12345678',
-  name: 'Super Admin'
+  name: 'Renato Navarro',
+  role: 'super-admin'
+} as {
+  email: string;
+  password: string;
+  name: string;
+  role: 'super-admin' | 'admin';
 };
 
 async function createAdmin() {
-  const { email, password, name } = NEW_ADMIN;
+  const { email, password, name, role } = NEW_ADMIN;
   
-  if (!email || !password || !name) {
+  if (!email || !password || !name || !role) {
     console.error('Error: Debes completar todos los campos en el objeto NEW_ADMIN.');
     process.exit(1);
   }
@@ -26,14 +31,13 @@ async function createAdmin() {
     process.exit(1);
   }
 
-  const hashedPassword = await Bun.password.hash(password);
+  const hashedPassword = await Bun.password.hash(password, 'bcrypt');
 
   await db.insert(users).values({
     email,
     password: hashedPassword,
     name,
-    role: 'super-admin',
-    // tenantId es null para super-admin (por el check constraint)
+    role
   });
 
   console.log(`✅ Super Admin creado con éxito: ${name} (${email})`);
