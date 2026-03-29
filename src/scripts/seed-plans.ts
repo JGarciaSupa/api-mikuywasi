@@ -1,5 +1,5 @@
-import { db } from './index';
-import { plans } from './schema';
+import { db } from '../db/index';
+import { plans } from '../db/schema';
 
 async function seedPlans() {
   console.log('Seeding plans...');
