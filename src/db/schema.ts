@@ -44,8 +44,10 @@ export const plans = pgTable('plans', {
   yearlyPrice: decimal('yearly_price', { precision: 10, scale: 2 }).notNull(), // Precio anual
   features: text('features').array(), // Características del plan
   order: integer('order').default(0), // Orden del plan
+  visible: boolean('visible').default(false).notNull(), // Estado del plan
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), // Fecha de creación del plan
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(), // Fecha de actualización del plan
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), // Fecha de eliminación del plan
 });
 
 
