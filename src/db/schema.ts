@@ -92,11 +92,36 @@ export const tenants = pgTable('tenants', {
   planId: integer('plan_id').references(() => plans.id).notNull(), // ID del plan
   planStartsAt: timestamp('plan_starts_at', { withTimezone: true }).defaultNow(), // Fecha de inicio del plan
   planEndsAt: timestamp('plan_ends_at', { withTimezone: true }), // Fecha de fin del plan
+  billingCycle: text('billing_cycle', { enum: ['monthly', 'yearly'] }), // Ciclo de facturación
   status: text('status', { enum: ['active', 'inactive'] }).default('active').notNull(), // Estado del tenant
+
+  // Datos del Propietario / Administrativos
+  ownerName: varchar('owner_name', { length: 255 }), // Nombre del propietario
+  ownerPhone: varchar('owner_phone', { length: 255 }), // Teléfono del propietario
+  fiscalId: varchar('fiscal_id', { length: 255 }), // RUC / DNI
+  fiscalName: varchar('fiscal_name', { length: 255 }), // Razón Social
+  internalNotes: text('internal_notes'), // Notas para soporte/admin
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), // Fecha de creación del tenant
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(), // Fecha de actualización del tenant
 });
+
+// --- SUSCRIPCIONES ---
+export const subscriptions = pgTable('subscriptions', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  planId: integer('plan_id').references(() => plans.id).notNull(),
+  billingCycle: text('billing_cycle', { enum: ['monthly', 'yearly'] }).notNull(),
+  pricePaid: decimal('price_paid', { precision: 10, scale: 2 }).notNull(),
+  startDate: timestamp('start_date', { withTimezone: true }).defaultNow().notNull(),
+  endDate: timestamp('end_date', { withTimezone: true }).notNull(),
+  status: text('status', { enum: ['active', 'expired', 'canceled', 'pending_payment'] }).default('active').notNull(),
+  paymentStatus: text('payment_status', { enum: ['paid', 'pending', 'failed'] }).default('paid').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index('subscriptions_tenant_id_idx').on(table.tenantId),
+}));
 
 // --- METODOS DE PAGO ---
 export const paymentMethods = pgTable('payment_methods', {
