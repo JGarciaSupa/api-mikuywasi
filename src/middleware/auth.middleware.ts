@@ -25,3 +25,13 @@ export async function authMiddleware(c: Context, next: Next) {
     return c.json({ success: false, message: 'Token inválido o expirado' }, 401);
   }
 }
+
+export function roleMiddleware(roles: ('super-admin' | 'admin')[]) {
+  return async (c: Context, next: Next) => {
+    const payload = c.get('jwtPayload');
+    if (!payload || !roles.includes(payload.role)) {
+      return c.json({ success: false, message: 'No tienes permisos para realizar esta acción' }, 403);
+    }
+    await next();
+  };
+}

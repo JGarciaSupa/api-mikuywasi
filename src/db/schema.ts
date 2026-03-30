@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, check } from 'drizzle-orm/pg-core';
 
 // TODO: SUPER ADMIN
@@ -49,6 +49,11 @@ export const plans = pgTable('plans', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(), // Fecha de actualización del plan
   deletedAt: timestamp('deleted_at', { withTimezone: true }), // Fecha de eliminación del plan
 });
+
+export const plansRelations = relations(plans, ({ many }) => ({
+  tenants: many(tenants),
+  subscriptions: many(subscriptions),
+}));
 
 
 // TODO: TENANTS
@@ -106,6 +111,14 @@ export const tenants = pgTable('tenants', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(), // Fecha de actualización del tenant
 });
 
+export const tenantsRelations = relations(tenants, ({ one, many }) => ({
+  plan: one(plans, {
+    fields: [tenants.planId],
+    references: [plans.id],
+  }),
+  subscriptions: many(subscriptions),
+}));
+
 // --- SUSCRIPCIONES ---
 export const subscriptions = pgTable('subscriptions', {
   id: serial('id').primaryKey(),
@@ -121,6 +134,17 @@ export const subscriptions = pgTable('subscriptions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   tenantIdIdx: index('subscriptions_tenant_id_idx').on(table.tenantId),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [subscriptions.tenantId],
+    references: [tenants.id],
+  }),
+  plan: one(plans, {
+    fields: [subscriptions.planId],
+    references: [plans.id],
+  }),
 }));
 
 // --- METODOS DE PAGO ---
