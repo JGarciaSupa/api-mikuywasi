@@ -59,7 +59,13 @@ Registra un nuevo negocio y crea automáticamente su primera suscripción e hist
     | `planEndsAt` | string (ISO) | No | Fecha de fin personalizada (Trial/Prueba). Si se envía, el `pricePaid` será 0.00. |
     | `email` | string | No | Email de contacto. |
     | `phone` | string | No | Teléfono de contacto. |
+    | `whatsapp` | string | No | WhatsApp de contacto. |
+    | `category` | string | No | Categoría del negocio (ej. "Restaurante"). |
     | `ownerName` | string | No | Nombre del dueño. |
+    | `ownerPhone` | string | No | Teléfono del dueño. |
+    | `fiscalId` | string | No | ID fiscal (RUC/NIT/etc). |
+    | `fiscalName` | string | No | Nombre fiscal/social. |
+    | `internalNotes` | string | No | Notas internas para administración. |
     | `status` | string | No | `active` (defecto) o `inactive`. |
 
 *   **Ejemplo de Petición (Pago Estándar)**:

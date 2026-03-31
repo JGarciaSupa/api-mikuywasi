@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { createTenant, getAllTenants, updateTenant, renewSubscription } from '../../services/admin/tenants.service';
+import { createTenant, getAllTenants, updateTenant, renewSubscription, getTenantById, getTenantUsers, createTenantUser } from '../../services/admin/tenants.service';
 
 export const getAllTenantsController = async (c: Context) => {
   try {
@@ -75,6 +75,56 @@ export const renewSubscriptionController = async (c: Context) => {
     return c.json({
       success: false,
       message: error.message || 'Error al renovar la suscripción'
+    }, 400);
+  }
+};
+
+export const getTenantByIdController = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const result = await getTenantById(id);
+    return c.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener el tenant'
+    }, 404);
+  }
+};
+
+export const getTenantUsersController = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const result = await getTenantUsers(id);
+    return c.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener los usuarios'
+    }, 500);
+  }
+};
+
+export const createTenantUserController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await createTenantUser(tenantId, data);
+    return c.json({
+      success: true,
+      message: 'Usuario creado con éxito',
+      data: result
+    }, 201);
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al crear el usuario'
     }, 400);
   }
 };

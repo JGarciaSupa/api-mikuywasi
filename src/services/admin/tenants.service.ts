@@ -1,7 +1,8 @@
 import { db } from '../../db';
-import { tenants, subscriptions, plans } from '../../db/schema';
+import { tenants, subscriptions, plans, users } from '../../db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import type { CreateTenantInput, UpdateTenantInput, RenewSubscriptionInput } from '../../validations/admin/tenant.validation';
+import type { CreateTenantUserInput } from '../../validations/admin/user.validation';
 
 export const createTenant = async (data: CreateTenantInput) => {
   // Verificar si el slug ya existe
@@ -173,4 +174,54 @@ export const renewSubscription = async (tenantId: number, data: RenewSubscriptio
 
     return updatedTenant;
   });
+};
+
+export const getTenantById = async (id: number) => {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.id, id),
+    with: {
+      plan: true,
+    }
+  });
+
+  if (!tenant) throw new Error('Tenant no encontrado');
+  return tenant;
+};
+
+export const getTenantUsers = async (tenantId: number) => {
+  return await db.query.users.findMany({
+    where: eq(users.tenantId, tenantId),
+    orderBy: (users, { desc }) => [desc(users.createdAt)],
+  });
+};
+
+export const createTenantUser = async (tenantId: number, data: CreateTenantUserInput) => {
+  // Verificar si el tenant existe
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+
+  if (!tenant) throw new Error('Tenant no encontrado');
+
+  // Verificar si el email ya existe
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.email, data.email),
+  });
+
+  if (existingUser) {
+    throw new Error('El correo electrónico ya está registrado');
+  }
+
+  const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
+
+  const [newUser] = await db.insert(users).values({
+    ...data,
+    password: hashedPassword,
+    tenantId,
+    role: 'admin',
+    updatedAt: new Date(),
+  }).returning();
+
+  const { password: _, ...safeUser } = newUser;
+  return safeUser;
 };

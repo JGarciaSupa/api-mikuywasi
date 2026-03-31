@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import auth from "./auth";
 import plans from "./plans";
 import tenants from "./tenants";
-import dashboard from "./dashboard.routes";
+import dashboard from "./dashboard";
 
 const routes = new Hono();
 
