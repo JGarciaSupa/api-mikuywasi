@@ -126,6 +126,86 @@ Permite extender el periodo de suscripción de un negocio, permitiendo fechas re
 *   **Lógica de Retroactividad**:
     Si un cliente venció el **01/03** y te paga el **05/03**, puedes enviar `startDate: "2026-03-01T..."` para que su nuevo mes venza el **01/04**, evitando regalarle los 4 días de retraso.
 
-*   **Errores Comunes**:
-    - `400 Bad Request`: Datos de validación incorrectos o tenant no encontrado.
-    - `401 Unauthorized`: Token faltante o inválido.
+---
+
+## 5. Obtener un tenant por ID
+Retorna los detalles de un negocio específico incluyendo la información de su plan.
+
+*   **URL**: `/:id`
+*   **Método**: `GET`
+*   **Respuesta Exitosa (200 OK)**:
+    ```json
+    {
+      "success": true,
+      "data": {
+        "id": 1,
+        "name": "Pizzeria Roma",
+        "slug": "pizzeria-roma",
+        "plan": {
+          "id": 1,
+          "name": "Premium",
+          ...
+        },
+        ...
+      }
+    }
+    ```
+
+---
+
+## 6. Obtener usuarios de un tenant
+Lista todos los usuarios (administradores) asociados a un negocio.
+
+*   **URL**: `/:id/users`
+*   **Método**: `GET`
+*   **Respuesta Exitosa (200 OK)**:
+    ```json
+    {
+      "success": true,
+      "data": [
+        {
+          "id": 10,
+          "name": "Juan Pérez",
+          "email": "juan@roma.com",
+          "role": "admin",
+          "createdAt": "..."
+        }
+      ]
+    }
+    ```
+
+---
+
+## 7. Crear usuario para un tenant
+Crea un nuevo usuario administrativo para un negocio específico.
+
+*   **URL**: `/:id/users`
+*   **Método**: `POST`
+*   **Cuerpo de la Petición (JSON)**:
+    | Campo | Tipo | Requerido | Descripción |
+    | :--- | :--- | :---: | :--- |
+    | `name` | string | Sí | Nombre completo del usuario. |
+    | `email` | string | Sí | Correo electrónico único. |
+    | `password` | string | Sí | Contraseña (mín. 6 caracteres). |
+
+*   **Respuesta Exitosa (201 Created)**:
+    ```json
+    {
+      "success": true,
+      "message": "Usuario creado con éxito",
+      "data": {
+        "id": 11,
+        "name": "Pedro Ortiz",
+        "email": "pedro@roma.com",
+        "role": "admin"
+      }
+    }
+    ```
+
+---
+
+## Errores Comunes
+- `400 Bad Request`: Datos de validación incorrectos o tenant no encontrado.
+- `401 Unauthorized`: Token faltante o inválido.
+- `404 Not Found`: Tenant no encontrado.
+- `500 Internal Server Error`: Error inesperado en el servidor.
