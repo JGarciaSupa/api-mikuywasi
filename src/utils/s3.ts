@@ -1,6 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 
-function getS3Client() {
+export function getS3Client() {
   return new S3Client({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT!,

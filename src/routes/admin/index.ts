@@ -4,6 +4,7 @@ import plans from "./plans";
 import tenants from "./tenants";
 import dashboard from "./dashboard";
 import categories from "./categories";
+import products from "./products";
 
 const routes = new Hono();
 
@@ -12,6 +13,7 @@ routes.route('/plans', plans);
 routes.route('/tenants', tenants);
 routes.route('/dashboard', dashboard);
 routes.route('/categories', categories);
+routes.route('/products', products);
 
 
 export default routes;
