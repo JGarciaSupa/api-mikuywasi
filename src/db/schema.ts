@@ -170,7 +170,7 @@ export const tables = pgTable('restaurant_tables', {
 }, (table) => ({
   tenantSlugUnique: uniqueIndex('tenant_slug_unique').on(table.tenantId, table.slug),
   tenantIdIdx: index('restaurant_tables_tenant_id_idx').on(table.tenantId),
-}));  
+}));
 
 // --- CATALOGO ---
 export const categories = pgTable('categories', {
@@ -179,9 +179,9 @@ export const categories = pgTable('categories', {
   name: varchar('name', { length: 50 }).notNull(),
   order: integer('order').default(0),
   isActive: boolean('is_active').default(true).notNull(),
-  startTime: time('start_time'), 
-  endTime: time('end_time'),     
-  availableDays: jsonb('available_days').default([0,1,2,3,4,5,6]),
+  startTime: time('start_time'),
+  endTime: time('end_time'),
+  availableDays: jsonb('available_days').default([0, 1, 2, 3, 4, 5, 6]),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -218,22 +218,22 @@ export const orders = pgTable('orders', {
   customerName: varchar('customer_name', { length: 100 }).notNull(),
   customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
   customerAddress: text('customer_address'),
-  
+
   deliveryType: text('delivery_type', { enum: ['delivery', 'pickup', 'dine_in'] }).notNull(),
   tableId: integer('table_id').references(() => tables.id),
   tableName: varchar('table_name', { length: 50 }),
-  
+
   paymentMethod: text('payment_method').notNull(),
   notes: text('notes'), // Nota general
-  
+
   subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
   deliveryFee: decimal('delivery_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
   total: decimal('total', { precision: 10, scale: 2 }).notNull(),
-  
-  status: text('status', { 
-    enum: ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup', 'completed', 'cancelled'] 
+
+  status: text('status', {
+    enum: ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup', 'completed', 'cancelled']
   }).default('pending').notNull(),
-  
+
   trackingCode: varchar('tracking_code', { length: 20 }).unique(),
   driverId: integer('driver_id').references(() => users.id),
 
@@ -248,7 +248,7 @@ export const orderItems = pgTable('order_items', {
   productName: varchar('product_name', { length: 150 }).notNull(),
   unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
   quantity: integer('quantity').notNull(),
-  selectedAlternatives: jsonb('selected_alternatives').$type<{name: string, extraPrice: number}[]>().default([]),
+  selectedAlternatives: jsonb('selected_alternatives').$type<{ name: string, extraPrice: number }[]>().default([]),
   packagingFee: decimal('packaging_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
   notes: text('notes'), // Nota del plato
   totalPrice: decimal('total_price', { precision: 10, scale: 2 }).notNull(),
@@ -261,7 +261,9 @@ export const banners = pgTable('banners', {
   url: text('url').notNull(),
   order: integer('order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  tenantIdIdx: index('banners_tenant_id_idx').on(table.tenantId),
+}));
 
 export const socialLinks = pgTable('social_links', {
   id: serial('id').primaryKey(),

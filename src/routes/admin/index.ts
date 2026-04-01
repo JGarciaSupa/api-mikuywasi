@@ -5,6 +5,7 @@ import tenants from "./tenants";
 import dashboard from "./dashboard";
 import categories from "./categories";
 import products from "./products";
+import banners from "./banners";
 
 const routes = new Hono();
 
@@ -14,7 +15,7 @@ routes.route('/tenants', tenants);
 routes.route('/dashboard', dashboard);
 routes.route('/categories', categories);
 routes.route('/products', products);
-
+routes.route('/banners', banners);
 
 export default routes;
 

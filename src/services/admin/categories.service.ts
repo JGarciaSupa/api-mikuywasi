@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { categories } from '../../db/schema';
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, sql } from 'drizzle-orm';
 
 /**
  * Obtener todas las categorías de un tenant
@@ -23,6 +23,15 @@ export async function getCategoryById(id: number) {
  * Crear una nueva categoría
  */
 export async function createCategory(data: any) {
+  // Verificar límite de 50 categorías
+  const [totalResult] = await db.select({ count: sql<number>`count(*)` })
+    .from(categories)
+    .where(eq(categories.tenantId, data.tenantId));
+
+  if (Number(totalResult?.count || 0) >= 50) {
+    throw new Error('Solo se permite un máximo de 50 categorías por tenant');
+  }
+
   const [newCategory] = await db.insert(categories).values(data).returning();
   return newCategory;
 }

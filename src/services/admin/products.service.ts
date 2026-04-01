@@ -84,6 +84,15 @@ export const getProductById = async (id: number) => {
 };
 
 export const createProduct = async (data: any, imageFile?: File) => {
+  // Verificar límite de 150 productos
+  const [totalResult] = await db.select({ count: count() })
+    .from(products)
+    .where(eq(products.tenantId, data.tenantId));
+
+  if (totalResult.count >= 150) {
+    throw new Error('Solo se permite un máximo de 150 productos por tenant');
+  }
+
   let imageUrl = null;
   if (imageFile) {
     imageUrl = await uploadToR2(imageFile);

@@ -1,0 +1,1 @@
+CREATE INDEX "banners_tenant_id_idx" ON "banners" USING btree ("tenant_id");
