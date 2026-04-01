@@ -7,6 +7,7 @@ import categories from "./categories";
 import products from "./products";
 import banners from "./banners";
 import socialNetworks from "./social-networks";
+import staff from "./staff";
 
 const routes = new Hono();
 
@@ -18,5 +19,6 @@ routes.route('/categories', categories);
 routes.route('/products', products);
 routes.route('/banners', banners);
 routes.route('/social-networks', socialNetworks);
+routes.route('/staff', staff);
 
 export default routes;
