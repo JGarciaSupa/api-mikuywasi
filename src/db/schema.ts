@@ -270,8 +270,9 @@ export const socialLinks = pgTable('social_links', {
   tenantId: integer('tenant_id').references(() => tenants.id),
   platform: text('platform').notNull(),
   url: text('url').notNull(),
-  color: text('color'),
   order: integer('order').notNull().default(0),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  tenantIdIdx: index('social_links_tenant_id_idx').on(table.tenantId),
+}));

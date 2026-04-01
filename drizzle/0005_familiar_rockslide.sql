@@ -1,0 +1,1 @@
+CREATE INDEX "social_links_tenant_id_idx" ON "social_links" USING btree ("tenant_id");
