@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { zValidator } from '@hono/zod-validator';
+import { validationHook } from '../hook';
 
 export const createStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
@@ -23,3 +25,8 @@ export const staffQuerySchema = z.object({
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;
 export type StaffQueryInput = z.infer<typeof staffQuerySchema>;
+
+export const validateStaffQuery = zValidator('query', staffQuerySchema, validationHook);
+export const validateCreateStaff = zValidator('form', createStaffSchema, validationHook);
+export const validateUpdateStaff = zValidator('form', updateStaffSchema, validationHook);
+

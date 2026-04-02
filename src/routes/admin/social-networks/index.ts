@@ -14,7 +14,7 @@ import {
 } from "../../../validations/admin/social-networks.validation";
 import { rateLimiter } from "hono-rate-limiter";
 import { getConnInfo } from "hono/bun";
-import { authMiddleware } from "../../../middleware/auth.middleware";
+import { authMiddleware, roleMiddleware } from "../../../middleware/auth.middleware";
 
 const routes = new Hono();
 
@@ -29,6 +29,7 @@ const socialNetworksLimiter = rateLimiter({
 });
 
 routes.use('*', authMiddleware);
+routes.use('/*', roleMiddleware(['admin']));
 
 routes.get("/", socialNetworksLimiter, getAllSocialNetworksController);
 routes.get("/:id", socialNetworksLimiter, getSocialNetworkByIdController);

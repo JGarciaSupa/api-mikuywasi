@@ -20,14 +20,6 @@ app.get('/', (c) => {
   })
 });
 
-// Health Check
-app.get('/', (c) => {
-  return c.json({
-    success: true,
-    message: "Sistema Pedidos QR API is running!"
-  })
-});
-
 const port = process.env.PORT || 3000;
 
 export default {

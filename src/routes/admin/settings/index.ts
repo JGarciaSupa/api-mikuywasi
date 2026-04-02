@@ -9,7 +9,6 @@ import {
 
 const routes = new Hono();
 
-// Todos los endpoints de settings requieren estar autenticado y ser admin de un tenant
 routes.use('/*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 

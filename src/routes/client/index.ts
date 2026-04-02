@@ -1,23 +1,22 @@
 import { Hono } from 'hono';
-import { db } from '../../db';
-import { tenants } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { rateLimiter } from 'hono-rate-limiter';
+import { getConnInfo } from 'hono/bun';
+import { getTenantBySlugController } from '../../controllers/client/tenant.controller';
 
 const routes = new Hono();
 
-// Tenant Endpoints
-routes.get('/tenant/:slug', async (c) => {
-  const slug = c.req.param('slug');
-
-  const tenant = await db.query.tenants.findFirst({
-    where: eq(tenants.slug, slug),
-  });
-
-  if (!tenant) {
-    return c.json({ error: 'Tenant not found' }, 404);
+const clientLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 100,
+  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
+  message: {
+    success: false,
+    message: 'Demasiadas peticiones, intente de nuevo en 1 minuto'
   }
-
-  return c.json(tenant);
 });
 
+// Tenant Endpoints
+routes.get('/tenant/:slug', clientLimiter, getTenantBySlugController);
+
 export default routes;
+

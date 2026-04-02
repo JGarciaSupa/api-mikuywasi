@@ -118,6 +118,8 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
     references: [plans.id],
   }),
   subscriptions: many(subscriptions),
+  banners: many(banners),
+  socialLinks: many(socialLinks),
 }));
 
 // --- SUSCRIPCIONES ---
@@ -266,6 +268,13 @@ export const banners = pgTable('banners', {
   tenantIdIdx: index('banners_tenant_id_idx').on(table.tenantId),
 }));
 
+export const bannersRelations = relations(banners, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [banners.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
 export const socialLinks = pgTable('social_links', {
   id: serial('id').primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id),
@@ -276,4 +285,11 @@ export const socialLinks = pgTable('social_links', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   tenantIdIdx: index('social_links_tenant_id_idx').on(table.tenantId),
+}));
+
+export const socialLinksRelations = relations(socialLinks, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [socialLinks.tenantId],
+    references: [tenants.id],
+  }),
 }));

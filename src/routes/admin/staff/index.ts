@@ -1,120 +1,38 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
 import { authMiddleware, roleMiddleware } from '../../../middleware/auth.middleware';
-import { validationHook } from '../../../validations/hook';
 import { 
-  createStaffSchema, 
-  updateStaffSchema, 
-  staffQuerySchema,
-  CreateStaffInput,
-  UpdateStaffInput
+  validateStaffQuery,
+  validateCreateStaff,
+  validateUpdateStaff
 } from '../../../validations/admin/staff.validation';
-import * as staffService from '../../../services/admin/staff.service';
+import {
+  getStaffListController,
+  createStaffController,
+  updateStaffController,
+  deleteStaffController
+} from '../../../controllers/admin/staff.controller';
+import { rateLimiter } from 'hono-rate-limiter';
+import { getConnInfo } from 'hono/bun';
 
 const routes = new Hono();
 
-// Solo el rol admin puede acceder a estas APIs
-routes.use('*', authMiddleware, roleMiddleware(['admin']));
-
-/**
- * GET /admin/staff
- * Obtener lista de usuarios (paginado y filtrado)
- */
-routes.get('/', zValidator('query', staffQuerySchema, validationHook), async (c) => {
-  try {
-    const payload = c.get('jwtPayload');
-    const userId = payload.userId;
-    const tenantId = payload.tenantId;
-    const query = c.req.valid('query');
-
-    const result = await staffService.getStaffList(tenantId!, userId, query);
-
-    return c.json({
-      success: true,
-      ...result
-    });
-  } catch (error: any) {
-    return c.json({
-      success: false,
-      message: error.message || 'Error al obtener los usuarios'
-    }, 500);
+const staffLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 100,
+  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
+  message: {
+    success: false,
+    message: 'Demasiados intentos, intente de nuevo en 1 minuto'
   }
 });
 
-/**
- * POST /admin/staff
- * Crear nuevo usuario
- */
-routes.post('/', zValidator('form', createStaffSchema, validationHook), async (c) => {
-  try {
-    const { tenantId } = c.get('jwtPayload');
-    const body = await c.req.parseBody();
-    const imageFile = body['image'] as File | undefined;
-    const data = c.req.valid('form' as never) as CreateStaffInput;
+routes.use('/*', authMiddleware);
+routes.use('/*', roleMiddleware(['admin']));
 
-    const result = await staffService.createStaff(tenantId!, data, imageFile);
-
-    return c.json({
-      success: true,
-      message: 'Usuario creado con éxito',
-      data: result
-    }, 201);
-  } catch (error: any) {
-    return c.json({
-      success: false,
-      message: error.message || 'Error al crear el usuario'
-    }, 400);
-  }
-});
-
-/**
- * PATCH /admin/staff/:id
- * Editar usuario (incluyendo password y foto)
- */
-routes.patch('/:id', zValidator('form', updateStaffSchema, validationHook), async (c) => {
-  try {
-    const { tenantId } = c.get('jwtPayload');
-    const id = parseInt(c.req.param('id'));
-    const body = await c.req.parseBody();
-    const imageFile = body['image'] as File | undefined;
-    const data = c.req.valid('form' as never) as UpdateStaffInput;
-
-    const result = await staffService.updateStaff(id, tenantId!, data, imageFile);
-
-    return c.json({
-      success: true,
-      message: 'Usuario actualizado con éxito',
-      data: result
-    });
-  } catch (error: any) {
-    return c.json({
-      success: false,
-      message: error.message || 'Error al actualizar el usuario'
-    }, 400);
-  }
-});
-
-/**
- * DELETE /admin/staff/:id
- * Eliminar usuario (y su foto de R2)
- */
-routes.delete('/:id', async (c) => {
-  try {
-    const { tenantId } = c.get('jwtPayload');
-    const id = parseInt(c.req.param('id'));
-
-    await staffService.deleteStaff(id, tenantId!);
-
-    return c.json({
-      success: true,
-      message: 'Usuario eliminado con éxito'
-    });
-  } catch (error: any) {
-    return c.json({
-      success: false,
-      message: error.message || 'Error al eliminar el usuario'
-    }, 400);
-  }
-});
+routes.get('/', staffLimiter, validateStaffQuery, getStaffListController);
+routes.post('/', staffLimiter, validateCreateStaff, createStaffController);
+routes.patch('/:id', staffLimiter, validateUpdateStaff, updateStaffController);
+routes.delete('/:id', staffLimiter, deleteStaffController);
 
 export default routes;
+

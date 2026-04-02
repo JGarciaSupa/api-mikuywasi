@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../middleware/auth.middleware';
+import { authMiddleware, roleMiddleware } from '../../../middleware/auth.middleware';
 import { 
   validateCreateBanner, 
   validateUpdateBanner, 
@@ -29,6 +29,7 @@ const bannersLimiter = rateLimiter({
 });
 
 routes.use('*', authMiddleware);
+routes.use('/*', roleMiddleware(['admin']));
 
 routes.get('/', bannersLimiter, getAllBannersController);
 routes.post('/', bannersLimiter, validateCreateBanner, createBannerController);

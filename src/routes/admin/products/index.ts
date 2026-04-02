@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../middleware/auth.middleware';
+import { authMiddleware, roleMiddleware } from '../../../middleware/auth.middleware';
 import { 
   validateCreateProduct, 
   validateUpdateProduct 
@@ -27,6 +27,7 @@ const productsLimiter = rateLimiter({
 });
 
 routes.use('*', authMiddleware);
+routes.use('/*', roleMiddleware(['admin']));
 
 routes.get('/', productsLimiter, getAllProductsController);
 routes.post('/', productsLimiter, validateCreateProduct, createProductController);
