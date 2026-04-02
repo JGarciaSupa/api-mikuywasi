@@ -77,7 +77,8 @@ export const tenants = pgTable('tenants', {
   }>(), // Dirección del local
   schedules: jsonb('schedules').$type<{
     day: string;
-    time: string;
+    startTime: string;
+    endTime: string;
     closed: boolean;
   }[]>().default([]), // Horarios de atención
 
