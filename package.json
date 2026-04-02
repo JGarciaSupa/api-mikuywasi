@@ -17,6 +17,7 @@
     "hono": "^4.12.8",
     "hono-rate-limiter": "^0.5.3",
     "jsonwebtoken": "^9.0.3",
+    "nanoid": "^5.1.7",
     "pg": "^8.20.0",
     "zod": "^4.3.6"
   },

@@ -63,9 +63,9 @@ export const tenants = pgTable('tenants', {
   slug: varchar('slug', { length: 255 }).notNull().unique(), // URL amigable del tenant
   name: varchar('name', { length: 255 }).notNull(), // Nombre del tenant
   logo: varchar('logo', { length: 255 }), // Logo del tenant
-  primaryColor: varchar('primary_color', { length: 255 }), // Color primario del tenant
-  secondaryColor: varchar('secondary_color', { length: 255 }), // Color secundario del tenant
-  accentColor: varchar('accent_color', { length: 255 }), // Color de acento del tenant
+  primaryColor: varchar('primary_color', { length: 255 }).default("#000000"), // Color primario del tenant
+  secondaryColor: varchar('secondary_color', { length: 255 }).default("#000000"), // Color secundario del tenant
+  accentColor: varchar('accent_color', { length: 255 }).default("#000000"), // Color de acento del tenant
   phone: varchar('phone', { length: 255 }), // Teléfono del tenant
   whatsapp: varchar('whatsapp', { length: 255 }), // WhatsApp del tenant
   email: varchar('email', { length: 255 }), // Email del tenant

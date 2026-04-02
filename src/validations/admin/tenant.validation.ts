@@ -3,7 +3,79 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { validationHook } from '../hook';
 
-export const createTenantSchema = z.object({
+const RESERVED_SLUGS = [
+  // Core System
+  'api',
+  'api-docs',
+  'admin',
+  'app',
+  'auth',
+  'login',
+  'register',
+  'logout',
+  'dashboard',
+  'settings',
+  'account',
+  'billing',
+  'subscriptions',
+  
+  // Technical & Infrastructure
+  'www',
+  'localhost',
+  'test',
+  'dev',
+  'staging',
+  'demo',
+  'status',
+  'uptime',
+  'docs',
+  'help',
+  'support',
+  'mail',
+  'static',
+  'assets',
+  'public',
+  'private',
+  'internal',
+  'proxy',
+  'cdn',
+  'media',
+  'images',
+  'webhook',
+  'oauth',
+  'callback',
+  'error',
+  'root',
+  'sys',
+  'system',
+  'config',
+  'null',
+  'secure',
+  'ssl',
+  'ftp',
+  'smtp',
+  'pop',
+  'imap',
+  
+  // Marketing & Legal
+  'about',
+  'contact',
+  'legal',
+  'privacy',
+  'terms',
+  'conditions',
+  'jobs',
+  'careers',
+  'press',
+  'news',
+  'blog',
+  'marketing',
+  'sales',
+  'shop',
+  'store',
+];
+
+const baseTenantSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
   slug: z.string().min(1, 'El slug es obligatorio').max(255).regex(/^[a-z0-9-]+$/, 'El solo minúsculas, números y guiones'),
   planId: z.coerce.number().int().positive('El plan es obligatorio'),
@@ -21,8 +93,21 @@ export const createTenantSchema = z.object({
   status: z.enum(['active', 'inactive']).default('active'),
 });
 
-export const updateTenantSchema = createTenantSchema.partial().extend({
+export const createTenantSchema = baseTenantSchema.refine((data) => !RESERVED_SLUGS.includes(data.slug), {
+  message: 'Este slug está reservado para el sistema',
+  path: ['slug'],
+});
+
+export const updateTenantSchema = baseTenantSchema.partial().extend({
   slug: z.string().min(1).max(255).regex(/^[a-z0-9-]+$/).optional(),
+}).refine((data) => {
+  if (data.slug) {
+    return !RESERVED_SLUGS.includes(data.slug);
+  }
+  return true;
+}, {
+  message: 'Este slug está reservado para el sistema',
+  path: ['slug'],
 });
 
 export const renewSubscriptionSchema = z.object({

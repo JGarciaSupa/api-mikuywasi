@@ -162,7 +162,71 @@ Obtiene el perfil del usuario autenticado. Requiere `Authorization: Bearer <acce
 |--------|---------|
 | 401 | Token no proporcionado |
 | 401 | Token inválido o expirado |
+| 401 | Token inválido o expirado |
 | 404 | Usuario no encontrado |
+
+---
+
+### PATCH `/profile` 🔒
+
+Actualiza la información del perfil del usuario (nombre e imagen).
+
+**Body:**
+```json
+{
+  "name": "Nuevo Nombre",
+  "image": "https://r2.lobitoconsulting.store/avatars/123.jpg"
+}
+```
+
+**Validaciones:**
+- `name` — string, mín 1, máx 255 caracteres
+- `image` — string, URL válida, opcional, nullable
+
+**Respuesta exitosa:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "email": "admin@gmail.com",
+    "name": "Nuevo Nombre",
+    "role": "super-admin",
+    "tenantId": null,
+    "image": "...",
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+}
+```
+
+---
+
+### PATCH `/password` 🔒
+
+Actualiza la contraseña del usuario.
+
+**Body:**
+```json
+{
+  "currentPassword": "password_actual",
+  "newPassword": "nueva_password_123",
+  "confirmPassword": "nueva_password_123"
+}
+```
+
+**Validaciones:**
+- `currentPassword` — string, requerido
+- `newPassword` — string, mín 6 caracteres
+- `confirmPassword` — debe coincidir con `newPassword`
+
+**Respuesta exitosa:**
+```json
+{
+  "success": true,
+  "message": "Contraseña actualizada correctamente"
+}
+```
 
 ---
 

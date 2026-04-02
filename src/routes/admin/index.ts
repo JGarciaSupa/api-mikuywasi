@@ -9,6 +9,7 @@ import banners from "./banners";
 import socialNetworks from "./social-networks";
 import staff from "./staff";
 import settings from "./settings";
+import tables from "./tables";
 
 const routes = new Hono();
 
@@ -22,5 +23,6 @@ routes.route('/banners', banners);
 routes.route('/social-networks', socialNetworks);
 routes.route('/staff', staff);
 routes.route('/settings', settings);
+routes.route('/tables', tables);
 
 export default routes;

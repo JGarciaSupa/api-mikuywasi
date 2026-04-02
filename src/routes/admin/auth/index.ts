@@ -2,12 +2,18 @@ import { Hono } from "hono";
 import { getConnInfo } from "hono/bun";
 import { rateLimiter } from "hono-rate-limiter";
 import { authMiddleware } from "../../../middleware/auth.middleware";
-import { validateLogin } from "../../../validations/admin/auth.validation";
+import {
+  validateLogin,
+  validateUpdateProfile,
+  validateUpdatePassword,
+} from "../../../validations/admin/auth.validation";
 import {
   loginController,
   refreshController,
   logoutController,
-  profileController
+  profileController,
+  updateProfileController,
+  updatePasswordController,
 } from "../../../controllers/admin/auth.controller";
 
 const routes = new Hono();
@@ -27,5 +33,7 @@ routes.post('/login', authLimiter, validateLogin, loginController);
 routes.post('/refresh', authLimiter, refreshController);
 routes.post('/logout', logoutController);
 routes.get('/profile', authMiddleware, profileController);
+routes.patch('/profile', authMiddleware, validateUpdateProfile, updateProfileController);
+routes.patch('/password', authMiddleware, validateUpdatePassword, updatePasswordController);
 
 export default routes;

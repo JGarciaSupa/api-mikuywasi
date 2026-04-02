@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { getConnInfo } from 'hono/bun';
-import { login, refreshAccessToken, logout, getProfile, AuthError } from '../../services/admin/auth.service';
+import { login, refreshAccessToken, logout, getProfile, updateProfile, updatePassword, AuthError } from '../../services/admin/auth.service';
 
 // ────────────────────────────────────────────
 // Helpers
@@ -173,6 +173,48 @@ export async function profileController(c: Context) {
     if (error instanceof AuthError) {
       return c.json({ success: false, message: error.message }, error.status as any);
     }
+    return c.json({ success: false, message: 'Error interno del servidor' }, 500);
+  }
+}
+
+// ────────────────────────────────────────────
+// UPDATE PROFILE
+// ────────────────────────────────────────────
+export async function updateProfileController(c: Context) {
+  try {
+    const { userId } = c.get('jwtPayload');
+    const body = await c.req.parseBody();
+    const data = c.req.valid('form' as never) as { name: string };
+    const imageFile = body['image'] as File | undefined;
+
+    const user = await updateProfile(userId, { name: data.name }, imageFile);
+
+    return c.json({ success: true, data: user });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return c.json({ success: false, message: error.message }, error.status as any);
+    }
+    console.error("Update Profile Error:", error);
+    return c.json({ success: false, message: 'Error interno del servidor' }, 500);
+  }
+}
+
+// ────────────────────────────────────────────
+// UPDATE PASSWORD
+// ────────────────────────────────────────────
+export async function updatePasswordController(c: Context) {
+  try {
+    const { userId } = c.get('jwtPayload');
+    const { currentPassword, newPassword } = c.req.valid('json' as never);
+
+    const result = await updatePassword(userId, { currentPassword, newPassword });
+
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return c.json({ success: false, message: error.message }, error.status as any);
+    }
+    console.error("Update Password Error:", error);
     return c.json({ success: false, message: 'Error interno del servidor' }, 500);
   }
 }

@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { db } from '../../db';
 import { users, refreshTokens } from '../../db/schema';
 import { generateAccessToken } from '../../utils/jwt';
+import { uploadToR2, deleteFromR2 } from '../../utils/r2';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -149,6 +150,78 @@ export async function getProfile(userId: number) {
 
   const { password: _, ...safeUser } = user;
   return safeUser;
+}
+
+// ────────────────────────────────────────────
+// UPDATE PROFILE
+// ────────────────────────────────────────────
+export async function updateProfile(userId: number, data: { name: string; image?: string | null }, imageFile?: File) {
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+
+  if (!existingUser) {
+    throw new AuthError("Usuario no encontrado", 404);
+  }
+
+  let imageUrl = data.image ?? existingUser.image;
+
+  if (imageFile) {
+    if (existingUser.image) {
+      await deleteFromR2(existingUser.image);
+    }
+    imageUrl = await uploadToR2(imageFile, 'profile');
+  }
+
+  const [updatedUser] = await db
+    .update(users)
+    .set({
+      name: data.name,
+      image: imageUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId))
+    .returning();
+
+  if (!updatedUser) {
+    throw new AuthError("Usuario no encontrado", 404);
+  }
+
+  const { password: _, ...safeUser } = updatedUser;
+  return safeUser;
+}
+
+// ────────────────────────────────────────────
+// UPDATE PASSWORD
+// ────────────────────────────────────────────
+export async function updatePassword(userId: number, data: { currentPassword: string; newPassword: string }) {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+
+  if (!user) {
+    throw new AuthError("Usuario no encontrado", 404);
+  }
+
+  const validPassword = await Bun.password.verify(data.currentPassword, user.password, "bcrypt");
+  if (!validPassword) {
+    throw new AuthError("La contraseña actual es incorrecta", 400);
+  }
+
+  const hashedNewPassword = await Bun.password.hash(data.newPassword, {
+    algorithm: "bcrypt",
+    cost: 10,
+  });
+
+  await db
+    .update(users)
+    .set({
+      password: hashedNewPassword,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+
+  return { success: true, message: "Contraseña actualizada correctamente" };
 }
 
 // ────────────────────────────────────────────
