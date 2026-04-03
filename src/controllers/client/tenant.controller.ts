@@ -1,7 +1,5 @@
 import type { Context } from 'hono';
-import { db } from '../../db';
-import { tenants, categories } from '../../db/schema';
-import { eq, and } from 'drizzle-orm';
+import * as tenantService from '../../services/client/tenant.service';
 
 /**
  * GET /api/client/tenant/:slug
@@ -14,17 +12,7 @@ export const getTenantBySlugController = async (c: Context) => {
       return c.json({ success: false, message: 'Slug requerido' }, 400);
     }
 
-    const tenant = await db.query.tenants.findFirst({
-      where: eq(tenants.slug, slug),
-      with: {
-        banners: {
-          orderBy: (banners: any, { asc }: any) => [asc(banners.order)],
-        },
-        socialLinks: {
-          orderBy: (socialLinks: any, { asc }: any) => [asc(socialLinks.order)],
-        }
-      }
-    });
+    const tenant = await tenantService.getTenantBySlug(slug);
 
     if (!tenant) {
       return c.json({ 
@@ -56,33 +44,14 @@ export const getMenuByCategoryController = async (c: Context) => {
       return c.json({ success: false, message: 'Slug requerido' }, 400);
     }
 
-    const tenant = await db.query.tenants.findFirst({
-      where: eq(tenants.slug, slug),
-      columns: {
-        id: true,
-      }
-    });
+    const categoriesWithProducts = await tenantService.getMenuByCategory(slug);
 
-    if (!tenant) {
+    if (!categoriesWithProducts) {
       return c.json({ 
         success: false, 
         message: 'Tenant no encontrado' 
       }, 404);
     }
-
-    const categoriesWithProducts = await db.query.categories.findMany({
-      where: and(
-        eq(categories.tenantId, tenant.id),
-        eq(categories.isActive, true)
-      ),
-      orderBy: (categories, { asc }) => [asc(categories.order)],
-      with: {
-        products: {
-          where: (products : any, { eq }: any) => eq(products.isActive, true),
-          orderBy: (products: any, { asc }: any) => [asc(products.order)],
-        }
-      }
-    });
 
     return c.json({
       success: true,

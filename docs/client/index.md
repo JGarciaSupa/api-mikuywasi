@@ -67,7 +67,7 @@ Obtiene la configuración pública, logo, colores, banners y redes sociales de u
 
 ## 2. Obtener Menú (Categorías y Productos)
 
-Obtiene todas las categorías activas y sus productos asociados para un restaurante, agrupados por categoría y ordenados según la configuración.
+Obtiene todas las categorías activas y sus productos asociados para un restaurante, agrupados por categoría. Los productos que no tengan una categoría asignada se incluirán al final en un objeto con `id` y `name` en `null`.
 
 - **URL:** `/api/client/menu/:slug`
 - **Method:** `GET`
@@ -106,6 +106,21 @@ Obtiene todas las categorías activas y sus productos asociados para un restaura
           "image": "https://r2...",
           "order": 0,
           "isActive": true
+        }
+      ]
+    },
+    {
+      "id": null,
+      "tenantId": 1,
+      "name": null,
+      "order": 999,
+      "isActive": true,
+      "products": [
+        {
+          "id": 10,
+          "name": "Bebida genérica",
+          "price": "5.00",
+          "categoryId": null
         }
       ]
     }
