@@ -120,6 +120,8 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   subscriptions: many(subscriptions),
   banners: many(banners),
   socialLinks: many(socialLinks),
+  categories: many(categories),
+  products: many(products),
 }));
 
 // --- SUSCRIPCIONES ---
@@ -191,6 +193,14 @@ export const categories = pgTable('categories', {
   tenantIdIdx: index('categories_tenant_id_idx').on(table.tenantId),
 }));
 
+export const categoriesRelations = relations(categories, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [categories.tenantId],
+    references: [tenants.id],
+  }),
+  products: many(products),
+}));
+
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id),
@@ -210,8 +220,18 @@ export const products = pgTable('products', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  tenantIdIdx: index('products_tenant_id_idx').on(table.tenantId),
   categoryIdIdx: index('products_category_id_idx').on(table.categoryId),
+}));
+
+export const productsRelations = relations(products, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [products.tenantId],
+    references: [tenants.id],
+  }),
+  category: one(categories, {
+    fields: [products.categoryId],
+    references: [categories.id],
+  }),
 }));
 
 // --- ORDENES ---

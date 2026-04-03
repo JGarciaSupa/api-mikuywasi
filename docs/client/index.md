@@ -62,3 +62,60 @@ Obtiene la configuración pública, logo, colores, banners y redes sociales de u
 | `404 Not Found` | El restaurante no existe o el `slug` es incorrecto. |
 | `429 Too Many Requests` | Demasiadas peticiones. Intente de nuevo en 1 minuto. |
 | `500 Internal Server Error` | Error inesperado en el servidor. |
+
+---
+
+## 2. Obtener Menú (Categorías y Productos)
+
+Obtiene todas las categorías activas y sus productos asociados para un restaurante, agrupados por categoría y ordenados según la configuración.
+
+- **URL:** `/api/client/menu/:slug`
+- **Method:** `GET`
+- **Auth required:** No
+- **Rate Limit:** 100 req/min
+
+### Parámetros de URL
+| Parámetro | Tipo | Descripción |
+| :--- | :--- | :--- |
+| `slug` | `string` | El identificador único del restaurante. |
+
+### Ejemplo de Respuesta (200 OK)
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "tenantId": 1,
+      "name": "Entradas",
+      "order": 0,
+      "isActive": true,
+      "startTime": "08:00:00",
+      "endTime": "23:00:00",
+      "availableDays": [0, 1, 2, 3, 4, 5, 6],
+      "products": [
+        {
+          "id": 1,
+          "tenantId": 1,
+          "categoryId": 1,
+          "name": "Pan al ajo",
+          "description": "Pan tostado con mantequilla de ajo",
+          "price": "10.00",
+          "discountPrice": null,
+          "packagingFee": "0.00",
+          "image": "https://r2...",
+          "order": 0,
+          "isActive": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Respuestas de Error
+| Código | Descripción |
+| :--- | :--- |
+| `400 Bad Request` | Falta el parámetro `slug`. |
+| `404 Not Found` | El restaurante no existe. |
+| `500 Internal Server Error` | Error inesperado al obtener el menú. |
