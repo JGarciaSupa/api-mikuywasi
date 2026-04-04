@@ -244,11 +244,16 @@ export const productsRelations = relations(products, ({ one }) => ({
 
 // --- ORDENES ---
 export const orders = pgTable('orders', {
-  id: serial('id').primaryKey(),
+  id: varchar('id', { length: 12 }).primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
   customerName: varchar('customer_name', { length: 100 }).notNull(),
   customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
   customerAddress: text('customer_address'),
+  deliveryInfo: jsonb('delivery_info').$type<{
+    lat: number;
+    lng: number;
+    reference: string;
+  }>(),
 
   deliveryType: text('delivery_type', { enum: ['delivery', 'pickup', 'dine_in'] }).notNull(),
   tableId: integer('table_id').references(() => tables.id),
@@ -265,6 +270,10 @@ export const orders = pgTable('orders', {
     enum: ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup', 'completed', 'cancelled']
   }).default('pending').notNull(),
 
+  paymentStatus: text('payment_status', {
+    enum: ['unpaid', 'paid', 'review_pending']
+  }).default('unpaid').notNull(),
+
   trackingCode: varchar('tracking_code', { length: 20 }).unique(),
   driverId: integer('driver_id').references(() => users.id),
 
@@ -274,7 +283,7 @@ export const orders = pgTable('orders', {
 
 export const orderItems = pgTable('order_items', {
   id: serial('id').primaryKey(),
-  orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }).notNull(),
+  orderId: varchar('order_id', { length: 12 }).references(() => orders.id, { onDelete: 'cascade' }).notNull(),
   productId: integer('product_id').references(() => products.id),
   productName: varchar('product_name', { length: 150 }).notNull(),
   unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),

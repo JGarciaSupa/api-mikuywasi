@@ -1,6 +1,7 @@
 import { db } from '../../db';
-import { tenants, categories, products, tables, paymentMethods } from '../../db/schema';
+import { tenants, categories, products, tables, paymentMethods, orders, orderItems } from '../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 
 /**
  * Obtener información pública de un tenant por su slug
@@ -120,4 +121,79 @@ export const getPaymentMethodsByTenantSlug = async (slug: string) => {
     ),
     orderBy: (paymentMethods, { asc }) => [asc(paymentMethods.name)],
   });
+};
+
+/**
+ * Crear un nuevo pedido en la base de datos (con NanoID y transacción)
+ */
+export const createOrder = async (orderData: any) => {
+  const { items } = orderData;
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (attempts < maxAttempts) {
+    try {
+      // 1. Generar IDs únicos en cada intento
+      const orderId = nanoid(12);
+      const trackingCode = `ORD-${nanoid(8).toUpperCase()}`;
+
+      return await db.transaction(async (tx) => {
+        // 2. Crear la orden
+        const [result] = await tx.insert(orders).values({
+          id: orderId,
+          tenantId: orderData.tenantId,
+          customerName: orderData.customerName,
+          customerPhone: orderData.customerPhone,
+          customerAddress: orderData.customerAddress,
+          deliveryType: orderData.deliveryType,
+          deliveryInfo: orderData.deliveryInfo,
+          tableId: orderData.tableId,
+          tableName: orderData.tableName,
+          paymentMethod: orderData.paymentMethod,
+          notes: orderData.notes,
+          subtotal: orderData.subtotal.toString(),
+          deliveryFee: (orderData.deliveryFee || 0).toString(),
+          total: orderData.total.toString(),
+          trackingCode,
+          status: 'pending',
+          paymentStatus: 'unpaid',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning();
+
+        // 3. Crear los ítems
+        if (items && items.length > 0) {
+          await tx.insert(orderItems).values(
+            items.map((item: any) => ({
+              orderId: orderId,
+              productId: item.productId,
+              productName: item.productName,
+              unitPrice: item.unitPrice.toString(),
+              quantity: item.quantity,
+              selectedAlternatives: item.selectedAlternatives || [],
+              packagingFee: (item.packagingFee || 0).toString(),
+              notes: item.notes,
+              totalPrice: item.totalPrice.toString(),
+            }))
+          );
+        }
+
+        return { 
+          ...result,
+          items: items 
+        };
+      });
+    } catch (error: any) {
+      attempts++;
+      
+      // Si es un error de clave duplicada (Postgres: 23505) y no es el último intento
+      if (error.code === '23505' && attempts < maxAttempts) {
+        console.warn(`Colisión detectada. Reintento ${attempts}/${maxAttempts}...`);
+        continue;
+      }
+      
+      // Si es otro error o ya superamos los intentos, lanzamos
+      throw error;
+    }
+  }
 };

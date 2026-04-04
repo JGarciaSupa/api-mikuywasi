@@ -230,3 +230,93 @@ Obtiene todos los métodos de pago activos configurados para un restaurante bas�
 | `400 Bad Request` | Falta el parámetro `slug`. |
 | `404 Not Found` | El restaurante no existe. |
 | `500 Internal Server Error` | Error inesperado al obtener los métodos de pago. |
+---
+ 
+ ## 5. Crear Pedido
+ 
+ Registra un nuevo pedido en el sistema para un restaurante específico. El pedido puede ser de tipo `delivery`, `pickup` o `dine_in`.
+ 
+ - **URL:** `/api/client/orders`
+ - **Method:** `POST`
+ - **Auth required:** No
+ - **Rate Limit:** 300 req/min
+ 
+ ### Cuerpo de la Petición (Request Body)
+ | Campo | Tipo | Descripción |
+ | :--- | :--- | :--- |
+ | `tenantId` | `number` | ID del restaurante (obtenido del endpoint de información del tenant). |
+ | `customerName` | `string` | Nombre del cliente. |
+ | `customerPhone` | `string` | Teléfono de contacto del cliente. |
+ | `customerAddress` | `string?` | Dirección de entrega (obligatorio para `delivery`). |
+ | `deliveryType` | `string` | Tipo de entrega: `delivery`, `pickup`, `dine_in`. |
+ | `deliveryInfo` | `object?` | Información adicional de entrega: `{ "lat": number, "lng": number, "reference": string }`. |
+ | `tableId` | `number?` | ID de la mesa (si aplica). |
+ | `tableName` | `string?` | Nombre de la mesa. |
+ | `paymentMethod` | `string` | Nombre del método de pago seleccionado. |
+ | `notes` | `string?` | Nota general para el pedido. |
+ | `subtotal` | `number` | Suma de precios unitarios por cantidades. |
+ | `deliveryFee` | `number` | Costo de envío (opcional, por defecto 0). |
+ | `total` | `number` | Monto total a pagar. |
+ | `items` | `array` | Lista de productos pedidos (ver estructura abajo). |
+ 
+ #### Estructura de `items`
+ Each item in the array should contain:
+ - `productId`: ID del producto.
+ - `productName`: Nombre del producto.
+ - `unitPrice`: Precio unitario cobrado.
+ - `quantity`: Cantidad pedida.
+ - `packagingFee`: (Opcional) Cargo adicional por empaque.
+ - `notes`: Nota específica para este producto.
+ - `totalPrice`: (unitPrice * quantity) + extras.
+ - `selectedAlternatives`: (Opcional) Array de `{ name: string, extraPrice: number }`.
+ 
+ ### Ejemplo de Petición
+ ```json
+ {
+   "tenantId": 1,
+   "customerName": "Juan Pérez",
+   "customerPhone": "987654321",
+   "customerAddress": "Av. Larco 123",
+   "deliveryType": "delivery",
+   "deliveryInfo": {
+     "lat": -12.12,
+     "lng": -77.03,
+     "reference": "Frente al parque"
+   },
+   "paymentMethod": "Efectivo",
+   "subtotal": 45.50,
+   "total": 45.50,
+   "items": [
+     {
+       "productId": 5,
+       "productName": "Pizza Familiar",
+       "unitPrice": 45.50,
+       "quantity": 1,
+       "notes": "Sin cebolla",
+       "totalPrice": 45.50,
+       "selectedAlternatives": [
+         { "name": "Masa delgada", "extraPrice": 0 }
+       ]
+     }
+   ]
+ }
+ ```
+ 
+ ### Ejemplo de Respuesta (201 Created)
+ ```json
+ {
+   "success": true,
+   "message": "Pedido creado exitosamente",
+   "data": {
+     "orderId": "k3j4l5m6n7p8",
+     "trackingCode": "ORD-7USIVD6N"
+   }
+ }
+ ```
+ 
+ ### Respuestas de Error
+ | Código | Descripción |
+ | :--- | :--- |
+ | `400 Bad Request` | Error de validación en los datos enviados o falta el `tenantId`. |
+ | `404 Not Found` | El restaurante (`tenantId`) no existe. |
+ | `500 Internal Server Error` | Error inesperado al procesar la orden o fallo en la transacción. |
