@@ -134,3 +134,99 @@ Obtiene todas las categorías activas y sus productos asociados para un restaura
 | `400 Bad Request` | Falta el parámetro `slug`. |
 | `404 Not Found` | El restaurante no existe. |
 | `500 Internal Server Error` | Error inesperado al obtener el menú. |
+
+---
+
+## 3. Obtener Mesas del Restaurante
+
+Obtiene todas las mesas configuradas para un restaurante basándose en su `slug`.
+
+- **URL:** `/api/client/tables/:slug`
+- **Method:** `GET`
+- **Auth required:** No
+- **Rate Limit:** 100 req/min
+
+### Parámetros de URL
+| Parámetro | Tipo | Descripción |
+| :--- | :--- | :--- |
+| `slug` | `string` | El identificador único del restaurante. |
+
+### Ejemplo de Respuesta (200 OK)
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Mesa 1",
+      "slug": "m1-abc",
+      "createdAt": "2024-03-20T10:00:00Z",
+      "updatedAt": "2024-03-20T10:00:00Z",
+      "tenantId": 1
+    },
+    {
+      "id": 2,
+      "name": "Mesa 2",
+      "slug": "m2-xyz",
+      "createdAt": "2024-03-20T10:05:00Z",
+      "updatedAt": "2024-03-20T10:05:00Z",
+      "tenantId": 1
+    }
+  ]
+}
+```
+
+### Respuestas de Error
+| Código | Descripción |
+| :--- | :--- |
+| `400 Bad Request` | Falta el parámetro `slug`. |
+| `404 Not Found` | El restaurante no existe. |
+| `500 Internal Server Error` | Error inesperado al obtener las mesas. |
+
+---
+
+## 4. Obtener Métodos de Pago del Restaurante
+
+Obtiene todos los métodos de pago activos configurados para un restaurante basándose en su `slug`.
+
+- **URL:** `/api/client/payment-methods/:slug`
+- **Method:** `GET`
+- **Auth required:** No
+- **Rate Limit:** 100 req/min
+
+### Parámetros de URL
+| Parámetro | Tipo | Descripción |
+| :--- | :--- | :--- |
+| `slug` | `string` | El identificador único del restaurante. |
+
+### Ejemplo de Respuesta (200 OK)
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Efectivo",
+      "isActive": true,
+      "createdAt": "2024-03-20T10:00:00Z",
+      "updatedAt": "2024-03-20T10:00:00Z",
+      "tenantId": 1
+    },
+    {
+      "id": 2,
+      "name": "Yape/Plin",
+      "isActive": true,
+      "createdAt": "2024-03-20T10:05:00Z",
+      "updatedAt": "2024-03-20T10:05:00Z",
+      "tenantId": 1
+    }
+  ]
+}
+```
+
+### Respuestas de Error
+| Código | Descripción |
+| :--- | :--- |
+| `400 Bad Request` | Falta el parámetro `slug`. |
+| `404 Not Found` | El restaurante no existe. |
+| `500 Internal Server Error` | Error inesperado al obtener los métodos de pago. |

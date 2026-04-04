@@ -3,22 +3,38 @@ import { products } from '../../db/schema';
 import { eq, and, ilike, sql, desc, count } from 'drizzle-orm';
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from '../../utils/s3';
+import * as sharpLib from 'sharp';
+const sharp = (sharpLib as any).default ?? sharpLib;
 
 const s3Client = getS3Client();
 
 const BUCKET_NAME = process.env.R2_BUCKET!;
 const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
-async function uploadToR2(file: File): Promise<string> {
-  const fileExtension = file.name.split('.').pop();
-  const fileName = `products/${crypto.randomUUID()}.${fileExtension}`;
+const MAX_SIZE = 500;
+
+async function processImage(file: File): Promise<Buffer> {
   const arrayBuffer = await file.arrayBuffer();
+  const inputBuffer = Buffer.from(arrayBuffer);
+
+  return sharp(inputBuffer)
+    .resize(MAX_SIZE, MAX_SIZE, {
+      fit: 'inside',        // mantiene proporción, nunca supera 500 en ninguna dimensión
+      withoutEnlargement: true, // si ya es menor a 500x500, no la agranda
+    })
+    .webp({ quality: 85 })
+    .toBuffer();
+}
+
+async function uploadToR2(file: File): Promise<string> {
+  const fileName = `products/${crypto.randomUUID()}.webp`;
+  const processedBuffer = await processImage(file);
 
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: fileName,
-    Body: Buffer.from(arrayBuffer),
-    ContentType: file.type,
+    Body: processedBuffer,
+    ContentType: 'image/webp',
   });
 
   await s3Client.send(command);

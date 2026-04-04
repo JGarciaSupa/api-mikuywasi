@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { tenants, categories, products } from '../../db/schema';
+import { tenants, categories, products, tables, paymentMethods } from '../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 /**
@@ -75,4 +75,49 @@ export const getMenuByCategory = async (slug: string) => {
   }
 
   return categoriesWithProducts;
+};
+
+/**
+ * Obtener todas las mesas de un restaurante por su slug
+ */
+export const getTablesByTenantSlug = async (slug: string) => {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.slug, slug),
+    columns: {
+      id: true,
+    }
+  });
+
+  if (!tenant) {
+    return null;
+  }
+
+  return await db.query.tables.findMany({
+    where: eq(tables.tenantId, tenant.id),
+    orderBy: (tables, { asc }) => [asc(tables.name)],
+  });
+};
+
+/**
+ * Obtener todos los métodos de pago activos de un restaurante por su slug
+ */
+export const getPaymentMethodsByTenantSlug = async (slug: string) => {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.slug, slug),
+    columns: {
+      id: true,
+    }
+  });
+
+  if (!tenant) {
+    return null;
+  }
+
+  return await db.query.paymentMethods.findMany({
+    where: and(
+      eq(paymentMethods.tenantId, tenant.id),
+      eq(paymentMethods.isActive, true)
+    ),
+    orderBy: (paymentMethods, { asc }) => [asc(paymentMethods.name)],
+  });
 };

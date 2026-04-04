@@ -64,3 +64,68 @@ export const getMenuByCategoryController = async (c: Context) => {
     }, 500);
   }
 };
+
+/**
+ * GET /api/client/tables/:slug
+ * Obtener todas las mesas de un restaurante
+ */
+export const getTablesByTenantSlugController = async (c: Context) => {
+  try {
+    const slug = c.req.param('slug');
+    if (!slug) {
+      return c.json({ success: false, message: 'Slug requerido' }, 400);
+    }
+
+    const tables = await tenantService.getTablesByTenantSlug(slug);
+
+    if (!tables) {
+      return c.json({ 
+        success: false, 
+        message: 'Tenant no encontrado' 
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: tables
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener las mesas'
+    }, 500);
+  }
+};
+
+/**
+ * GET /api/client/payment-methods/:slug
+ * Obtener todos los métodos de pago activos de un restaurante
+ */
+export const getPaymentMethodsByTenantSlugController = async (c: Context) => {
+  try {
+    const slug = c.req.param('slug');
+    if (!slug) {
+      return c.json({ success: false, message: 'Slug requerido' }, 400);
+    }
+
+    const paymentMethods = await tenantService.getPaymentMethodsByTenantSlug(slug);
+
+    if (!paymentMethods) {
+      return c.json({ 
+        success: false, 
+        message: 'Tenant no encontrado' 
+      }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: paymentMethods
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener los métodos de pago'
+    }, 500);
+  }
+};
+

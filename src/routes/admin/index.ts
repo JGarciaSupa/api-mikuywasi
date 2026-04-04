@@ -10,6 +10,7 @@ import socialNetworks from "./social-networks";
 import staff from "./staff";
 import settings from "./settings";
 import tables from "./tables";
+import paymentMethods from "./payment-methods";
 
 const routes = new Hono();
 
@@ -24,5 +25,6 @@ routes.route('/social-networks', socialNetworks);
 routes.route('/staff', staff);
 routes.route('/settings', settings);
 routes.route('/tables', tables);
+routes.route('/payment-methods', paymentMethods);
 
 export default routes;

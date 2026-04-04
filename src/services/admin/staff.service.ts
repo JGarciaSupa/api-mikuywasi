@@ -11,7 +11,7 @@ import { CreateStaffInput, UpdateStaffInput } from '../../validations/admin/staf
 export async function createStaff(tenantId: number, data: CreateStaffInput, imageFile?: File) {
   let imageUrl = null;
   if (imageFile) {
-    imageUrl = await uploadToR2(imageFile, 'profile');
+    imageUrl = await uploadToR2(imageFile, 'profile', 250);
   }
 
   const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
@@ -99,7 +99,7 @@ export async function updateStaff(
     if (existingUser.image) {
       await deleteFromR2(existingUser.image);
     }
-    imageUrl = await uploadToR2(imageFile, 'profile');
+    imageUrl = await uploadToR2(imageFile, 'profile', 250);
   }
 
   const updateData: any = {

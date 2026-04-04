@@ -122,6 +122,7 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   socialLinks: many(socialLinks),
   categories: many(categories),
   products: many(products),
+  paymentMethods: many(paymentMethods),
 }));
 
 // --- SUSCRIPCIONES ---
@@ -162,6 +163,13 @@ export const paymentMethods = pgTable('payment_methods', {
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(), // ID del tenant
 }, (table) => ({
   tenantIdIdx: index('payment_methods_tenant_id_idx').on(table.tenantId),
+}));
+
+export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [paymentMethods.tenantId],
+    references: [tenants.id],
+  }),
 }));
 
 // --- MESAS ---

@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { rateLimiter } from 'hono-rate-limiter';
 import { getConnInfo } from 'hono/bun';
-import { getTenantBySlugController, getMenuByCategoryController } from '../../controllers/client/tenant.controller';
+import { getTenantBySlugController, getMenuByCategoryController, getTablesByTenantSlugController, getPaymentMethodsByTenantSlugController } from '../../controllers/client/tenant.controller';
 
 const routes = new Hono();
 
 const clientLimiter = rateLimiter({
   windowMs: 60 * 1000,
-  limit: 100,
+  limit: 300,
   keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
   message: {
     success: false,
@@ -18,6 +18,7 @@ const clientLimiter = rateLimiter({
 // Tenant Endpoints
 routes.get('/tenant/:slug', clientLimiter, getTenantBySlugController);
 routes.get('/menu/:slug', clientLimiter, getMenuByCategoryController);
+routes.get('/tables/:slug', clientLimiter, getTablesByTenantSlugController);
+routes.get('/payment-methods/:slug', clientLimiter, getPaymentMethodsByTenantSlugController);
 
 export default routes;
-
