@@ -11,6 +11,7 @@ import staff from "./staff";
 import settings from "./settings";
 import tables from "./tables";
 import paymentMethods from "./payment-methods";
+import orders from "./orders";
 
 const routes = new Hono();
 
@@ -26,5 +27,6 @@ routes.route('/staff', staff);
 routes.route('/settings', settings);
 routes.route('/tables', tables);
 routes.route('/payment-methods', paymentMethods);
+routes.route('/orders', orders);
 
 export default routes;
