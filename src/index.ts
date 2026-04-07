@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import routes from './routes';
 
+import { getConnInfo } from 'hono/bun';
+
 const app = new Hono();
 
 // Middleware
@@ -16,7 +18,8 @@ app.route('/api', routes);
 app.get('/', (c) => {
   return c.json({
     success: true,
-    message: "Sistema Pedidos QR API is running!"
+    message: "Sistema Pedidos QR API is running!",
+    ip: getConnInfo(c).remote.address || ''
   })
 });
 
