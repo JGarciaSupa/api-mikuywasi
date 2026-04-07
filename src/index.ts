@@ -16,22 +16,19 @@ app.use('*', cors({
 app.route('/api', routes);
 
 app.get('/', (c) => {
-  // Buscamos la IP en orden de importancia
+  // Cloudflare usa 'cf-connecting-ip' por defecto. 
+  // Es el estándar de oro si usas su proxy.
   const rawIp = 
     c.req.header('cf-connecting-ip') || 
     c.req.header('x-forwarded-for')?.split(',')[0] || 
     getConnInfo(c).remote.address || 
-    '0.0.0.0'; // Valor por defecto si todo lo demás falla
+    '0.0.0.0';
 
-  // Ahora 'rawIp' siempre es un string, así que podemos usar .includes() sin miedo
   const ipAddress = rawIp.includes('::ffff:') 
     ? rawIp.split('::ffff:')[1] 
     : rawIp;
 
-  return c.json({
-    success: true,
-    ip: ipAddress
-  });
+  return c.json({ ip: ipAddress });
 });
 
 const port = process.env.PORT || 3000;
