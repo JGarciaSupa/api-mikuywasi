@@ -16,10 +16,17 @@ app.use('*', cors({
 app.route('/api', routes);
 
 app.get('/', (c) => {
+
+  const rawIp = getConnInfo(c).remote.address || '';
+  // Si la IP incluye el prefijo de mapeo, lo eliminamos
+  const ipAddress = rawIp.includes('::ffff:')
+    ? rawIp.split('::ffff:')[1]
+    : rawIp;
+
   return c.json({
     success: true,
     message: "Sistema Pedidos QR API is running!",
-    ip: getConnInfo(c).remote.address || ''
+    ip: ipAddress
   })
 });
 
