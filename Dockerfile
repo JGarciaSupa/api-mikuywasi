@@ -14,7 +14,7 @@ COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
 
 # Expose the port from src/index.ts (default 3000)
-EXPOSE 3000
+EXPOSE 6000
 
 # Run the application
 CMD ["bun", "run", "src/index.ts"]
