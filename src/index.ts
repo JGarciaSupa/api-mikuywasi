@@ -16,23 +16,20 @@ app.use('*', cors({
 app.route('/api', routes);
 
 app.get('/', (c) => {
-  // 1. Intentamos obtener la IP real desde los headers de reenvío
-  const forwardedFor = c.req.header('x-forwarded-for');
-  let ipAddress = '';
+  // Buscamos la IP en orden de importancia
+  const rawIp = 
+    c.req.header('cf-connecting-ip') || 
+    c.req.header('x-forwarded-for')?.split(',')[0] || 
+    getConnInfo(c).remote.address || 
+    '0.0.0.0'; // Valor por defecto si todo lo demás falla
 
-  if (forwardedFor) {
-    // x-forwarded-for puede ser una lista de IPs si hay varios saltos
-    // La primera siempre es la del cliente original
-    ipAddress = forwardedFor.split(',')[0].trim();
-  } else {
-    // 2. Si no hay header, caemos en el método de conexión directa (útil para desarrollo local)
-    const rawIp = getConnInfo(c).remote.address || '';
-    ipAddress = rawIp.includes('::ffff:') ? rawIp.split('::ffff:')[1] : rawIp;
-  }
+  // Ahora 'rawIp' siempre es un string, así que podemos usar .includes() sin miedo
+  const ipAddress = rawIp.includes('::ffff:') 
+    ? rawIp.split('::ffff:')[1] 
+    : rawIp;
 
   return c.json({
     success: true,
-    message: "Sistema Pedidos QR API is running!",
     ip: ipAddress
   });
 });
