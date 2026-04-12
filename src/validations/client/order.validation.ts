@@ -18,7 +18,7 @@ export const createOrderSchema = z.object({
   tableName: z.string().optional().nullable(),
   
   paymentMethod: z.string({ error: 'Método de pago es requerido' }),
-  notes: z.string().optional().nullable(),
+  notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),
   
   subtotal: z.number({ error: 'Subtotal es requerido' }),
   deliveryFee: z.number().default(0),
@@ -34,7 +34,7 @@ export const createOrderSchema = z.object({
       extraPrice: z.number()
     })).default([]),
     packagingFee: z.number().default(0),
-    notes: z.string().optional().nullable(),
+    notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),
     totalPrice: z.number({ error: 'Total por item es requerido' }),
   })).min(1, 'Debe haber al menos un producto en la orden'),
 });

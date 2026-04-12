@@ -28,6 +28,8 @@ app.get('/', (c) => {
     ? rawIp.split('::ffff:')[1] 
     : rawIp;
 
+  console.log("IP: ", ipAddress);
+
   return c.json({ ip: ipAddress });
 });
 

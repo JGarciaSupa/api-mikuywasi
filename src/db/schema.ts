@@ -64,8 +64,6 @@ export const tenants = pgTable('tenants', {
   name: varchar('name', { length: 255 }).notNull(), // Nombre del tenant
   logo: varchar('logo', { length: 255 }), // Logo del tenant
   primaryColor: varchar('primary_color', { length: 255 }).default("#000000"), // Color primario del tenant
-  secondaryColor: varchar('secondary_color', { length: 255 }).default("#000000"), // Color secundario del tenant
-  accentColor: varchar('accent_color', { length: 255 }).default("#000000"), // Color de acento del tenant
   phone: varchar('phone', { length: 255 }), // Teléfono del tenant
   whatsapp: varchar('whatsapp', { length: 255 }), // WhatsApp del tenant
   email: varchar('email', { length: 255 }), // Email del tenant
@@ -260,7 +258,7 @@ export const orders = pgTable('orders', {
   tableName: varchar('table_name', { length: 50 }),
 
   paymentMethod: text('payment_method').notNull(),
-  notes: text('notes'), // Nota general
+  notes: varchar('notes', { length: 100 }), // Nota general
 
   subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
   deliveryFee: decimal('delivery_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
@@ -290,7 +288,7 @@ export const orderItems = pgTable('order_items', {
   quantity: integer('quantity').notNull(),
   selectedAlternatives: jsonb('selected_alternatives').$type<{ name: string, extraPrice: number }[]>().default([]),
   packagingFee: decimal('packaging_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
-  notes: text('notes'), // Nota del plato
+  notes: varchar('notes', { length: 100 }), // Nota del plato
   totalPrice: decimal('total_price', { precision: 10, scale: 2 }).notNull(),
 });
 
