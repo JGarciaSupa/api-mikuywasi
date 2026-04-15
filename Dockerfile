@@ -1,19 +1,21 @@
-# Use the official Bun image
-FROM oven/bun:1 as base
+# Usamos la imagen base de Bun directamente
+FROM oven/bun:1
 WORKDIR /app
 
-# Stage 1: Install dependencies
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lock* /temp/dev/
-RUN cd /temp/dev && bun install
+# 1. Copiamos los archivos de dependencias primero para aprovechar el caché de Docker
+# Si no cambias el package.json, este paso se lo saltará en el próximo deploy
+COPY package.json bun.lock* ./
 
-# Stage 2: Final image
-FROM base AS release
-COPY --from=install /temp/dev/node_modules node_modules
+# 2. Instalamos las dependencias directamente en la carpeta actual
+# Quitamos el --frozen-lockfile para evitar errores de sincronización
+RUN bun install --no-cache
+
+# 3. Copiamos el resto del código del proyecto
 COPY . .
 
+# Exponemos el puerto de tu backend
 EXPOSE 6100
 
-# Run the application
+# Comando para iniciar la aplicación
+# Usamos la ruta directa para evitar intermediarios
 CMD ["bun", "run", "src/index.ts"]
