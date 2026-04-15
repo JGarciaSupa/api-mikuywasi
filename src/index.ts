@@ -33,10 +33,9 @@ app.get('/', (c) => {
   return c.json({ ip: ipAddress });
 });
 
-const port = process.env.PORT || 6100;
+const port = process.env.PORT || 3000;
 
 export default {
   port,
-  hostname: "0.0.0.0",
   fetch: app.fetch,
 };

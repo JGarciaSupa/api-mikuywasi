@@ -1,5 +1,5 @@
 # Usamos la imagen base de Bun directamente
-FROM oven/bun:1
+FROM oven/bun:1.1-slim
 WORKDIR /app
 
 # 1. Copiamos los archivos de dependencias primero para aprovechar el caché de Docker
@@ -14,7 +14,7 @@ RUN bun install --no-cache
 COPY . .
 
 # Exponemos el puerto de tu backend
-EXPOSE 6100
+EXPOSE 4100
 
 # Comando para iniciar la aplicación
 # Usamos la ruta directa para evitar intermediarios
