@@ -22,4 +22,4 @@ EXPOSE 6100
 USER bun
 
 # Comando de inicio
-CMD ["bun", "run", "src/index.ts"]
+CMD ["bun", "src/index.ts"]
