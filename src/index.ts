@@ -35,5 +35,6 @@ app.get('/', (c) => {
 
 export default {
   port: 4100,
+  hostname: "0.0.0.0",
   fetch: app.fetch,
 };
