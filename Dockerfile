@@ -1,25 +1,19 @@
-# Usar imagen base oficial de Bun
-FROM oven/bun:1-slim AS base
+# Use the official Bun image
+FROM oven/bun:1 as base
 WORKDIR /app
 
-# Instalar dependencias para aprovechar el cache
-COPY package.json bun.lock* ./
+# Stage 1: Install dependencies
+FROM base AS install
+RUN mkdir -p /temp/dev
+COPY package.json bun.lock* /temp/dev/
+RUN cd /temp/dev && bun install --frozen-lockfile
 
-# Instalar solo dependencias de producción para ahorrar espacio y RAM
-# sharp se descargará sus binarios pre-compilados aquí
-RUN bun install --frozen-lockfile --production
-
-# Copiar el código fuente
+# Stage 2: Final image
+FROM base AS release
+COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
 
-# Variable de entorno para indicar producción
-ENV NODE_ENV=production
-
-# Exponer el puerto configurado (Dokploy usará este puerto internamente)
 EXPOSE 6100
 
-# Usar el usuario no-root por seguridad
-USER bun
-
-# Comando de inicio
-CMD ["bun", "src/index.ts"]
+# Run the application
+CMD ["bun", "run", "src/index.ts"]
