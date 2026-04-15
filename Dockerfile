@@ -14,7 +14,7 @@ RUN bun install --no-cache
 COPY . .
 
 # Exponemos el puerto de tu backend
-EXPOSE 4100
+EXPOSE 4001
 
 # Comando para iniciar la aplicación
 # Usamos la ruta directa para evitar intermediarios
