@@ -1,20 +1,20 @@
-# Use the official Bun image
-FROM oven/bun:1 as base
+# Usa la imagen oficial de Bun
+FROM oven/bun:1
+
+# Establecer directorio de trabajo
 WORKDIR /app
 
-# Stage 1: Install dependencies
-FROM base AS install
-RUN mkdir -p /temp/dev
-COPY package.json bun.lock* /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
+# Copiar archivos de dependencias
+COPY package.json bun.lock* ./
 
-# Stage 2: Final image
-FROM base AS release
-COPY --from=install /temp/dev/node_modules node_modules
+# Instalar dependencias
+RUN bun install --frozen-lockfile
+
+# Copiar el resto del código (incluyendo src/)
 COPY . .
 
-# Expose the port from src/index.ts (default 3000)
+# Exponer el puerto que configuraste en Dokploy
 EXPOSE 6100
 
-# Run the application
+# Comando de inicio
 CMD ["bun", "run", "src/index.ts"]
