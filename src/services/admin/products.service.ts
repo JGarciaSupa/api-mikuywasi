@@ -3,8 +3,7 @@ import { products } from '../../db/schema';
 import { eq, and, ilike, desc, count } from 'drizzle-orm';
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from '../../utils/s3';
-// import * as sharpLib from 'sharp';
-// const sharp = (sharpLib as any).default ?? sharpLib;
+import { PhotonImage, resize, SamplingFilter } from "@cf-wasm/photon";
 
 const s3Client = getS3Client();
 
@@ -13,29 +12,38 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
 const MAX_SIZE = 500;
 
-// async function processImage(file: File): Promise<Buffer> {
-//   const arrayBuffer = await file.arrayBuffer();
-//   const inputBuffer = Buffer.from(arrayBuffer);
-// 
-//   return sharp(inputBuffer)
-//     .resize(MAX_SIZE, MAX_SIZE, {
-//       fit: 'inside',        // mantiene proporción, nunca supera 500 en ninguna dimensión
-//       withoutEnlargement: true, // si ya es menor a 500x500, no la agranda
-//     })
-//     .webp({ quality: 85 })
-//     .toBuffer();
-// }
+async function processProductImage(file: File): Promise<Buffer> {
+  const arrayBuffer = await file.arrayBuffer();
+  const photonImage = PhotonImage.new_from_byteslice(new Uint8Array(arrayBuffer));
+  
+  const width = photonImage.get_width();
+  const height = photonImage.get_height();
+  
+  let processedImage = photonImage;
+  
+  if (width > MAX_SIZE || height > MAX_SIZE) {
+    const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+    const newWidth = Math.floor(width * ratio);
+    const newHeight = Math.floor(height * ratio);
+    processedImage = resize(photonImage, newWidth, newHeight, SamplingFilter.Lanczos3);
+    photonImage.free();
+  }
+  
+  const output = Buffer.from(processedImage.get_bytes_webp());
+  processedImage.free();
+  
+  return output;
+}
 
 async function uploadToR2(file: File): Promise<string> {
-  const ext = file.name.split('.').pop() || 'bin';
-  const fileName = `products/${crypto.randomUUID()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const body = await processProductImage(file);
+  const fileName = `products/${crypto.randomUUID()}.webp`;
 
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: fileName,
-    Body: buffer,
-    ContentType: file.type,
+    Body: body,
+    ContentType: 'image/webp',
   });
 
   await s3Client.send(command);

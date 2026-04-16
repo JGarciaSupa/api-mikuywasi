@@ -1,7 +1,6 @@
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "./s3";
-import * as sharpLib from 'sharp';
-const sharp = (sharpLib as any).default ?? sharpLib;
+import { PhotonImage, resize, SamplingFilter } from "@cf-wasm/photon";
 
 const s3Client = getS3Client();
 const BUCKET_NAME = process.env.R2_BUCKET!;
@@ -13,13 +12,25 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
  */
 async function processImage(file: File, maxSize: number): Promise<Buffer> {
   const arrayBuffer = await file.arrayBuffer();
-  return sharp(Buffer.from(arrayBuffer))
-    .resize(maxSize, maxSize, {
-      fit: 'inside',            // mantiene proporción, nunca supera maxSize en ninguna dimensión
-      withoutEnlargement: true, // no agranda si ya es menor
-    })
-    .webp({ quality: 85 })
-    .toBuffer();
+  const photonImage = PhotonImage.new_from_byteslice(new Uint8Array(arrayBuffer));
+  
+  const width = photonImage.get_width();
+  const height = photonImage.get_height();
+  
+  let processedImage = photonImage;
+  
+  if (width > maxSize || height > maxSize) {
+    const ratio = Math.min(maxSize / width, maxSize / height);
+    const newWidth = Math.floor(width * ratio);
+    const newHeight = Math.floor(height * ratio);
+    processedImage = resize(photonImage, newWidth, newHeight, SamplingFilter.Lanczos3);
+    photonImage.free();
+  }
+  
+  const output = Buffer.from(processedImage.get_bytes_webp());
+  processedImage.free();
+  
+  return output;
 }
 
 /**
