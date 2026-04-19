@@ -18,7 +18,7 @@ const adminLimiter = rateLimiter({
 
 const clientLimiter = rateLimiter({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: 3,
   keyGenerator: (c) => getClientIp(c),
   message: {
     success: false,
@@ -26,10 +26,10 @@ const clientLimiter = rateLimiter({
   }
 });
 
-routes.use('/admin/*', adminLimiter);
+routes.use('/admin*', adminLimiter);
 routes.route('/admin', admin);
 
-routes.use('/client/*', clientLimiter);
+routes.use('/client*', clientLimiter);
 routes.route('/client', client);
 
 export default routes;

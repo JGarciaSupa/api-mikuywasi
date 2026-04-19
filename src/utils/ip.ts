@@ -19,5 +19,7 @@ export const getClientIp = (c: Context): string => {
     ? rawIp.split('::ffff:')[1] 
     : rawIp;
 
+  console.log(`[IP DEBUG] Detectado: ${ipAddress} (Original: ${rawIp})`);
+
   return ipAddress;
 };
