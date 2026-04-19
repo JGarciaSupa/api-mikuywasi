@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import routes from './routes';
 
-import { getConnInfo } from 'hono/bun';
+import { getClientIp } from './utils/ip';
 import { initJobs } from './jobs';
 
 // Initialize background jobs
@@ -20,17 +20,7 @@ app.use('*', cors({
 app.route('/api', routes);
 
 app.get('/', (c) => {
-  // Cloudflare usa 'cf-connecting-ip' por defecto. 
-  // Es el estándar de oro si usas su proxy.
-  const rawIp = 
-    c.req.header('cf-connecting-ip') || 
-    c.req.header('x-forwarded-for')?.split(',')[0] || 
-    getConnInfo(c).remote.address || 
-    '0.0.0.0';
-
-  const ipAddress = rawIp.includes('::ffff:') 
-    ? rawIp.split('::ffff:')[1] 
-    : rawIp;
+  const ipAddress = getClientIp(c);
 
   console.log("IP: ", ipAddress);
 

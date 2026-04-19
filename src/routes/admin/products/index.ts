@@ -11,28 +11,16 @@ import {
   getProductByIdController, 
   updateProductController 
 } from '../../../controllers/admin/products.controller';
-import { rateLimiter } from 'hono-rate-limiter';
-import { getConnInfo } from 'hono/bun';
 
 const routes = new Hono();
-
-const productsLimiter = rateLimiter({
-  windowMs: 60 * 1000,
-  limit: 100,
-  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
-  message: {
-    success: false,
-    message: 'Demasiados intentos, intente de nuevo en 1 minuto'
-  }
-});
 
 routes.use('*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
-routes.get('/', productsLimiter, getAllProductsController);
-routes.post('/', productsLimiter, validateCreateProduct, createProductController);
-routes.get('/:id', productsLimiter, getProductByIdController);
-routes.patch('/:id', productsLimiter, validateUpdateProduct, updateProductController);
-routes.delete('/:id', productsLimiter, deleteProductController);
+routes.get('/', getAllProductsController);
+routes.post('/', validateCreateProduct, createProductController);
+routes.get('/:id', getProductByIdController);
+routes.patch('/:id', validateUpdateProduct, updateProductController);
+routes.delete('/:id', deleteProductController);
 
 export default routes;

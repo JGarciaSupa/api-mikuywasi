@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { getConnInfo } from 'hono/bun';
+import { getClientIp } from '../../utils/ip';
 import { login, refreshAccessToken, logout, getProfile, updateProfile, updatePassword, AuthError } from '../../services/admin/auth.service';
 
 // ────────────────────────────────────────────
@@ -33,7 +33,7 @@ export async function loginController(c: Context) {
     const { email, password } = c.req.valid('json' as never);
     const platform = getPlatform(c);
     const userAgent = c.req.header('user-agent') || '';
-    const ipAddress = getConnInfo(c).remote.address || '';
+    const ipAddress = getClientIp(c);
 
     const result = await login(email, password, userAgent, ipAddress);
 
@@ -94,7 +94,7 @@ export async function refreshController(c: Context) {
     }
 
     const userAgent = c.req.header('user-agent') || '';
-    const ipAddress = getConnInfo(c).remote.address || '';
+    const ipAddress = getClientIp(c);
 
     const result = await refreshAccessToken(rawRefreshToken, userAgent, ipAddress);
 

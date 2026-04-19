@@ -13,29 +13,17 @@ import {
   reorderBannersController, 
   updateBannerController 
 } from '../../../controllers/admin/banners.controller';
-import { rateLimiter } from 'hono-rate-limiter';
-import { getConnInfo } from 'hono/bun';
 
 const routes = new Hono();
-
-const bannersLimiter = rateLimiter({
-  windowMs: 60 * 1000,
-  limit: 100,
-  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
-  message: {
-    success: false,
-    message: 'Demasiados intentos, intente de nuevo en 1 minuto'
-  }
-});
 
 routes.use('*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
-routes.get('/', bannersLimiter, getAllBannersController);
-routes.post('/', bannersLimiter, validateCreateBanner, createBannerController);
-routes.get('/:id', bannersLimiter, getBannerByIdController);
-routes.patch('/:id', bannersLimiter, validateUpdateBanner, updateBannerController);
-routes.delete('/:id', bannersLimiter, deleteBannerController);
-routes.post('/reorder', bannersLimiter, validateReorderBanners, reorderBannersController);
+routes.get('/', getAllBannersController);
+routes.post('/', validateCreateBanner, createBannerController);
+routes.get('/:id', getBannerByIdController);
+routes.patch('/:id', validateUpdateBanner, updateBannerController);
+routes.delete('/:id', deleteBannerController);
+routes.post('/reorder', validateReorderBanners, reorderBannersController);
 
 export default routes;

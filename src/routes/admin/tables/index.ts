@@ -10,27 +10,15 @@ import {
   getAllTablesController, 
   updateTableController 
 } from '../../../controllers/admin/tables.controller';
-import { rateLimiter } from 'hono-rate-limiter';
-import { getConnInfo } from 'hono/bun';
 
 const routes = new Hono();
-
-const tablesLimiter = rateLimiter({
-  windowMs: 60 * 1000,
-  limit: 100,
-  keyGenerator: (c) => getConnInfo(c).remote.address || 'anonymous',
-  message: {
-    success: false,
-    message: 'Demasiados intentos, intente de nuevo en 1 minuto'
-  }
-});
 
 routes.use('*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
-routes.get('/', tablesLimiter, getAllTablesController);
-routes.post('/', tablesLimiter, validateCreateTable, createTableController);
-routes.patch('/:id', tablesLimiter, validateUpdateTable, updateTableController);
-routes.delete('/:id', tablesLimiter, deleteTableController);
+routes.get('/', getAllTablesController);
+routes.post('/', validateCreateTable, createTableController);
+routes.patch('/:id', validateUpdateTable, updateTableController);
+routes.delete('/:id', deleteTableController);
 
 export default routes;
