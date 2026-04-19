@@ -13,7 +13,7 @@ export const adminLimiter = rateLimiter({
 
 export const clientLimiter = rateLimiter({
   windowMs: 60 * 1000,
-  limit: 3, // Reducido para pruebas rápidas
+  limit: 500,
   keyGenerator: (c) => getClientIp(c),
   message: {
     success: false,
