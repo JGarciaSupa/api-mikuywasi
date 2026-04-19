@@ -3,7 +3,11 @@ import { getTenantBySlugController, getMenuByCategoryController, getTablesByTena
 import { createOrderController } from '../../controllers/client/order.controller';
 import { validateCreateOrder } from '../../validations/client/order.validation';
 
+import { clientLimiter } from '../limiter';
+
 const routes = new Hono();
+
+routes.use('*', clientLimiter);
 
 // Tenant Endpoints
 routes.get('/tenant/:slug', getTenantBySlugController);

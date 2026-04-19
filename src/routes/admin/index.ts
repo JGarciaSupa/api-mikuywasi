@@ -13,7 +13,11 @@ import tables from "./tables";
 import paymentMethods from "./payment-methods";
 import orders from "./orders";
 
+import { adminLimiter } from "../limiter";
+
 const routes = new Hono();
+
+routes.use('*', adminLimiter);
 
 routes.route('/', auth);
 routes.route('/plans', plans);
