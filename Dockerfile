@@ -4,11 +4,6 @@ FROM oven/bun:1.1-slim
 # Definimos el directorio de trabajo
 WORKDIR /app
 
-# Configuramos variables de entorno para producción y el puerto que usa tu VPS
-# IMPORTANTE: Sin PORT=4001, la app escuchará en el 3000 por defecto y el VPS no conectará
-ENV NODE_ENV=production
-ENV PORT=4001
-
 # Copiamos solo el package.json para la instalación inicial
 # Omitimos bun.lock para evitar errores de "Unknown lockfile version" y dejar que Bun genere uno nuevo
 COPY package.json ./

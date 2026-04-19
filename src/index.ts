@@ -3,6 +3,10 @@ import { cors } from 'hono/cors';
 import routes from './routes';
 
 import { getConnInfo } from 'hono/bun';
+import { initJobs } from './jobs';
+
+// Initialize background jobs
+initJobs();
 
 const app = new Hono();
 
