@@ -4,7 +4,7 @@ import { validationHook } from '../hook';
 
 export const createTenantUserSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().email('Email inválido').transform((val) => val.toLowerCase()),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255),
 });
 

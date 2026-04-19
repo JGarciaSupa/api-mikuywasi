@@ -81,7 +81,7 @@ const baseTenantSchema = z.object({
   planId: z.coerce.number().int().positive('El plan es obligatorio'),
   billingCycle: z.enum(['monthly', 'yearly']),
   planEndsAt: z.string().datetime().optional().nullable(),
-  email: z.string().email('Email inválido').optional().nullable(),
+  email: z.string().trim().email('Email inválido').optional().nullable().transform((val) => val?.toLowerCase()),
   phone: z.string().max(255).optional().nullable(),
   whatsapp: z.string().max(255).optional().nullable(),
   category: z.string().max(255).optional().nullable(),

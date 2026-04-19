@@ -6,8 +6,10 @@ import { validationHook } from "../hook";
 export const loginSchema = z.object({
   email: z
     .string({ error: "El correo electrónico es requerido" })
+    .trim()
     .email("El correo electrónico no es válido")
-    .max(255, "El correo electrónico no puede exceder los 255 caracteres"),
+    .max(255, "El correo electrónico no puede exceder los 255 caracteres")
+    .transform((val) => val.toLowerCase()),
   password: z
     .string({ error: "La contraseña es requerida" })
     .min(1, "La contraseña es requerida")

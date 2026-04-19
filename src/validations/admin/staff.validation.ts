@@ -4,14 +4,14 @@ import { validationHook } from '../hook';
 
 export const createStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().email('Email inválido').transform((val) => val.toLowerCase()),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255),
   role: z.enum(['admin']),
 });
 
 export const updateStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255).optional(),
-  email: z.string().email('Email inválido').optional(),
+  email: z.string().trim().email('Email inválido').optional().transform((val) => val?.toLowerCase()),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255).optional(),
   role: z.enum(['admin']).optional(),
 });

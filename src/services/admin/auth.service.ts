@@ -14,8 +14,9 @@ function hashToken(token: string): string {
 // ────────────────────────────────────────────
 export async function login(email: string, password: string, userAgent?: string, ipAddress?: string) {
   // 1. Buscar usuario
+  const normalizedEmail = email.trim().toLowerCase();
   const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    where: eq(users.email, normalizedEmail),
   });
 
   if (!user) {
