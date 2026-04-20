@@ -1,11 +1,20 @@
 import { Hono } from "hono";
 import { authMiddleware, roleMiddleware } from "../../../middleware/auth.middleware";
-import { validateUpdateSettings } from "../../../validations/admin/settings.validation";
 import {
   getSettingsController,
-  updateSettingsController,
-  updateLogoController
+  updatePublicInfoController,
+  updateOperationController,
+  updateLocationController,
+  updateAdminController,
+  updateLogoController,
+  deleteLogoController
 } from "../../../controllers/admin/settings.controller";
+import { 
+  validateUpdatePublicInfo,
+  validateUpdateOperation,
+  validateUpdateLocation,
+  validateUpdateAdmin 
+} from "../../../validations/admin/settings.validation";
 
 const routes = new Hono();
 
@@ -13,7 +22,11 @@ routes.use('/*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
 routes.get('/', getSettingsController);
-routes.patch('/', validateUpdateSettings, updateSettingsController);
+routes.patch('/info', validateUpdatePublicInfo, updatePublicInfoController);
+routes.patch('/operation', validateUpdateOperation, updateOperationController);
+routes.patch('/location', validateUpdateLocation, updateLocationController);
+routes.patch('/admin', validateUpdateAdmin, updateAdminController);
 routes.post('/logo', updateLogoController);
+routes.delete('/logo', deleteLogoController);
 
 export default routes;

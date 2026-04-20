@@ -19,7 +19,7 @@ export const getSettingsController = async (c: Context) => {
   }
 };
 
-export const updateSettingsController = async (c: Context) => {
+export const updatePublicInfoController = async (c: Context) => {
   try {
     const { tenantId } = c.get('jwtPayload');
     if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
@@ -29,13 +29,76 @@ export const updateSettingsController = async (c: Context) => {
 
     return c.json({
       success: true,
-      message: 'Configuración actualizada con éxito',
+      message: 'Información pública actualizada con éxito',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar la información'
+    }, 400);
+  }
+};
+
+export const updateOperationController = async (c: Context) => {
+  try {
+    const { tenantId } = c.get('jwtPayload');
+    if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
+
+    const data = c.req.valid('json' as never);
+    const result = await settingsService.updateSettings(tenantId, data);
+
+    return c.json({
+      success: true,
+      message: 'Configuración de operación actualizada con éxito',
       data: result
     });
   } catch (error: any) {
     return c.json({
       success: false,
       message: error.message || 'Error al actualizar la configuración'
+    }, 400);
+  }
+};
+
+export const updateLocationController = async (c: Context) => {
+  try {
+    const { tenantId } = c.get('jwtPayload');
+    if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
+
+    const data = c.req.valid('json' as never);
+    const result = await settingsService.updateSettings(tenantId, { address: data } as any);
+
+    return c.json({
+      success: true,
+      message: 'Ubicación actualizada con éxito',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar la ubicación'
+    }, 400);
+  }
+};
+
+export const updateAdminController = async (c: Context) => {
+  try {
+    const { tenantId } = c.get('jwtPayload');
+    if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
+
+    const data = c.req.valid('json' as never);
+    const result = await settingsService.updateSettings(tenantId, data);
+
+    return c.json({
+      success: true,
+      message: 'Información administrativa actualizada con éxito',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar la información administrativa'
     }, 400);
   }
 };
@@ -66,6 +129,26 @@ export const updateLogoController = async (c: Context) => {
     return c.json({
       success: false,
       message: error.message || 'Error al actualizar el logo'
+    }, 400);
+  }
+};
+
+export const deleteLogoController = async (c: Context) => {
+  try {
+    const { tenantId } = c.get('jwtPayload');
+    if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
+
+    const result = await settingsService.deleteLogo(tenantId);
+
+    return c.json({
+      success: true,
+      message: 'Logo eliminado con éxito',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al eliminar el logo'
     }, 400);
   }
 };

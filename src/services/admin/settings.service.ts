@@ -1,42 +1,8 @@
 import { db } from '../../db';
-import { tenants, plans } from '../../db/schema';
+import { tenants } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import type { UpdateSettingsInput } from '../../validations/admin/settings.validation';
-import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from '../../utils/s3';
-
-const s3Client = getS3Client();
-const BUCKET_NAME = process.env.R2_BUCKET!;
-const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
-
-async function uploadToR2(file: File): Promise<string> {
-  const fileExtension = file.name.split('.').pop();
-  const fileName = `logos/${crypto.randomUUID()}.${fileExtension}`;
-  const arrayBuffer = await file.arrayBuffer();
-
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: fileName,
-    Body: Buffer.from(arrayBuffer),
-    ContentType: file.type,
-  });
-
-  await s3Client.send(command);
-  return `${PUBLIC_URL}/${fileName}`;
-}
-
-async function deleteFromR2(url: string) {
-  try {
-    const key = url.replace(`${PUBLIC_URL}/`, '');
-    const command = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-    await s3Client.send(command);
-  } catch (error) {
-    console.error('Error deleting logo from R2:', error);
-  }
-}
+import { uploadToR2, deleteFromR2 } from '../../utils/r2';
 
 /**
  * Obtener configuración del tenant
@@ -80,15 +46,40 @@ export async function updateLogo(tenantId: number, file: File) {
   if (!tenant) throw new Error('Tenant no encontrado');
 
   // Si ya tiene un logo, lo eliminamos de R2
-  if (tenant.logo && tenant.logo.includes(PUBLIC_URL)) {
+  if (tenant.logo) {
     await deleteFromR2(tenant.logo);
   }
 
-  const logoUrl = await uploadToR2(file);
+  const logoUrl = await uploadToR2(file, "logos", 256);
 
   const [updatedTenant] = await db.update(tenants)
     .set({
       logo: logoUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenants.id, tenantId))
+    .returning();
+
+  return updatedTenant;
+}
+
+/**
+ * Eliminar logo del tenant
+ */
+export async function deleteLogo(tenantId: number) {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId)
+  });
+
+  if (!tenant) throw new Error('Tenant no encontrado');
+
+  if (tenant.logo) {
+    await deleteFromR2(tenant.logo);
+  }
+
+  const [updatedTenant] = await db.update(tenants)
+    .set({
+      logo: null,
       updatedAt: new Date(),
     })
     .where(eq(tenants.id, tenantId))

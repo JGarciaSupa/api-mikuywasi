@@ -65,28 +65,25 @@ Retorna los datos del tenant actual basado en el token de autenticación.
 
 ---
 
-## 2. Actualizar Configuración
-Actualiza los campos permitidos del tenant.
+---
 
-- **URL:** `/`
+## 2. Actualizar Información Pública
+Actualiza los datos básicos y la identidad visual del negocio.
+
+- **URL:** `/info`
 - **Método:** `PATCH`
 - **Auth Requerida:** Sí (Admin)
-- **Cuerpo (JSON):** Todos los campos son opcionales.
-
-### Ejemplo de Cuerpo
+- **Cuerpo (JSON):**
 ```json
 {
   "name": "Nuevo Nombre",
+  "category": "Pizzería",
   "phone": "+51999888777",
-  "hasDelivery": false,
-  "address": {
-    "fullAddress": "Nueva Calle 123",
-    "lat": -12.00,
-    "lng": -77.00
-  },
-  "schedules": [
-    { "day": "Lunes", "startTime": "10:00", "endTime": "23:00", "closed": false }
-  ]
+  "whatsapp": "+51999888777",
+  "email": "hola@negocio.com",
+  "primaryColor": "#ef4444",
+  "secondaryColor": "#1e293b",
+  "accentColor": "#f59e0b"
 }
 ```
 
@@ -94,14 +91,16 @@ Actualiza los campos permitidos del tenant.
 ```json
 {
   "success": true,
-  "message": "Configuración actualizada con éxito",
+  "message": "Información pública actualizada con éxito",
   "data": { ... }
 }
 ```
 
 ---
 
-## 3. Actualizar Logo
+## 3. Gestión de Logo
+
+### 3.1 Actualizar/Subir Logo
 Sube una nueva imagen de logo y actualiza el tenant.
 
 - **URL:** `/logo`
@@ -115,6 +114,22 @@ Sube una nueva imagen de logo y actualiza el tenant.
 {
   "success": true,
   "message": "Logo actualizado con éxito",
+  "data": { ... }
+}
+```
+
+### 3.2 Eliminar Logo
+Elimina el logo actual y limpia la referencia en la base de datos.
+
+- **URL:** `/logo`
+- **Método:** `DELETE`
+- **Auth Requerida:** Sí (Admin)
+
+### Respuesta Exitosa (200 OK)
+```json
+{
+  "success": true,
+  "message": "Logo eliminado con éxito",
   "data": { ... }
 }
 ```
