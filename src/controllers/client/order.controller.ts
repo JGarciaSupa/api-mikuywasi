@@ -25,3 +25,34 @@ export const createOrderController = async (c: Context) => {
     }, 500);
   }
 };
+
+/**
+ * GET /api/client/orders/tracking/:trackingCode
+ * Obtener el detalle público de un pedido mediante su código de seguimiento
+ */
+export const getOrderByTrackingCodeController = async (c: Context) => {
+  try {
+    const trackingCode = c.req.param('trackingCode');
+
+    if (!trackingCode) {
+      return c.json({ success: false, message: 'Tracking code no proporcionado' }, 400);
+    }
+
+    const result = await tenantService.getOrderByTrackingCode(trackingCode);
+    
+    if (!result) {
+      return c.json({ success: false, message: 'Orden no encontrada' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      data: result
+    });
+  } catch (error: any) {
+    console.error('Error in getOrderByTrackingCodeController:', error);
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener el detalle del pedido'
+    }, 500);
+  }
+};

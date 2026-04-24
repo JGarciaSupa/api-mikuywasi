@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getTenantBySlugController, getMenuByCategoryController, getTablesByTenantSlugController, getPaymentMethodsByTenantSlugController } from '../../controllers/client/tenant.controller';
-import { createOrderController } from '../../controllers/client/order.controller';
+import { createOrderController, getOrderByTrackingCodeController } from '../../controllers/client/order.controller';
 import { validateCreateOrder } from '../../validations/client/order.validation';
 
 import { clientLimiter } from '../limiter';
@@ -17,5 +17,6 @@ routes.get('/payment-methods/:slug', getPaymentMethodsByTenantSlugController);
 
 // Order Endpoints
 routes.post('/orders', validateCreateOrder, createOrderController);
+routes.get('/orders/tracking/:trackingCode', getOrderByTrackingCodeController);
 
 export default routes;

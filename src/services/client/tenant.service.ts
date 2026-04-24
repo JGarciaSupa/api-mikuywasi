@@ -193,7 +193,28 @@ export const createOrder = async (orderData: any) => {
       }
       
       // Si es otro error o ya superamos los intentos, lanzamos
-      throw error;
     }
   }
+};
+
+/**
+ * Obtener detalle de una orden pública por trackingCode
+ */
+export const getOrderByTrackingCode = async (trackingCode: string) => {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.trackingCode, trackingCode));
+
+  if (!order) return null;
+
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+
+  return {
+    ...order,
+    items
+  };
 };
