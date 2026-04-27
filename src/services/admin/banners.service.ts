@@ -1,49 +1,20 @@
 import { db } from '../../db';
 import { banners } from '../../db/schema';
-import { eq, asc, count, and } from 'drizzle-orm';
-import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from '../../utils/s3';
-
-const s3Client = getS3Client();
-const BUCKET_NAME = process.env.R2_BUCKET!;
-const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
-
-async function uploadToR2(file: File): Promise<string> {
-  const fileExtension = file.name.split('.').pop();
-  const fileName = `banners/${crypto.randomUUID()}.${fileExtension}`;
-  const arrayBuffer = await file.arrayBuffer();
-
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: fileName,
-    Body: Buffer.from(arrayBuffer),
-    ContentType: file.type,
-  });
-
-  await s3Client.send(command);
-  return `${PUBLIC_URL}/${fileName}`;
-}
-
-async function deleteFromR2(url: string) {
-  try {
-    const key = url.replace(`${PUBLIC_URL}/`, '');
-    const command = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-    await s3Client.send(command);
-  } catch (error) {
-    console.error('Error deleting from R2:', error);
-  }
-}
+import { eq, asc, count } from 'drizzle-orm';
+import { uploadToR2, deleteFromR2, getImageUrl } from '../../utils/r2';
 
 /**
  * Obtener todos los banners de un tenant
  */
 export async function getAllBanners(tenantId: number) {
-  return await db.select().from(banners)
+  const result = await db.select().from(banners)
     .where(eq(banners.tenantId, tenantId))
     .orderBy(asc(banners.order));
+
+  return result.map(banner => ({
+    ...banner,
+    url: getImageUrl(banner.url)
+  }));
 }
 
 /**
@@ -51,7 +22,12 @@ export async function getAllBanners(tenantId: number) {
  */
 export async function getBannerById(id: number) {
   const [banner] = await db.select().from(banners).where(eq(banners.id, id));
-  return banner;
+  if (!banner) return null;
+
+  return {
+    ...banner,
+    url: getImageUrl(banner.url)
+  };
 }
 
 /**
@@ -67,15 +43,18 @@ export async function createBanner(tenantId: number, data: { order?: number }, i
     throw new Error('Solo se permite un máximo de 3 banners por tenant');
   }
 
-  const imageUrl = await uploadToR2(imageFile);
+  const imageKey = await uploadToR2(imageFile, 'banners');
 
   const [newBanner] = await db.insert(banners).values({
     tenantId,
-    url: imageUrl,
+    url: imageKey,
     order: data.order || 0,
   }).returning();
 
-  return newBanner;
+  return {
+    ...newBanner,
+    url: getImageUrl(newBanner.url)
+  };
 }
 
 /**
@@ -92,7 +71,7 @@ export async function updateBanner(id: number, data: { order?: number }, imageFi
     // Eliminar imagen anterior
     await deleteFromR2(existingBanner.url);
     // Subir nueva imagen
-    imageUrl = await uploadToR2(imageFile);
+    imageUrl = await uploadToR2(imageFile, 'banners');
   }
 
   const [updatedBanner] = await db
@@ -104,7 +83,10 @@ export async function updateBanner(id: number, data: { order?: number }, imageFi
     .where(eq(banners.id, id))
     .returning();
 
-  return updatedBanner;
+  return {
+    ...updatedBanner,
+    url: getImageUrl(updatedBanner.url)
+  };
 }
 
 /**

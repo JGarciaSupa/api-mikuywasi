@@ -2,12 +2,13 @@ import { db } from '../../db';
 import { tenants, categories, products, tables, paymentMethods, orders, orderItems } from '../../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { getImageUrl } from '../../utils/r2';
 
 /**
  * Obtener información pública de un tenant por su slug
  */
 export const getTenantBySlug = async (slug: string) => {
-  return await db.query.tenants.findFirst({
+  const tenant = await db.query.tenants.findFirst({
     where: eq(tenants.slug, slug),
     with: {
       banners: {
@@ -18,6 +19,17 @@ export const getTenantBySlug = async (slug: string) => {
       }
     }
   });
+
+  if (!tenant) return null;
+
+  return {
+    ...tenant,
+    logo: getImageUrl(tenant.logo),
+    banners: tenant.banners.map((banner: any) => ({
+      ...banner,
+      url: getImageUrl(banner.url)
+    }))
+  };
 };
 
 /**
@@ -59,8 +71,18 @@ export const getMenuByCategory = async (slug: string) => {
     orderBy: (products, { asc }) => [asc(products.order)],
   });
 
+  const mapProducts = (productList: any[]) => productList.map(product => ({
+    ...product,
+    image: getImageUrl(product.image)
+  }));
+
+  const result = categoriesWithProducts.map(category => ({
+    ...category,
+    products: mapProducts(category.products)
+  }));
+
   if (productsWithoutCategory.length > 0) {
-    categoriesWithProducts.push({
+    result.push({
       id: null,
       name: null,
       order: 999,
@@ -71,11 +93,11 @@ export const getMenuByCategory = async (slug: string) => {
       availableDays: [0, 1, 2, 3, 4, 5, 6],
       createdAt: new Date(),
       updatedAt: new Date(),
-      products: productsWithoutCategory
+      products: mapProducts(productsWithoutCategory)
     } as any);
   }
 
-  return categoriesWithProducts;
+  return result;
 };
 
 /**
