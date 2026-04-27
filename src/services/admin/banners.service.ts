@@ -43,7 +43,7 @@ export async function createBanner(tenantId: number, data: { order?: number }, i
     throw new Error('Solo se permite un máximo de 3 banners por tenant');
   }
 
-  const imageKey = await uploadToR2(imageFile, 'banners');
+  const imageKey = await uploadToR2(imageFile, 'banners', 1280);
 
   const [newBanner] = await db.insert(banners).values({
     tenantId,
@@ -71,7 +71,7 @@ export async function updateBanner(id: number, data: { order?: number }, imageFi
     // Eliminar imagen anterior
     await deleteFromR2(existingBanner.url);
     // Subir nueva imagen
-    imageUrl = await uploadToR2(imageFile, 'banners');
+    imageUrl = await uploadToR2(imageFile, 'banners', 1280);
   }
 
   const [updatedBanner] = await db

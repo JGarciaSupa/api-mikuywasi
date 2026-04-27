@@ -29,17 +29,21 @@ async function processImage(file: File, maxSize: number): Promise<Buffer> {
   const width = photonImage.get_width();
   const height = photonImage.get_height();
 
+  console.log(`[processImage] Original dimensions: ${width}x${height}, maxSize: ${maxSize}`);
+
   let processedImage = photonImage;
 
   if (width > maxSize || height > maxSize) {
     const ratio = Math.min(maxSize / width, maxSize / height);
     const newWidth = Math.floor(width * ratio);
     const newHeight = Math.floor(height * ratio);
+    console.log(`[processImage] Resizing to: ${newWidth}x${newHeight}`);
     processedImage = resize(photonImage, newWidth, newHeight, SamplingFilter.Lanczos3);
     photonImage.free();
   }
 
   const output = Buffer.from(processedImage.get_bytes_webp());
+  console.log(`[processImage] WebP conversion complete. Output size: ${output.length} bytes`);
   processedImage.free();
 
   return output;
