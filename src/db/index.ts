@@ -4,7 +4,7 @@ import * as schema from './schema';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 5
+  max: 20
 });
 
 export const db = drizzle(pool, { schema });

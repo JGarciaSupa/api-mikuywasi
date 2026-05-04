@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { db } from '../../db';
 import { users, refreshTokens } from '../../db/schema';
 import { generateAccessToken } from '../../utils/jwt';
-import { uploadToR2, deleteFromR2 } from '../../utils/r2';
+import { uploadToR2, deleteFromR2, getImageUrl } from '../../utils/r2';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -57,7 +57,10 @@ export async function login(email: string, password: string, userAgent?: string,
     success: true,
     accessToken,
     refreshToken: rawRefreshToken,
-    user: safeUser
+    user: {
+      ...safeUser,
+      image: getImageUrl(safeUser.image)
+    }
   }
 }
 
@@ -119,7 +122,10 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     success: true,
     accessToken,
     refreshToken: newRawRefreshToken,
-    user: safeUser
+    user: {
+      ...safeUser,
+      image: getImageUrl(safeUser.image)
+    }
   };
 }
 
@@ -150,7 +156,10 @@ export async function getProfile(userId: number) {
   }
 
   const { password: _, ...safeUser } = user;
-  return safeUser;
+  return {
+    ...safeUser,
+    image: getImageUrl(safeUser.image)
+  };
 }
 
 // ────────────────────────────────────────────
@@ -165,20 +174,20 @@ export async function updateProfile(userId: number, data: { name: string; image?
     throw new AuthError("Usuario no encontrado", 404);
   }
 
-  let imageUrl = data.image ?? existingUser.image;
+  let imageKey = data.image ?? existingUser.image;
 
   if (imageFile) {
     if (existingUser.image) {
       await deleteFromR2(existingUser.image);
     }
-    imageUrl = await uploadToR2(imageFile, 'profile');
+    imageKey = await uploadToR2(imageFile, 'profile');
   }
 
   const [updatedUser] = await db
     .update(users)
     .set({
       name: data.name,
-      image: imageUrl,
+      image: imageKey,
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId))
@@ -189,7 +198,10 @@ export async function updateProfile(userId: number, data: { name: string; image?
   }
 
   const { password: _, ...safeUser } = updatedUser;
-  return safeUser;
+  return {
+    ...safeUser,
+    image: getImageUrl(safeUser.image)
+  };
 }
 
 // ────────────────────────────────────────────

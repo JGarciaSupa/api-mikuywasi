@@ -2,7 +2,7 @@ import { db } from '../../db';
 import { tenants } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import type { UpdateSettingsInput } from '../../validations/admin/settings.validation';
-import { uploadToR2, deleteFromR2 } from '../../utils/r2';
+import { uploadToR2, deleteFromR2, getImageUrl } from '../../utils/r2';
 
 /**
  * Obtener configuración del tenant
@@ -16,7 +16,11 @@ export async function getSettings(tenantId: number) {
   });
 
   if (!tenant) throw new Error('Tenant no encontrado');
-  return tenant;
+  
+  return {
+    ...tenant,
+    logo: getImageUrl(tenant.logo)
+  };
 }
 
 /**
@@ -32,7 +36,11 @@ export async function updateSettings(tenantId: number, data: UpdateSettingsInput
     .returning();
 
   if (!updatedTenant) throw new Error('Tenant no encontrado');
-  return updatedTenant;
+  
+  return {
+    ...updatedTenant,
+    logo: getImageUrl(updatedTenant.logo)
+  };
 }
 
 /**
@@ -50,17 +58,20 @@ export async function updateLogo(tenantId: number, file: File) {
     await deleteFromR2(tenant.logo);
   }
 
-  const logoUrl = await uploadToR2(file, "logos", 256);
+  const logoKey = await uploadToR2(file, "logos", 256);
 
   const [updatedTenant] = await db.update(tenants)
     .set({
-      logo: logoUrl,
+      logo: logoKey,
       updatedAt: new Date(),
     })
     .where(eq(tenants.id, tenantId))
     .returning();
 
-  return updatedTenant;
+  return {
+    ...updatedTenant,
+    logo: getImageUrl(updatedTenant.logo)
+  };
 }
 
 /**
@@ -85,5 +96,8 @@ export async function deleteLogo(tenantId: number) {
     .where(eq(tenants.id, tenantId))
     .returning();
 
-  return updatedTenant;
+  return {
+    ...updatedTenant,
+    logo: getImageUrl(updatedTenant.logo)
+  };
 }

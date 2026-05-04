@@ -1,17 +1,16 @@
 import { db } from '../../db';
 import { users } from '../../db/schema';
 import { eq, and, like, ne, desc, count } from 'drizzle-orm';
-import { uploadToR2, deleteFromR2 } from '../../utils/r2';
+import { uploadToR2, deleteFromR2, getImageUrl } from '../../utils/r2';
 import { CreateStaffInput, UpdateStaffInput } from '../../validations/admin/staff.validation';
-
 
 /**
  * Crear un nuevo miembro del staff
  */
 export async function createStaff(tenantId: number, data: CreateStaffInput, imageFile?: File) {
-  let imageUrl = null;
+  let imageKey = null;
   if (imageFile) {
-    imageUrl = await uploadToR2(imageFile, 'profile', 250);
+    imageKey = await uploadToR2(imageFile, 'profile', 250);
   }
 
   const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
@@ -22,11 +21,14 @@ export async function createStaff(tenantId: number, data: CreateStaffInput, imag
     password: hashedPassword,
     name: data.name,
     role: data.role,
-    image: imageUrl,
+    image: imageKey,
   }).returning();
 
   const { password: _, ...safeUser } = newUser;
-  return safeUser;
+  return {
+    ...safeUser,
+    image: getImageUrl(safeUser.image)
+  };
 }
 
 /**
@@ -68,7 +70,10 @@ export async function getStaffList(
     .orderBy(desc(users.createdAt));
 
   return {
-    items,
+    items: items.map(item => ({
+      ...item,
+      image: getImageUrl(item.image)
+    })),
     total: totalResult.total,
     pages: Math.ceil(totalResult.total / params.limit),
     currentPage: params.page,
@@ -94,19 +99,19 @@ export async function updateStaff(
     throw new Error('Usuario no encontrado');
   }
 
-  let imageUrl = existingUser.image;
+  let imageKey = existingUser.image;
   if (imageFile) {
     if (existingUser.image) {
       await deleteFromR2(existingUser.image);
     }
-    imageUrl = await uploadToR2(imageFile, 'profile', 250);
+    imageKey = await uploadToR2(imageFile, 'profile', 250);
   }
 
   const updateData: any = {
     name: data.name ?? existingUser.name,
     email: data.email ?? existingUser.email,
     role: data.role ?? existingUser.role,
-    image: imageUrl,
+    image: imageKey,
     updatedAt: new Date(),
   };
 
@@ -121,7 +126,10 @@ export async function updateStaff(
     .returning();
 
   const { password: _, ...safeUser } = updatedUser;
-  return safeUser;
+  return {
+    ...safeUser,
+    image: getImageUrl(safeUser.image)
+  };
 }
 
 /**
