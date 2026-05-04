@@ -9,7 +9,7 @@ import { nanoid } from 'nanoid';
 export async function getAllTables(tenantId: number) {
   return await db.select().from(tables)
     .where(eq(tables.tenantId, tenantId))
-    .orderBy(tables.name);
+    .orderBy(tables.createdAt);
 }
 
 /**
@@ -44,7 +44,7 @@ export async function createTable(tenantId: number, data: { name: string }) {
         tenantId,
         slug,
       }).returning();
-      
+
       return newTable;
     } catch (error: any) {
       // Si el error es de unicidad (slug o tenant_slug_unique)
