@@ -10,6 +10,7 @@ import socialNetworks from "./social-networks";
 import staff from "./staff";
 import settings from "./settings";
 import tables from "./tables";
+import waiter from "./waiter";
 import paymentMethods from "./payment-methods";
 import orders from "./orders";
 
@@ -30,6 +31,7 @@ routes.route('/social-networks', socialNetworks);
 routes.route('/staff', staff);
 routes.route('/settings', settings);
 routes.route('/tables', tables);
+routes.route('/waiter', waiter);
 routes.route('/payment-methods', paymentMethods);
 routes.route('/orders', orders);
 

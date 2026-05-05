@@ -14,7 +14,7 @@ import {
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin']));
+routes.use('/*', roleMiddleware(['admin','waiter']));
 
 routes.get('/', getAllTablesController);
 routes.post('/', validateCreateTable, createTableController);

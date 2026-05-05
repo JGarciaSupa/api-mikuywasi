@@ -12,7 +12,7 @@ const routes = new Hono();
 
 // Middlewares de seguridad globales para el módulo de órdenes
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin']));
+routes.use('/*', roleMiddleware(['admin', 'kitchen']));
 
 // Endpoints
 routes.get('/', getOrdersController);

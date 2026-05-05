@@ -101,6 +101,73 @@ export const getMenuByCategory = async (slug: string) => {
 };
 
 /**
+ * Obtener todas las categorías y productos de un tenant agrupados por categoría usando tenantId.
+ */
+export const getMenuByTenantId = async (tenantId: number) => {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+    columns: {
+      id: true,
+    }
+  });
+
+  if (!tenant) {
+    return null;
+  }
+
+  const categoriesWithProducts = await db.query.categories.findMany({
+    where: and(
+      eq(categories.tenantId, tenant.id),
+      eq(categories.isActive, true)
+    ),
+    orderBy: (categories, { asc }) => [asc(categories.order)],
+    with: {
+      products: {
+        where: (products: any, { eq }: any) => eq(products.isActive, true),
+        orderBy: (products: any, { asc }: any) => [asc(products.order)],
+      }
+    }
+  });
+
+  const productsWithoutCategory = await db.query.products.findMany({
+    where: and(
+      eq(products.tenantId, tenant.id),
+      eq(products.isActive, true),
+      isNull(products.categoryId)
+    ),
+    orderBy: (products, { asc }) => [asc(products.order)],
+  });
+
+  const mapProducts = (productList: any[]) => productList.map(product => ({
+    ...product,
+    image: getImageUrl(product.image)
+  }));
+
+  const result = categoriesWithProducts.map(category => ({
+    ...category,
+    products: mapProducts(category.products)
+  }));
+
+  if (productsWithoutCategory.length > 0) {
+    result.push({
+      id: null,
+      name: null,
+      order: 999,
+      isActive: true,
+      tenantId: tenant.id,
+      startTime: null,
+      endTime: null,
+      availableDays: [0, 1, 2, 3, 4, 5, 6],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      products: mapProducts(productsWithoutCategory)
+    } as any);
+  }
+
+  return result;
+};
+
+/**
  * Obtener todas las mesas de un restaurante por su slug
  */
 export const getTablesByTenantSlug = async (slug: string) => {

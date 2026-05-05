@@ -40,3 +40,4 @@ export const createOrderSchema = z.object({
 });
 
 export const validateCreateOrder = zValidator('json', createOrderSchema);
+export const validateCreateOrderFromToken = zValidator('json', createOrderSchema.omit({ tenantId: true }));
