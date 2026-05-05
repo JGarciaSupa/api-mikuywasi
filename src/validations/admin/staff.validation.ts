@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { validationHook } from '../hook';
-import { staffRoles } from '../../constants/user-roles';
+
+const staffRoles = ["admin", "kitchen", "waiter", "delivery"];
 
 export const createStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
