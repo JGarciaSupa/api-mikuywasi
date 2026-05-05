@@ -71,6 +71,27 @@
       "when": 1775762537020,
       "tag": "0009_tiresome_shiver_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777947862468,
+      "tag": "0010_furry_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777948699786,
+      "tag": "0011_absurd_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777948803655,
+      "tag": "0012_amazing_magus",
+      "breakpoints": true
     }
   ]
 }

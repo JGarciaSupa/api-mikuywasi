@@ -1,6 +1,5 @@
 import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, check } from 'drizzle-orm/pg-core';
-import { userRoles, staffRoles } from '../constants/user-roles';
 
 // TODO: SUPER ADMIN
 // --- USUARIOS ---
@@ -11,13 +10,13 @@ export const users = pgTable('users', {
   password: varchar('password', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   image: text('image'),
-  role: varchar('role', { length: 255, enum: userRoles }).notNull(),
+  role: varchar('role', { length: 255, enum: ['super-admin', 'admin', 'kitchen', 'waiter', 'delivery'] }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  roleTenantCheck: check('role_tenant_check', sql`
+  roleTenantCheck: check('users_role_tenant_check', sql`
     (role = 'super-admin' AND tenant_id IS NULL) OR
-    (role IN (${sql.raw(staffRoles.map((role) => `'${role}'`).join(', '))}) AND tenant_id IS NOT NULL)
+    (role != 'super-admin' AND tenant_id IS NOT NULL)
   `),
   tenantIdIdx: index('users_tenant_id_idx').on(table.tenantId),
 }));
