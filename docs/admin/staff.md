@@ -48,7 +48,7 @@ Crea un nuevo usuario para el tenant actual.
   - `name`: (String) Nombre completo.
   - `email`: (String) Correo electrónico único.
   - `password`: (String) Mínimo 6 caracteres.
-  - `role`: (Enum: 'admin') Rol del usuario.
+  - `role`: (Enum: 'admin' | 'kitchen' | 'waiter' | 'delivery') Rol del usuario.
   - `image`: (File, Opcional) Foto de perfil.
 
 - **Respuesta Exitosa (201 Created):**

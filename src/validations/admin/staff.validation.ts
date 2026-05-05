@@ -1,19 +1,20 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { validationHook } from '../hook';
+import { staffRoles } from '../../constants/user-roles';
 
 export const createStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
   email: z.string().trim().email('Email inválido').transform((val) => val.toLowerCase()),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255),
-  role: z.enum(['admin']),
+  role: z.enum(staffRoles),
 });
 
 export const updateStaffSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255).optional(),
   email: z.string().trim().email('Email inválido').optional().transform((val) => val?.toLowerCase()),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255).optional(),
-  role: z.enum(['admin']).optional(),
+  role: z.enum(staffRoles).optional(),
 });
 
 export const staffQuerySchema = z.object({

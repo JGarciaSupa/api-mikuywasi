@@ -1,10 +1,11 @@
 import * as jwt from 'jsonwebtoken';
+import type { UserRole } from '../constants/user-roles';
 
 const SECRET = process.env.JWT_SECRET!;
 
 export interface JwtPayload {
   userId: number;
-  role: 'super-admin' | 'admin';
+  role: UserRole;
   tenantId?: number | null;
 }
 

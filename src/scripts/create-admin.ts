@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import type { UserRole } from '../constants/user-roles';
 
 const NEW_ADMIN = {
   email: 'devrenatonavarro@gmail.com',
@@ -11,7 +12,7 @@ const NEW_ADMIN = {
   email: string;
   password: string;
   name: string;
-  role: 'super-admin' | 'admin';
+  role: UserRole;
 };
 
 async function createAdmin() {
