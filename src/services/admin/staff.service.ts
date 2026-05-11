@@ -107,21 +107,16 @@ export async function updateStaff(
     imageKey = await uploadToR2(imageFile, 'profile', 250);
   }
 
-  const updateData: any = {
-    name: data.name ?? existingUser.name,
-    email: data.email ?? existingUser.email,
-    role: data.role ?? existingUser.role,
-    image: imageKey,
-    updatedAt: new Date(),
-  };
-
-  if (data.password) {
-    updateData.password = await Bun.password.hash(data.password, 'bcrypt');
-  }
-
   const [updatedUser] = await db
     .update(users)
-    .set(updateData)
+    .set({
+      name: data.name ?? existingUser.name,
+      email: data.email ?? existingUser.email,
+      role: data.role ?? existingUser.role,
+      image: imageKey,
+      updatedAt: new Date(),
+      ...(data.password ? { password: await Bun.password.hash(data.password, 'bcrypt') } : {})
+    })
     .where(eq(users.id, id))
     .returning();
 

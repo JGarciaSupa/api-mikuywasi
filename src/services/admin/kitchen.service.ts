@@ -13,7 +13,7 @@ export const getActiveKitchenOrders = async (tenantId: number) => {
     .where(
       and(
         eq(orders.tenantId, tenantId),
-        inArray(orders.status, ['pending', 'confirmed', 'preparing'])
+        eq(orders.status, 'confirmed')
       )
     )
     .orderBy(asc(orders.createdAt));

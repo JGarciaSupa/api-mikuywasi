@@ -3,7 +3,6 @@ import { createHash } from 'crypto';
 import { db } from '../../db';
 import { users, refreshTokens } from '../../db/schema';
 import { generateAccessToken } from '../../utils/jwt';
-import type { UserRole } from '../../constants/user-roles';
 import { uploadToR2, deleteFromR2, getImageUrl } from '../../utils/r2';
 
 function hashToken(token: string): string {
@@ -33,7 +32,7 @@ export async function login(email: string, password: string, userAgent?: string,
   // 3. Generar access token
   const accessToken = await generateAccessToken({
     userId: user.id,
-    role: user.role as UserRole,
+    role: user.role,
     tenantId: user.tenantId,
   });
 
@@ -101,7 +100,7 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
   // 5. Generar nuevos tokens
   const accessToken = await generateAccessToken({
     userId: user.id,
-    role: user.role as UserRole,
+    role: user.role,
     tenantId: user.tenantId,
   });
 
