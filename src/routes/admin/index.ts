@@ -13,6 +13,7 @@ import tables from "./tables";
 import waiter from "./waiter";
 import paymentMethods from "./payment-methods";
 import orders from "./orders";
+import kitchen from "./kitchen";
 
 import { adminLimiter } from "../limiter";
 
@@ -34,5 +35,6 @@ routes.route('/tables', tables);
 routes.route('/waiter', waiter);
 routes.route('/payment-methods', paymentMethods);
 routes.route('/orders', orders);
+routes.route('/kitchen', kitchen);
 
 export default routes;
