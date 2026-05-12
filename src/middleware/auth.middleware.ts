@@ -1,5 +1,4 @@
 import type { Context, Next } from 'hono';
-import type { UserRole } from '../constants/user-roles';
 import { verifyAccessToken, type JwtPayload } from '../utils/jwt';
 
 // Extend Hono context variables
@@ -27,7 +26,7 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 }
 
-export function roleMiddleware(roles: UserRole[]) {
+export function roleMiddleware(roles: string[]) {
   return async (c: Context, next: Next) => {
     const payload = c.get('jwtPayload');
     if (!payload || !roles.includes(payload.role)) {

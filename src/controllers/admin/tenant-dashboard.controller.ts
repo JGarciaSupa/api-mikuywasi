@@ -3,8 +3,8 @@ import { getTenantDashboardStats } from '../../services/admin/tenant-dashboard.s
 
 export const getTenantDashboardStatsController = async (c: Context) => {
   try {
-    const user = c.get('user');
-    const tenantId = user?.tenantId;
+    const payload = c.get('jwtPayload');
+    const tenantId = payload?.tenantId;
 
     if (!tenantId) {
       return c.json({
