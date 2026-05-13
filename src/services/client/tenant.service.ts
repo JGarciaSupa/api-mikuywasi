@@ -282,6 +282,7 @@ export const createOrder = async (orderData: any) => {
       }
       
       // Si es otro error o ya superamos los intentos, lanzamos
+      throw error;
     }
   }
 };
