@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 export const createOrderSchema = z.object({
   tenantId: z.number({ error: 'Tenant ID es requerido' }),
   customerName: z.string({ error: 'Nombre es requerido' }).min(1, 'El nombre es obligatorio'),
-  customerPhone: z.string({ error: 'Teléfono es requerido' }).min(1, 'El teléfono es obligatorio'),
+  customerPhone: z.string({ error: 'Teléfono es requerido' }).min(1, 'El teléfono es obligatorio').optional().nullable(),
   customerAddress: z.string().optional().nullable(),
   
   deliveryType: z.enum(['delivery', 'pickup', 'dine_in'], { error: 'Tipo de entrega es requerido' }),
