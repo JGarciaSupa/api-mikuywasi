@@ -245,7 +245,7 @@ export const orders = pgTable('orders', {
   id: varchar('id', { length: 12 }).primaryKey(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
   customerName: varchar('customer_name', { length: 100 }).notNull(),
-  customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
+  customerPhone: varchar('customer_phone', { length: 20 }),
   customerAddress: text('customer_address'),
   deliveryInfo: jsonb('delivery_info').$type<{
     lat: number;
