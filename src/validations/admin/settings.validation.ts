@@ -66,6 +66,15 @@ export const updateLocationSchema = z.object({
   fullAddress: z.string().max(255).optional().nullable().or(z.literal("")),
   lat: z.number(),
   lng: z.number(),
+  deliveryZone: z.object({
+    type: z.literal('Polygon'),
+    // GeoJSON Polygon: array of rings, each ring is array of [lng, lat] pairs
+    coordinates: z.array(
+      z.array(
+        z.tuple([z.number(), z.number()]) // [lng, lat]
+      ).min(4, 'El anillo necesita al menos 4 puntos (3 únicos + cierre)')
+    ).min(1, 'Se requiere al menos el anillo exterior'),
+  }).nullable().optional(),
 });
 
 export const updateAdminSchema = z.object({

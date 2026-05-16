@@ -76,10 +76,12 @@ export const getMenuByCategory = async (slug: string) => {
     image: getImageUrl(product.image)
   }));
 
-  const result = categoriesWithProducts.map(category => ({
-    ...category,
-    products: mapProducts(category.products)
-  }));
+  const result = categoriesWithProducts
+    .map(category => ({
+      ...category,
+      products: mapProducts(category.products)
+    }))
+    .filter(category => category.products.length > 0);
 
   if (productsWithoutCategory.length > 0) {
     result.push({
@@ -143,10 +145,12 @@ export const getMenuByTenantId = async (tenantId: number) => {
     image: getImageUrl(product.image)
   }));
 
-  const result = categoriesWithProducts.map(category => ({
-    ...category,
-    products: mapProducts(category.products)
-  }));
+  const result = categoriesWithProducts
+    .map(category => ({
+      ...category,
+      products: mapProducts(category.products)
+    }))
+    .filter(category => category.products.length > 0);
 
   if (productsWithoutCategory.length > 0) {
     result.push({

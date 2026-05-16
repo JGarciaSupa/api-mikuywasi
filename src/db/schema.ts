@@ -73,6 +73,10 @@ export const tenants = pgTable('tenants', {
     lat: number;
     lng: number;
   }>(), // Dirección del local
+  deliveryZone: jsonb('delivery_zone').$type<{
+    type: 'Polygon';
+    coordinates: number[][][]; // GeoJSON: [[[lng, lat], [lng, lat], ...]] — exterior ring, closed
+  } | null>(), // Zona de cobertura de delivery en formato GeoJSON
   schedules: jsonb('schedules').$type<{
     day: string;
     startTime: string;

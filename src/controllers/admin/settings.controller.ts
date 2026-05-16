@@ -66,8 +66,13 @@ export const updateLocationController = async (c: Context) => {
     const { tenantId } = c.get('jwtPayload');
     if (!tenantId) throw new Error('Tenant ID no encontrado en el token');
 
-    const data = c.req.valid('json' as never);
-    const result = await settingsService.updateSettings(tenantId, { address: data } as any);
+    const data = c.req.valid('json' as never) as any;
+    const { deliveryZone, ...addressFields } = data;
+
+    const result = await settingsService.updateSettings(tenantId, {
+      address: addressFields,
+      ...(deliveryZone !== undefined ? { deliveryZone } : {}),
+    } as any);
 
     return c.json({
       success: true,
