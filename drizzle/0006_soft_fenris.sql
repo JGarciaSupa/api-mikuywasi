@@ -1,1 +1,0 @@
-ALTER TABLE "social_links" DROP COLUMN "color";

@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import routes from './routes';
+// import routes from './routes';
+
+import masterRoutes from '@/core/master';
 
 import { getClientIp } from './utils/ip';
-import { initJobs } from './jobs';
+// import { initJobs } from './jobs';
 
 // Initialize background jobs
-initJobs();
+// initJobs();
 
 const app = new Hono();
 
@@ -17,7 +19,9 @@ app.use('*', cors({
 }));
 
 // Routes
-app.route('/api', routes);
+// app.route('/api', routes);
+
+app.route('/api/master', masterRoutes);
 
 app.get('/', (c) => {
   const ipAddress = getClientIp(c);
