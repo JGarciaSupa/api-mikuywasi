@@ -12,49 +12,16 @@ Cada servidor representa un VPS/nodo PostgreSQL con capacidad limitada de tenant
 
 ### `GET /` — Listar servidores
 
-Soporta paginación opcional y filtrado de datos mediante parámetros de consulta.
+Soporta paginación y filtrado de datos mediante parámetros de consulta.
 
 **Query Parameters**
 
-| Parámetro | Tipo | Descripción | Ejemplo |
-|---|---|---|---|
-| `page` | `number` | Número de página (activa paginación) | `1` |
-| `limit` | `number` | Cantidad de elementos por página | `10` |
-| `name` | `string` | Filtro de búsqueda parcial por nombre (case-insensitive) | `hetzner` |
-| `isActive` | `boolean` | Filtro por estado activo (`true` o `false`) | `true` |
-
----
-
-#### 📌 Formato 1: Sin Paginación (Compatibilidad heredada)
-Si **no** se especifican los parámetros `page` ni `limit`, el API retornará la lista completa de servidores directamente en un arreglo.
-
-**Respuesta exitosa** `200`
-```json
-{
-  "success": true,
-  "message": "Servidores obtenidos con éxito",
-  "data": [
-    {
-      "id": 1,
-      "name": "Hetzner-Node-01",
-      "dbHost": "10.0.0.1",
-      "dbPort": 5432,
-      "dbUser": "pg_master",
-      "dbPassword": "****",
-      "isActive": true,
-      "maxTenants": 100,
-      "currentTenants": 43,
-      "createdAt": "2026-01-01T00:00:00.000Z",
-      "updatedAt": "2026-01-01T00:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-#### 📌 Formato 2: Con Paginación
-Si se especifican los parámetros `page` o `limit`, el API retornará los resultados paginados bajo una estructura estandarizada con metadatos.
+| Parámetro | Tipo | Descripción | Obligatorio | Ejemplo |
+|---|---|---|---|---|
+| `page` | `number` | Número de página (default `1`) | ❌ | `1` |
+| `limit` | `number` | Cantidad de elementos por página (default `10`) | ❌ | `10` |
+| `name` | `string` | Filtro de búsqueda parcial por nombre (case-insensitive) | ❌ | `hetzner` |
+| `isActive` | `boolean` | Filtro por estado activo (`true` o `false`) | ❌ | `true` |
 
 **Respuesta exitosa** `200`
 ```json

@@ -4,8 +4,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { CreateDbServerInput, UpdateDbServerInput } from '../validations/db-servers.validation';
 
 export const getAllDbServers = async (
-  page?: number,
-  limit?: number,
+  page = 1,
+  limit = 10,
   filters?: { name?: string; isActive?: boolean }
 ) => {
   const conditions = [];
@@ -19,17 +19,7 @@ export const getAllDbServers = async (
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // Backward compatibility: if no pagination is requested, return the list directly
-  if (page === undefined && limit === undefined) {
-    return masterDb.query.dbServers.findMany({
-      where: whereClause,
-      orderBy: (s, { asc }) => [asc(s.name)],
-    });
-  }
-
-  const p = page ?? 1;
-  const l = limit ?? 10;
-  const offset = (p - 1) * l;
+  const offset = (page - 1) * limit;
 
   const [{ count }] = await masterDb
     .select({ count: sql<number>`count(*)` })
@@ -39,7 +29,7 @@ export const getAllDbServers = async (
   const data = await masterDb.query.dbServers.findMany({
     where: whereClause,
     orderBy: (s, { asc }) => [asc(s.name)],
-    limit: l,
+    limit,
     offset,
   });
 
@@ -47,9 +37,9 @@ export const getAllDbServers = async (
     data,
     meta: {
       total: Number(count || 0),
-      page: p,
-      limit: l,
-      totalPages: Math.ceil(Number(count || 0) / l),
+      page,
+      limit,
+      totalPages: Math.ceil(Number(count || 0) / limit),
     },
   };
 };

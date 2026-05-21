@@ -3,28 +3,20 @@ import * as dbServersService from '../services/db-servers.service';
 
 export const getAllDbServersController = async (c: Context) => {
   try {
-    const pageStr = c.req.query('page');
-    const limitStr = c.req.query('limit');
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '10');
     const name = c.req.query('name') || undefined;
     const isActiveStr = c.req.query('isActive');
-
-    const page = pageStr ? parseInt(pageStr) : undefined;
-    const limit = limitStr ? parseInt(limitStr) : undefined;
     const isActive = isActiveStr !== undefined ? isActiveStr === 'true' : undefined;
 
     const result = await dbServersService.getAllDbServers(page, limit, { name, isActive });
 
-    if (page === undefined && limit === undefined) {
-      return c.json({ success: true, message: 'Servidores obtenidos con éxito', data: result });
-    }
-
-    const paginated = result as { data: any[]; meta: any };
     return c.json({
       success: true,
       message: 'Servidores obtenidos con éxito',
       data: {
-        list: paginated.data,
-        meta: paginated.meta,
+        list: result.data,
+        meta: result.meta,
       },
     });
   } catch (error: any) {
