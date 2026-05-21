@@ -11,9 +11,16 @@ export const getAllTenantsController = async (c: Context) => {
     const serverId = c.req.query('serverId') ? parseInt(c.req.query('serverId')!) : undefined;
 
     const result = await tenantsService.getAllTenants(page, limit, { name, status, planId, serverId });
-    return c.json({ success: true, ...result });
+    return c.json({
+      success: true,
+      message: 'Tenants obtenidos con éxito',
+      data: {
+        list: result.data,
+        meta: result.meta
+      }
+    });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener tenants' }, 500);
+    return c.json({ success: false, message: error.message || 'Error al obtener tenants', data: null }, 500);
   }
 };
 
@@ -21,9 +28,9 @@ export const getTenantByIdController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
     const result = await tenantsService.getTenantById(id);
-    return c.json({ success: true, data: result });
+    return c.json({ success: true, message: 'Tenant obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Tenant no encontrado' }, 404);
+    return c.json({ success: false, message: error.message || 'Tenant no encontrado', data: null }, 404);
   }
 };
 
@@ -31,9 +38,9 @@ export const getTenantBySlugController = async (c: Context) => {
   try {
     const slug = c.req.param('slug') || '';
     const result = await tenantsService.getTenantBySlug(slug);
-    return c.json({ success: true, data: result });
+    return c.json({ success: true, message: 'Tenant obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Tenant no encontrado' }, 404);
+    return c.json({ success: false, message: error.message || 'Tenant no encontrado', data: null }, 404);
   }
 };
 
@@ -43,7 +50,7 @@ export const createTenantController = async (c: Context) => {
     const result = await tenantsService.createTenant(data);
     return c.json({ success: true, message: 'Tenant creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el tenant' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al crear el tenant', data: null }, 400);
   }
 };
 
@@ -54,7 +61,7 @@ export const updateTenantController = async (c: Context) => {
     const result = await tenantsService.updateTenant(id, data);
     return c.json({ success: true, message: 'Tenant actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el tenant' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al actualizar el tenant', data: null }, 400);
   }
 };
 
@@ -65,7 +72,7 @@ export const renewSubscriptionController = async (c: Context) => {
     const result = await tenantsService.renewSubscription(id, data);
     return c.json({ success: true, message: 'Suscripción renovada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al renovar la suscripción' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al renovar la suscripción', data: null }, 400);
   }
 };
 
@@ -73,8 +80,8 @@ export const deleteTenantController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
     const result = await tenantsService.deleteTenant(id);
-    return c.json({ success: true, ...result });
+    return c.json({ success: true, message: result.message || 'Tenant eliminado correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el tenant' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al eliminar el tenant', data: null }, 400);
   }
 };

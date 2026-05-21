@@ -29,6 +29,7 @@ export async function masterAuthMiddleware(c: Context, next: Next) {
     }
 
     c.set('masterPayload', payload);
+    c.set('jwtPayload' as never, payload);
     await next();
   } catch {
     return c.json({ success: false, message: 'Token inválido o expirado' }, 401);

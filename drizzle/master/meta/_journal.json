@@ -15,6 +15,20 @@
       "when": 1779314795424,
       "tag": "0001_add_field_role_in_table_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779379416780,
+      "tag": "0002_add_table_tickets_and_auditlogs",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779403789149,
+      "tag": "0003_rainy_nightshade",
+      "breakpoints": true
     }
   ]
 }

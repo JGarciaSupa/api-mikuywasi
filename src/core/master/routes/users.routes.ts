@@ -8,6 +8,8 @@ import {
 } from '../validations/users.validation';
 import {
   loginController,
+  refreshController,
+  logoutController,
   getMeController,
   getAllUsersController,
   getUserByIdController,
@@ -21,6 +23,8 @@ const router = new Hono();
 
 // ── Rutas públicas ─────────────────────────────────────────────────────────────
 router.post('/login', validateLogin, loginController);
+router.post('/refresh', refreshController);
+router.post('/logout', logoutController);
 
 // ── Rutas protegidas ──────────────────────────────────────────────────────────
 router.use('*', masterAuthMiddleware);

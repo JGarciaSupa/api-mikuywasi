@@ -18,6 +18,7 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 ```json
 {
   "success": true,
+  "message": "Planes obtenidos con éxito",
   "data": [
     {
       "id": 1,
@@ -61,7 +62,16 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 {
   "success": true,
   "message": "Plan creado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 2,
+    "name": "Pro",
+    "monthlyPrice": "59.00",
+    "yearlyPrice": "590.00",
+    "features": ["QR ilimitados", "Soporte 24/7", "Dashboard avanzado"],
+    "visible": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -73,6 +83,7 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 ```json
 {
   "success": true,
+  "message": "Plan obtenido con éxito",
   "data": {
     "id": 1,
     "name": "Starter",
@@ -80,8 +91,8 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
     "yearlyPrice": "290.00",
     "features": ["QR ilimitados"],
     "visible": true,
-    "createdAt": "...",
-    "updatedAt": "..."
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
   }
 }
 ```
@@ -104,7 +115,16 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 {
   "success": true,
   "message": "Plan actualizado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "name": "Starter Plus",
+    "monthlyPrice": "39.00",
+    "yearlyPrice": "290.00",
+    "features": ["QR ilimitados"],
+    "visible": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -118,7 +138,8 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 ```json
 {
   "success": true,
-  "message": "Plan eliminado correctamente"
+  "message": "Plan eliminado correctamente",
+  "data": null
 }
 ```
 

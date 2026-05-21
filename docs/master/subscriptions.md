@@ -26,31 +26,34 @@ Las suscripciones se crean automáticamente al crear o renovar un tenant.
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 1,
-      "tenantId": 3,
-      "planId": 2,
-      "billingCycle": "yearly",
-      "pricePaid": "590.00",
-      "startDate": "2026-01-01T00:00:00.000Z",
-      "endDate": "2027-01-01T00:00:00.000Z",
-      "status": "active",
-      "paymentStatus": "paid",
-      "notes": null,
-      "gatewayName": "stripe",
-      "gatewayInvoiceId": "in_1ABC123",
-      "tenant": { "id": 3, "name": "Restaurante El Fogón", "slug": "el-fogon" },
-      "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", "yearlyPrice": "590.00" },
-      "createdAt": "2026-01-01T00:00:00.000Z",
-      "updatedAt": "2026-01-01T00:00:00.000Z"
+  "message": "Suscripciones obtenidas con éxito",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "tenantId": 3,
+        "planId": 2,
+        "billingCycle": "yearly",
+        "pricePaid": "590.00",
+        "startDate": "2026-01-01T00:00:00.000Z",
+        "endDate": "2027-01-01T00:00:00.000Z",
+        "status": "active",
+        "paymentStatus": "paid",
+        "notes": null,
+        "gatewayName": "stripe",
+        "gatewayInvoiceId": "in_1ABC123",
+        "tenant": { "id": 3, "name": "Restaurante El Fogón", "slug": "el-fogon" },
+        "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", "yearlyPrice": "590.00" },
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "total": 120,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 12
     }
-  ],
-  "meta": {
-    "total": 120,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 12
   }
 }
 ```
@@ -67,6 +70,7 @@ Devuelve todas las suscripciones de un tenant específico, ordenadas por fecha d
 ```json
 {
   "success": true,
+  "message": "Suscripciones del tenant obtenidas con éxito",
   "data": [
     {
       "id": 5,
@@ -75,15 +79,16 @@ Devuelve todas las suscripciones de un tenant específico, ordenadas por fecha d
       "status": "active",
       "startDate": "2026-01-01T00:00:00.000Z",
       "endDate": "2027-01-01T00:00:00.000Z",
-      "plan": { ... },
-      ...
+      "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", "yearlyPrice": "590.00" }
     },
     {
       "id": 2,
       "billingCycle": "monthly",
       "pricePaid": "59.00",
       "status": "expired",
-      ...
+      "startDate": "2025-12-01T00:00:00.000Z",
+      "endDate": "2026-01-01T00:00:00.000Z",
+      "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", "yearlyPrice": "590.00" }
     }
   ]
 }
@@ -97,19 +102,21 @@ Devuelve todas las suscripciones de un tenant específico, ordenadas por fecha d
 ```json
 {
   "success": true,
+  "message": "Suscripción obtenida con éxito",
   "data": {
     "id": 1,
     "tenantId": 3,
     "planId": 2,
     "billingCycle": "yearly",
     "pricePaid": "590.00",
-    "startDate": "...",
-    "endDate": "...",
+    "startDate": "2026-01-01T00:00:00.000Z",
+    "endDate": "2027-01-01T00:00:00.000Z",
     "status": "active",
     "paymentStatus": "paid",
-    "tenant": { ... },
-    "plan": { ... },
-    ...
+    "tenant": { "id": 3, "name": "Restaurante El Fogón", "slug": "el-fogon" },
+    "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", "yearlyPrice": "590.00" },
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
   }
 }
 ```
@@ -144,7 +151,22 @@ Solo permite actualizar campos administrativos (estado, pago, notas). No modific
 {
   "success": true,
   "message": "Suscripción actualizada con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "tenantId": 3,
+    "planId": 2,
+    "billingCycle": "yearly",
+    "pricePaid": "590.00",
+    "startDate": "2026-01-01T00:00:00.000Z",
+    "endDate": "2027-01-01T00:00:00.000Z",
+    "status": "pending_payment",
+    "paymentStatus": "pending",
+    "notes": "Esperando confirmación bancaria",
+    "gatewayName": "stripe",
+    "gatewayInvoiceId": "in_1ABC456",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -159,7 +181,13 @@ Cambia el `status` a `canceled`. No puede cancelarse si ya está cancelada.
 {
   "success": true,
   "message": "Suscripción cancelada con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "tenantId": 3,
+    "status": "canceled",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -167,7 +195,8 @@ Cambia el `status` a `canceled`. No puede cancelarse si ya está cancelada.
 ```json
 {
   "success": false,
-  "message": "La suscripción ya está cancelada"
+  "message": "La suscripción ya está cancelada",
+  "data": null
 }
 ```
 

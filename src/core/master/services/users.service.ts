@@ -1,10 +1,8 @@
 import { masterDb } from '../../../db';
-import { users } from '../../../db/master/schema';
+import { users, refreshTokens } from '../../../db/master/schema';
 import { eq } from 'drizzle-orm';
 import type { CreateUserInput, UpdateUserInput, UpdatePasswordInput, LoginInput } from '../validations/users.validation';
-import { sign } from 'hono/jwt';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key';
+import { generateAccessToken } from '../utils/jwt';
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
@@ -18,19 +16,77 @@ export const loginUser = async (data: LoginInput) => {
   const isValid = await Bun.password.verify(data.password, user.password);
   if (!isValid) throw new Error('Credenciales inválidas');
 
-  const payload = {
-    sub: user.id.toString(),
+  const accessToken = await generateAccessToken({
     id: user.id,
+    userId: user.id,
     userName: user.userName,
     role: 'super-admin',
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 días
-  };
+  });
 
-  const token = await sign(payload, JWT_SECRET);
+  const refreshToken = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 días
+
+  await masterDb.insert(refreshTokens).values({
+    userId: user.id,
+    token: refreshToken,
+    expiresAt,
+  });
+
   const { password: _, ...safeUser } = user;
 
-  return { token, user: safeUser };
+  return { accessToken, refreshToken, user: safeUser };
 };
+
+export const refreshSession = async (token: string) => {
+  const record = await masterDb.query.refreshTokens.findFirst({
+    where: eq(refreshTokens.token, token),
+    with: {
+      user: true,
+    },
+  });
+
+  if (!record) {
+    throw new Error('Refresh token no válido');
+  }
+
+  if (new Date() > new Date(record.expiresAt)) {
+    await masterDb.delete(refreshTokens).where(eq(refreshTokens.id, record.id));
+    throw new Error('Refresh token expirado');
+  }
+
+  const newAccessToken = await generateAccessToken({
+    id: record.user.id,
+    userId: record.user.id,
+    userName: record.user.userName,
+    role: 'super-admin',
+  });
+
+  const newRefreshToken = crypto.randomUUID();
+  const newExpiresAt = new Date();
+  newExpiresAt.setDate(newExpiresAt.getDate() + 7); // 7 días
+
+  // Rotación: Eliminar el token viejo e insertar el nuevo
+  await masterDb.delete(refreshTokens).where(eq(refreshTokens.id, record.id));
+  await masterDb.insert(refreshTokens).values({
+    userId: record.user.id,
+    token: newRefreshToken,
+    expiresAt: newExpiresAt,
+  });
+
+  const { password: _, ...safeUser } = record.user;
+
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    user: safeUser,
+  };
+};
+
+export const logoutSession = async (token: string) => {
+  await masterDb.delete(refreshTokens).where(eq(refreshTokens.token, token));
+};
+
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 

@@ -12,10 +12,27 @@ Cada servidor representa un VPS/nodo PostgreSQL con capacidad limitada de tenant
 
 ### `GET /` — Listar servidores
 
+Soporta paginación opcional y filtrado de datos mediante parámetros de consulta.
+
+**Query Parameters**
+
+| Parámetro | Tipo | Descripción | Ejemplo |
+|---|---|---|---|
+| `page` | `number` | Número de página (activa paginación) | `1` |
+| `limit` | `number` | Cantidad de elementos por página | `10` |
+| `name` | `string` | Filtro de búsqueda parcial por nombre (case-insensitive) | `hetzner` |
+| `isActive` | `boolean` | Filtro por estado activo (`true` o `false`) | `true` |
+
+---
+
+#### 📌 Formato 1: Sin Paginación (Compatibilidad heredada)
+Si **no** se especifican los parámetros `page` ni `limit`, el API retornará la lista completa de servidores directamente en un arreglo.
+
 **Respuesta exitosa** `200`
 ```json
 {
   "success": true,
+  "message": "Servidores obtenidos con éxito",
   "data": [
     {
       "id": 1,
@@ -31,6 +48,42 @@ Cada servidor representa un VPS/nodo PostgreSQL con capacidad limitada de tenant
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ]
+}
+```
+
+---
+
+#### 📌 Formato 2: Con Paginación
+Si se especifican los parámetros `page` o `limit`, el API retornará los resultados paginados bajo una estructura estandarizada con metadatos.
+
+**Respuesta exitosa** `200`
+```json
+{
+  "success": true,
+  "message": "Servidores obtenidos con éxito",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "name": "Hetzner-Node-01",
+        "dbHost": "10.0.0.1",
+        "dbPort": 5432,
+        "dbUser": "pg_master",
+        "dbPassword": "****",
+        "isActive": true,
+        "maxTenants": 100,
+        "currentTenants": 43,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "total": 1,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 1
+    }
+  }
 }
 ```
 
@@ -68,7 +121,27 @@ Cada servidor representa un VPS/nodo PostgreSQL con capacidad limitada de tenant
 {
   "success": true,
   "message": "Servidor registrado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 2,
+    "name": "Hetzner-Node-02",
+    "dbHost": "10.0.0.2",
+    "dbPort": 5432,
+    "dbUser": "pg_master",
+    "isActive": true,
+    "maxTenants": 80,
+    "currentTenants": 0,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+}
+```
+
+**Errores**
+```json
+{
+  "success": false,
+  "message": "El nombre de servidor ya está en uso",
+  "data": null
 }
 ```
 
@@ -82,6 +155,7 @@ Incluye los tenants asignados a este servidor en la respuesta.
 ```json
 {
   "success": true,
+  "message": "Servidor obtenido con éxito",
   "data": {
     "id": 1,
     "name": "Hetzner-Node-01",
@@ -91,11 +165,10 @@ Incluye los tenants asignados a este servidor en la respuesta.
     "maxTenants": 100,
     "currentTenants": 43,
     "tenants": [
-      { "id": 1, "name": "Restaurante Los Andes", "slug": "los-andes", "status": "active" },
-      ...
+      { "id": 1, "name": "Restaurante Los Andes", "slug": "los-andes", "status": "active" }
     ],
-    "createdAt": "...",
-    "updatedAt": "..."
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
   }
 }
 ```
@@ -118,7 +191,17 @@ Incluye los tenants asignados a este servidor en la respuesta.
 {
   "success": true,
   "message": "Servidor actualizado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "name": "Hetzner-Node-01",
+    "dbHost": "10.0.0.1",
+    "dbPort": 5432,
+    "isActive": false,
+    "maxTenants": 120,
+    "currentTenants": 43,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -133,7 +216,8 @@ Incluye los tenants asignados a este servidor en la respuesta.
 ```json
 {
   "success": true,
-  "message": "Servidor eliminado correctamente"
+  "message": "Servidor eliminado correctamente",
+  "data": null
 }
 ```
 
@@ -141,7 +225,8 @@ Incluye los tenants asignados a este servidor en la respuesta.
 ```json
 {
   "success": false,
-  "message": "No se puede eliminar: el servidor tiene 5 tenant(s) asignado(s)"
+  "message": "No se puede eliminar: el servidor tiene 5 tenant(s) asignado(s)",
+  "data": null
 }
 ```
 

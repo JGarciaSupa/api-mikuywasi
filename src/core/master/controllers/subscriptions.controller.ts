@@ -10,9 +10,16 @@ export const getAllSubscriptionsController = async (c: Context) => {
     const planId = c.req.query('planId') ? parseInt(c.req.query('planId')!) : undefined;
 
     const result = await subscriptionsService.getAllSubscriptions(page, limit, { tenantId, status, planId });
-    return c.json({ success: true, ...result });
+    return c.json({
+      success: true,
+      message: 'Suscripciones obtenidas con éxito',
+      data: {
+        list: result.data,
+        meta: result.meta
+      }
+    });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones' }, 500);
+    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones', data: null }, 500);
   }
 };
 
@@ -20,9 +27,9 @@ export const getSubscriptionByIdController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
     const result = await subscriptionsService.getSubscriptionById(id);
-    return c.json({ success: true, data: result });
+    return c.json({ success: true, message: 'Suscripción obtenida con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Suscripción no encontrada' }, 404);
+    return c.json({ success: false, message: error.message || 'Suscripción no encontrada', data: null }, 404);
   }
 };
 
@@ -30,9 +37,9 @@ export const getSubscriptionsByTenantController = async (c: Context) => {
   try {
     const tenantId = parseInt(c.req.param('tenantId') || '0');
     const result = await subscriptionsService.getSubscriptionsByTenant(tenantId);
-    return c.json({ success: true, data: result });
+    return c.json({ success: true, message: 'Suscripciones del tenant obtenidas con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones' }, 404);
+    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones', data: null }, 404);
   }
 };
 
@@ -43,7 +50,7 @@ export const updateSubscriptionController = async (c: Context) => {
     const result = await subscriptionsService.updateSubscription(id, data);
     return c.json({ success: true, message: 'Suscripción actualizada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar la suscripción' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al actualizar la suscripción', data: null }, 400);
   }
 };
 
@@ -53,6 +60,6 @@ export const cancelSubscriptionController = async (c: Context) => {
     const result = await subscriptionsService.cancelSubscription(id);
     return c.json({ success: true, message: 'Suscripción cancelada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al cancelar la suscripción' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al cancelar la suscripción', data: null }, 400);
   }
 };

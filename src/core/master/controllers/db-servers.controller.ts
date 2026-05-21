@@ -3,10 +3,32 @@ import * as dbServersService from '../services/db-servers.service';
 
 export const getAllDbServersController = async (c: Context) => {
   try {
-    const result = await dbServersService.getAllDbServers();
-    return c.json({ success: true, data: result });
+    const pageStr = c.req.query('page');
+    const limitStr = c.req.query('limit');
+    const name = c.req.query('name') || undefined;
+    const isActiveStr = c.req.query('isActive');
+
+    const page = pageStr ? parseInt(pageStr) : undefined;
+    const limit = limitStr ? parseInt(limitStr) : undefined;
+    const isActive = isActiveStr !== undefined ? isActiveStr === 'true' : undefined;
+
+    const result = await dbServersService.getAllDbServers(page, limit, { name, isActive });
+
+    if (page === undefined && limit === undefined) {
+      return c.json({ success: true, message: 'Servidores obtenidos con éxito', data: result });
+    }
+
+    const paginated = result as { data: any[]; meta: any };
+    return c.json({
+      success: true,
+      message: 'Servidores obtenidos con éxito',
+      data: {
+        list: paginated.data,
+        meta: paginated.meta,
+      },
+    });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener servidores' }, 500);
+    return c.json({ success: false, message: error.message || 'Error al obtener servidores', data: null }, 500);
   }
 };
 
@@ -14,9 +36,9 @@ export const getDbServerByIdController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
     const result = await dbServersService.getDbServerById(id);
-    return c.json({ success: true, data: result });
+    return c.json({ success: true, message: 'Servidor obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Servidor no encontrado' }, 404);
+    return c.json({ success: false, message: error.message || 'Servidor no encontrado', data: null }, 404);
   }
 };
 
@@ -26,7 +48,7 @@ export const createDbServerController = async (c: Context) => {
     const result = await dbServersService.createDbServer(data);
     return c.json({ success: true, message: 'Servidor registrado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el servidor' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al crear el servidor', data: null }, 400);
   }
 };
 
@@ -37,7 +59,7 @@ export const updateDbServerController = async (c: Context) => {
     const result = await dbServersService.updateDbServer(id, data);
     return c.json({ success: true, message: 'Servidor actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el servidor' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al actualizar el servidor', data: null }, 400);
   }
 };
 
@@ -45,8 +67,8 @@ export const deleteDbServerController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
     const result = await dbServersService.deleteDbServer(id);
-    return c.json({ success: true, ...result });
+    return c.json({ success: true, message: result.message || 'Servidor eliminado correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el servidor' }, 400);
+    return c.json({ success: false, message: error.message || 'Error al eliminar el servidor', data: null }, 400);
   }
 };

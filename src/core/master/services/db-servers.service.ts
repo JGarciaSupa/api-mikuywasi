@@ -1,12 +1,57 @@
 import { masterDb } from '../../../db';
 import { dbServers } from '../../../db/master/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { CreateDbServerInput, UpdateDbServerInput } from '../validations/db-servers.validation';
 
-export const getAllDbServers = async () => {
-  return masterDb.query.dbServers.findMany({
+export const getAllDbServers = async (
+  page?: number,
+  limit?: number,
+  filters?: { name?: string; isActive?: boolean }
+) => {
+  const conditions = [];
+
+  if (filters?.name?.trim()) {
+    conditions.push(sql`lower(${dbServers.name}) LIKE lower(${'%' + filters.name + '%'})`);
+  }
+  if (filters?.isActive !== undefined) {
+    conditions.push(eq(dbServers.isActive, filters.isActive));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Backward compatibility: if no pagination is requested, return the list directly
+  if (page === undefined && limit === undefined) {
+    return masterDb.query.dbServers.findMany({
+      where: whereClause,
+      orderBy: (s, { asc }) => [asc(s.name)],
+    });
+  }
+
+  const p = page ?? 1;
+  const l = limit ?? 10;
+  const offset = (p - 1) * l;
+
+  const [{ count }] = await masterDb
+    .select({ count: sql<number>`count(*)` })
+    .from(dbServers)
+    .where(whereClause);
+
+  const data = await masterDb.query.dbServers.findMany({
+    where: whereClause,
     orderBy: (s, { asc }) => [asc(s.name)],
+    limit: l,
+    offset,
   });
+
+  return {
+    data,
+    meta: {
+      total: Number(count || 0),
+      page: p,
+      limit: l,
+      totalPages: Math.ceil(Number(count || 0) / l),
+    },
+  };
 };
 
 export const getDbServerById = async (id: number) => {

@@ -26,32 +26,35 @@ Gestión del directorio central de tenants (restaurantes/negocios). Cada tenant 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 1,
-      "slug": "los-andes",
-      "name": "Restaurante Los Andes",
-      "status": "active",
-      "serverId": 1,
-      "dbName": "tenant_los_andes",
-      "planId": 2,
-      "planStartsAt": "2026-01-01T00:00:00.000Z",
-      "planEndsAt": "2027-01-01T00:00:00.000Z",
-      "billingCycle": "yearly",
-      "ownerName": "Carlos López",
-      "ownerPhone": "+51 999 888 777",
-      "internalNotes": null,
-      "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00", ... },
-      "server": { "id": 1, "name": "Hetzner-Node-01", ... },
-      "createdAt": "2026-01-01T00:00:00.000Z",
-      "updatedAt": "2026-01-01T00:00:00.000Z"
+  "message": "Tenants obtenidos con éxito",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "slug": "los-andes",
+        "name": "Restaurante Los Andes",
+        "status": "active",
+        "serverId": 1,
+        "dbName": "tenant_los_andes",
+        "planId": 2,
+        "planStartsAt": "2026-01-01T00:00:00.000Z",
+        "planEndsAt": "2027-01-01T00:00:00.000Z",
+        "billingCycle": "yearly",
+        "ownerName": "Carlos López",
+        "ownerPhone": "+51 999 888 777",
+        "internalNotes": null,
+        "plan": { "id": 2, "name": "Pro", "monthlyPrice": "59.00" },
+        "server": { "id": 1, "name": "Hetzner-Node-01" },
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "total": 42,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 5
     }
-  ],
-  "meta": {
-    "total": 42,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 5
   }
 }
 ```
@@ -102,7 +105,23 @@ Gestión del directorio central de tenants (restaurantes/negocios). Cada tenant 
 {
   "success": true,
   "message": "Tenant creado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 5,
+    "name": "Restaurante El Fogón",
+    "slug": "el-fogon",
+    "dbName": "tenant_el_fogon",
+    "serverId": 1,
+    "planId": 1,
+    "billingCycle": "monthly",
+    "status": "active",
+    "ownerName": "Ana Pérez",
+    "ownerPhone": "+51 988 777 666",
+    "internalNotes": "Cliente referido por socio",
+    "planStartsAt": "2026-01-01T00:00:00.000Z",
+    "planEndsAt": "2026-02-01T00:00:00.000Z",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -119,7 +138,7 @@ Gestión del directorio central de tenants (restaurantes/negocios). Cada tenant 
 
 ### `GET /slug/:slug` — Obtener tenant por slug
 
-Útil para el resolución de tenants desde el frontend o subdominios.
+Útil para la resolución de tenants desde el frontend o subdominios.
 
 **Ejemplo:** `GET /api/master/tenants/slug/el-fogon`
 
@@ -127,13 +146,15 @@ Gestión del directorio central de tenants (restaurantes/negocios). Cada tenant 
 ```json
 {
   "success": true,
+  "message": "Tenant obtenido con éxito",
   "data": {
     "id": 5,
     "slug": "el-fogon",
     "name": "Restaurante El Fogón",
-    "plan": { ... },
-    "server": { ... },
-    ...
+    "plan": { "id": 1, "name": "Basic" },
+    "server": { "id": 1, "name": "Hetzner-Node-01" },
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
   }
 }
 ```
@@ -148,13 +169,17 @@ Incluye relaciones: `plan`, `server`, `subscriptions`.
 ```json
 {
   "success": true,
+  "message": "Tenant obtenido con éxito",
   "data": {
     "id": 1,
     "slug": "los-andes",
-    "plan": { ... },
-    "server": { ... },
-    "subscriptions": [ ... ],
-    ...
+    "plan": { "id": 2, "name": "Pro" },
+    "server": { "id": 1, "name": "Hetzner-Node-01" },
+    "subscriptions": [
+      { "id": 1, "status": "active", "pricePaid": "590.00" }
+    ],
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
   }
 }
 ```
@@ -178,7 +203,16 @@ Incluye relaciones: `plan`, `server`, `subscriptions`.
 {
   "success": true,
   "message": "Tenant actualizado con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "slug": "los-andes",
+    "name": "Restaurante Los Andes - Nueva Sede",
+    "status": "inactive",
+    "ownerName": "María García",
+    "internalNotes": "Suspendido por falta de pago",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -220,7 +254,14 @@ Renueva el plan del tenant y registra una nueva entrada en el historial de suscr
 {
   "success": true,
   "message": "Suscripción renovada con éxito",
-  "data": { ... }
+  "data": {
+    "id": 1,
+    "planId": 2,
+    "billingCycle": "yearly",
+    "planStartsAt": "2027-01-01T00:00:00.000Z",
+    "planEndsAt": "2028-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 
@@ -234,7 +275,8 @@ Renueva el plan del tenant y registra una nueva entrada en el historial de suscr
 ```json
 {
   "success": true,
-  "message": "Tenant eliminado correctamente"
+  "message": "Tenant eliminado correctamente",
+  "data": null
 }
 ```
 
