@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1779429048163,
+      "tag": "0000_daily_mephisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779430941957,
+      "tag": "0001_prueba_tabla_lobito",
+      "breakpoints": true
+    }
+  ]
+}

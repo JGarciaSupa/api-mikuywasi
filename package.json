@@ -2,7 +2,8 @@
   "name": "backend",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "master:create-user": "bun run src/scripts/master-create-user.ts"
+    "master:create-user": "bun run src/scripts/master-create-user.ts",
+    "tenants:migrate": "bun run src/scripts/migrate-tenants.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1017.0",

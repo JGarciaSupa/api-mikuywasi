@@ -2,6 +2,98 @@ import { masterDb } from '../../../db';
 import { tenants, subscriptions, plans, dbServers } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
 import type { CreateTenantInput, UpdateTenantInput, RenewSubscriptionInput } from '../validations/tenants.validation';
+import { Client, Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import * as tenantSchema from '../../../db/tenant/schema';
+import * as path from 'path';
+
+// Helper to create tenant database
+async function createTenantDatabase(server: any, dbName: string) {
+  const client = new Client({
+    host: server.dbHost,
+    port: server.dbPort,
+    user: server.dbUser,
+    password: server.dbPassword,
+    database: 'postgres',
+  });
+
+  try {
+    await client.connect();
+    
+    // Check if the database already exists
+    const checkRes = await client.query(
+      "SELECT 1 FROM pg_database WHERE datname = $1",
+      [dbName]
+    );
+
+    if (checkRes.rowCount === 0) {
+      await client.query(`CREATE DATABASE "${dbName}"`);
+      console.log(`[Database Creator] Base de datos "${dbName}" creada con éxito en el servidor "${server.name}".`);
+    } else {
+      console.log(`[Database Creator] La base de datos "${dbName}" ya existe en el servidor "${server.name}".`);
+    }
+  } catch (error) {
+    console.error(`[Database Creator] Error al crear la base de datos "${dbName}":`, error);
+    throw new Error(`Error al crear la base de datos: ${(error as any).message}`);
+  } finally {
+    await client.end();
+  }
+}
+
+// Helper to run migrations on tenant database
+async function runTenantMigrations(server: any, dbName: string) {
+  const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${server.dbHost}:${server.dbPort}/${dbName}`;
+  const tempPool = new Pool({
+    connectionString,
+    max: 1,
+  });
+
+  const tempDb = drizzle(tempPool, { schema: tenantSchema });
+
+  try {
+    const migrationsPath = path.resolve(process.cwd(), 'drizzle/tenant');
+    await migrate(tempDb, {
+      migrationsFolder: migrationsPath,
+    });
+    console.log(`[Migrations] Migraciones ejecutadas con éxito en la base de datos "${dbName}".`);
+  } catch (error) {
+    console.error(`[Migrations] Error al ejecutar migraciones en "${dbName}":`, error);
+    throw new Error(`Error al ejecutar migraciones en la base de datos: ${(error as any).message}`);
+  } finally {
+    await tempPool.end();
+  }
+}
+
+// Helper to drop tenant database during cleanup/rollback
+async function dropTenantDatabase(server: any, dbName: string) {
+  const client = new Client({
+    host: server.dbHost,
+    port: server.dbPort,
+    user: server.dbUser,
+    password: server.dbPassword,
+    database: 'postgres',
+  });
+
+  try {
+    await client.connect();
+    
+    // Terminate any active connections to drop database cleanly
+    await client.query(`
+      SELECT pg_terminate_backend(pg_stat_activity.pid)
+      FROM pg_stat_activity
+      WHERE pg_stat_activity.datname = $1
+        AND pid <> pg_backend_pid();
+    `, [dbName]);
+
+    await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
+    console.log(`[Database Cleanup] Base de datos "${dbName}" eliminada debido a un fallo en el proceso de creación/registro.`);
+  } catch (cleanupError) {
+    console.error(`[Database Cleanup] Error crítico al intentar eliminar la base de datos "${dbName}" durante rollback:`, cleanupError);
+  } finally {
+    await client.end();
+  }
+}
 
 export const getAllTenants = async (
   page = 1,
@@ -96,32 +188,91 @@ export const createTenant = async (data: CreateTenantInput) => {
     }
   }
 
-  return masterDb.transaction(async (tx) => {
-    const [newTenant] = await tx.insert(tenants).values({
-      ...data,
-      planStartsAt: startDate,
-      planEndsAt: endDate,
-      updatedAt: new Date(),
-    }).returning();
+  let createdTenantId: number | null = null;
+  let dbCreated = false;
 
-    await tx.insert(subscriptions).values({
-      tenantId: newTenant.id,
-      planId: plan.id,
-      billingCycle: data.billingCycle,
-      pricePaid: pricePaid.toString(),
-      startDate,
-      endDate,
-      status: 'active',
-      paymentStatus: 'paid',
+  try {
+    // 1. Registrar el tenant en la base de datos maestra (dentro de una transacción)
+    // Si esto falla, el flujo se detiene aquí mismo y no se altera el servidor.
+    const newTenant = await masterDb.transaction(async (tx) => {
+      const [insertedTenant] = await tx.insert(tenants).values({
+        ...data,
+        planStartsAt: startDate,
+        planEndsAt: endDate,
+        updatedAt: new Date(),
+      }).returning();
+
+      await tx.insert(subscriptions).values({
+        tenantId: insertedTenant.id,
+        planId: plan.id,
+        billingCycle: data.billingCycle,
+        pricePaid: pricePaid.toString(),
+        startDate,
+        endDate,
+        status: 'active',
+        paymentStatus: 'paid',
+      });
+
+      // Incrementar contador del servidor
+      await tx.update(dbServers)
+        .set({ currentTenants: server.currentTenants + 1, updatedAt: new Date() })
+        .where(eq(dbServers.id, data.serverId));
+
+      return insertedTenant;
     });
 
-    // Incrementar contador del servidor
-    await tx.update(dbServers)
-      .set({ currentTenants: server.currentTenants + 1, updatedAt: new Date() })
-      .where(eq(dbServers.id, data.serverId));
+    createdTenantId = newTenant.id;
+
+    // 2. Crear base de datos física en el servidor shard
+    await createTenantDatabase(server, data.dbName);
+    dbCreated = true;
+
+    // 3. Ejecutar las migraciones en la nueva base de datos
+    await runTenantMigrations(server, data.dbName);
 
     return newTenant;
-  });
+
+  } catch (error) {
+    console.error('[Tenant Creation Flow] Falló el proceso. Iniciando rollback de seguridad...', error);
+
+    // Rollback paso a paso en caso de fallos posteriores al registro:
+    
+    // Si se llegó a crear físicamente la base de datos, la eliminamos del servidor
+    if (dbCreated) {
+      try {
+        await dropTenantDatabase(server, data.dbName);
+      } catch (dbDropError) {
+        console.error('[Tenant Creation Rollback] Error al eliminar la base de datos física:', dbDropError);
+      }
+    }
+
+    // Si se llegó a registrar el tenant en la base de datos maestra, revertimos toda la transacción
+    if (createdTenantId !== null) {
+      try {
+        await masterDb.transaction(async (tx) => {
+          // Eliminar suscripciones asociadas
+          await tx.delete(subscriptions).where(eq(subscriptions.tenantId, createdTenantId!));
+          
+          // Eliminar el tenant
+          await tx.delete(tenants).where(eq(tenants.id, createdTenantId!));
+
+          // Revertir contador del servidor
+          await tx.update(dbServers)
+            .set({
+              currentTenants: sql`GREATEST(${dbServers.currentTenants} - 1, 0)`,
+              updatedAt: new Date()
+            })
+            .where(eq(dbServers.id, data.serverId));
+        });
+        console.log(`[Tenant Creation Rollback] Registro del tenant ID ${createdTenantId} y sus suscripciones eliminados con éxito de la BD maestra.`);
+      } catch (dbMasterError) {
+        console.error('[Tenant Creation Rollback] Error crítico al revertir registro de BD maestra:', dbMasterError);
+      }
+    }
+
+    // Propagamos el error original para que el controlador lo exponga
+    throw error;
+  }
 };
 
 export const updateTenant = async (id: number, data: UpdateTenantInput) => {
