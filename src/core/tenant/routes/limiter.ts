@@ -1,0 +1,22 @@
+import { getClientIp } from '@/utils/ip';
+import { rateLimiter } from 'hono-rate-limiter';
+
+export const adminLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 300,
+  keyGenerator: (c) => getClientIp(c),
+  message: {
+    success: false,
+    message: 'Demasiadas peticiones (Admin), intente de nuevo en 1 minuto'
+  }
+});
+
+export const clientLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 500,
+  keyGenerator: (c) => getClientIp(c),
+  message: {
+    success: false,
+    message: 'Demasiadas peticiones, intente de nuevo en 1 minuto'
+  }
+});

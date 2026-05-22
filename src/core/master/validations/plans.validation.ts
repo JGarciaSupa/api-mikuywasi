@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { validationHook } from '../../../validations/hook';
+import { validationHook } from '@/core/tenant/validations/hook';
 
 export const createPlanSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),

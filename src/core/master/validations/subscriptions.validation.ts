@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { validationHook } from '../../../validations/hook';
+import { validationHook } from '@/core/tenant/validations/hook';
 
 export const createSubscriptionSchema = z.object({
   tenantId: z.coerce.number().int().positive('El tenant es obligatorio'),
