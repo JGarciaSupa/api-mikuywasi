@@ -28,7 +28,10 @@ app.get('/', (c) => {
 
   console.log("IP: ", ipAddress);
 
-  return c.json({ ip: ipAddress });
+  return c.json({
+    ip: ipAddress,
+    version: '2.0.1'
+  });
 });
 
 const port = process.env.PORT || 3000;
