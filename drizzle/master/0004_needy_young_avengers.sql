@@ -1,0 +1,1 @@
+ALTER TABLE "plans" ALTER COLUMN "features" SET DATA TYPE jsonb USING '{}'::jsonb;

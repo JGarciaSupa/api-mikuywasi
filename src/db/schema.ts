@@ -42,7 +42,7 @@ export const plans = pgTable('plans', {
   name: varchar('name', { length: 255 }).notNull(), // Nombre del plan
   monthlyPrice: decimal('monthly_price', { precision: 10, scale: 2 }).notNull(), // Precio mensual
   yearlyPrice: decimal('yearly_price', { precision: 10, scale: 2 }).notNull(), // Precio anual
-  features: text('features').array(), // Características del plan
+  features: jsonb('features').$type<Record<string, any>>(), // Características del plan en formato JSON (Clave-Valor)
   order: integer('order').default(0), // Orden del plan
   visible: boolean('visible').default(false).notNull(), // Estado del plan
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), // Fecha de creación del plan

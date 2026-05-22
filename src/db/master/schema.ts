@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, varchar, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, varchar, boolean, jsonb } from 'drizzle-orm/pg-core';
 
 // ==========================================
 // 🌐 CONTROL CENTRAL DEL SAAS (SUPER ADMINS)
@@ -26,7 +26,7 @@ export const plans = pgTable('plans', {
   name: varchar('name', { length: 255 }).notNull(),
   monthlyPrice: decimal('monthly_price', { precision: 10, scale: 2 }).notNull(),
   yearlyPrice: decimal('yearly_price', { precision: 10, scale: 2 }).notNull(),
-  features: text('features').array(),
+  features: jsonb('features').$type<Record<string, any>>(),
   visible: boolean('visible').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

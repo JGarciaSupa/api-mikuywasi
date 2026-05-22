@@ -9,6 +9,7 @@ const masterPool = new Pool({
 });
 
 export const masterDb = drizzle(masterPool, { schema: masterSchema });
+export const db = masterDb;
 
 const MAX_CACHED_POOLS = 100;
 const tenantPools = new Map<string, Pool>();

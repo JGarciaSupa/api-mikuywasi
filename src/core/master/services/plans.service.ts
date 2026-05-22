@@ -22,7 +22,7 @@ export const getPlanById = async (id: number) => {
 export const createPlan = async (data: CreatePlanInput) => {
   const [newPlan] = await masterDb.insert(plans).values({
     ...data,
-    features: data.features ?? [],
+    features: data.features,
     updatedAt: new Date(),
   }).returning();
   return newPlan;

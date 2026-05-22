@@ -6,7 +6,7 @@ export const createPlanSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
   monthlyPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio mensual inválido'),
   yearlyPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio anual inválido'),
-  features: z.array(z.string().max(500)).optional().default([]),
+  features: z.record(z.string(), z.any()).optional().default({}),
   visible: z.boolean().default(false),
 });
 

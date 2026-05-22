@@ -25,7 +25,12 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
       "name": "Starter",
       "monthlyPrice": "29.00",
       "yearlyPrice": "290.00",
-      "features": ["QR ilimitados", "Soporte básico"],
+      "features": {
+        "products": 100,
+        "users": 50,
+        "delivery": true,
+        "support": "24/7"
+      },
       "visible": true,
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
@@ -44,7 +49,12 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
   "name": "Pro",
   "monthlyPrice": "59.00",
   "yearlyPrice": "590.00",
-  "features": ["QR ilimitados", "Soporte 24/7", "Dashboard avanzado"],
+  "features": {
+    "products": 250,
+    "users": 100,
+    "delivery": true,
+    "support": "24/7"
+  },
   "visible": true
 }
 ```
@@ -54,7 +64,7 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
 | `name` | `string` | ✅ | Max 255 |
 | `monthlyPrice` | `string` | ✅ | Formato decimal: `"59.00"` |
 | `yearlyPrice` | `string` | ✅ | Formato decimal: `"590.00"` |
-| `features` | `string[]` | ❌ | Array de textos, default `[]` |
+| `features` | `object` | ❌ | Objeto JSON libre (clave-valor). Puede contener textos, números o booleanos. Ej: `{"products": 100, "users": 50, "delivery": true, "support": "24/7"}`. Default: `{}` |
 | `visible` | `boolean` | ❌ | Default `false` |
 
 **Respuesta exitosa** `201`
@@ -67,7 +77,12 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
     "name": "Pro",
     "monthlyPrice": "59.00",
     "yearlyPrice": "590.00",
-    "features": ["QR ilimitados", "Soporte 24/7", "Dashboard avanzado"],
+    "features": {
+      "products": 250,
+      "users": 100,
+      "delivery": true,
+      "support": "24/7"
+    },
     "visible": true,
     "createdAt": "2026-01-01T00:00:00.000Z",
     "updatedAt": "2026-01-01T00:00:00.000Z"
@@ -89,7 +104,12 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
     "name": "Starter",
     "monthlyPrice": "29.00",
     "yearlyPrice": "290.00",
-    "features": ["QR ilimitados"],
+    "features": {
+      "products": 100,
+      "users": 50,
+      "delivery": true,
+      "support": "24/7"
+    },
     "visible": true,
     "createdAt": "2026-01-01T00:00:00.000Z",
     "updatedAt": "2026-01-01T00:00:00.000Z"
@@ -120,7 +140,12 @@ Gestión de los planes que se ofrecen a los tenants del SaaS.
     "name": "Starter Plus",
     "monthlyPrice": "39.00",
     "yearlyPrice": "290.00",
-    "features": ["QR ilimitados"],
+    "features": {
+      "products": 100,
+      "users": 50,
+      "delivery": true,
+      "support": "24/7"
+    },
     "visible": true,
     "createdAt": "2026-01-01T00:00:00.000Z",
     "updatedAt": "2026-01-01T00:00:00.000Z"
@@ -154,7 +179,7 @@ export const plans = pgTable('plans', {
   name:         varchar('name', { length: 255 }).notNull(),
   monthlyPrice: decimal('monthly_price', { precision: 10, scale: 2 }).notNull(),
   yearlyPrice:  decimal('yearly_price',  { precision: 10, scale: 2 }).notNull(),
-  features:     text('features').array(),
+  features:     jsonb('features').$type<Record<string, any>>(),
   visible:      boolean('visible').default(false).notNull(),
   createdAt:    timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt:    timestamp('updated_at', { withTimezone: true }).defaultNow(),
