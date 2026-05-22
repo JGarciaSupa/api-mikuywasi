@@ -15,7 +15,7 @@ RUN bun install --production --no-cache
 COPY . .
 
 # Exponemos el puerto que configuramos arriba (4001)
-EXPOSE 4002
+EXPOSE 4102
 
 # Usar el usuario bun por seguridad (usuario no raíz incluido en la imagen base)
 USER bun
