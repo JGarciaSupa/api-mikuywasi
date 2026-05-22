@@ -15,6 +15,20 @@
       "when": 1779430941957,
       "tag": "0001_prueba_tabla_lobito",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779466963142,
+      "tag": "0002_add_field_updatedAt",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779467510043,
+      "tag": "0003_add_field_deleteAt",
+      "breakpoints": true
     }
   ]
 }

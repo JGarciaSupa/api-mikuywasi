@@ -1,0 +1,1 @@
+ALTER TABLE "lobito_prueba" ADD COLUMN "deleted_at" timestamp with time zone;

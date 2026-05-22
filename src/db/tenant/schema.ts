@@ -6,6 +6,8 @@ export const tablaLobitoPrueba = pgTable('lobito_prueba', {
 	nombre: varchar('nombre', { length: 100 }).notNull(),
 	edad: integer('edad').notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+	deletedAt: timestamp('deleted_at', { withTimezone: true }),
 })
 
 // ==========================================

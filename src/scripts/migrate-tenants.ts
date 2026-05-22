@@ -32,12 +32,13 @@ async function execute() {
       const server = tenant.server;
       const dbName = tenant.dbName;
 
+      const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
       console.log(`\n⏳ [ID: ${tenant.id}] Procesando tenant: "${tenant.name}" (Slug: ${tenant.slug})`);
-      console.log(`   Servidor: ${server.name} (${server.dbHost}:${server.dbPort})`);
+      console.log(`   Servidor: ${server.name} (${dbHost}:${server.dbPort})`);
       console.log(`   Base de datos: ${dbName}`);
 
-      const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${server.dbHost}:${server.dbPort}/${dbName}`;
-      
+      const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
+
       const tempPool = new Pool({
         connectionString,
         max: 1,

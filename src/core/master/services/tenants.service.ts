@@ -10,8 +10,9 @@ import * as path from 'path';
 
 // Helper to create tenant database
 async function createTenantDatabase(server: any, dbName: string) {
+  const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const client = new Client({
-    host: server.dbHost,
+    host: dbHost,
     port: server.dbPort,
     user: server.dbUser,
     password: server.dbPassword,
@@ -43,7 +44,8 @@ async function createTenantDatabase(server: any, dbName: string) {
 
 // Helper to run migrations on tenant database
 async function runTenantMigrations(server: any, dbName: string) {
-  const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${server.dbHost}:${server.dbPort}/${dbName}`;
+  const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
+  const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
   const tempPool = new Pool({
     connectionString,
     max: 1,
@@ -67,8 +69,9 @@ async function runTenantMigrations(server: any, dbName: string) {
 
 // Helper to drop tenant database during cleanup/rollback
 async function dropTenantDatabase(server: any, dbName: string) {
+  const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const client = new Client({
-    host: server.dbHost,
+    host: dbHost,
     port: server.dbPort,
     user: server.dbUser,
     password: server.dbPassword,
