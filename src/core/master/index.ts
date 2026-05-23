@@ -4,6 +4,7 @@ import plansRoutes from './routes/plans.routes';
 import dbServersRoutes from './routes/db-servers.routes';
 import tenantsRoutes from './routes/tenants.routes';
 import subscriptionsRoutes from './routes/subscriptions.routes';
+import publicRoutes from './routes/public.routes';
 
 const master = new Hono();
 
@@ -13,5 +14,9 @@ master.route('/plans', plansRoutes);           // Planes de suscripción
 master.route('/db-servers', dbServersRoutes);  // Infraestructura de servidores
 master.route('/tenants', tenantsRoutes);       // Directorio de tenants
 master.route('/subscriptions', subscriptionsRoutes); // Historial de facturación
+
+
+// Public routes
+master.route('/public', publicRoutes);
 
 export default master;
