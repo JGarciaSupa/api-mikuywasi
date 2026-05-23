@@ -4,6 +4,7 @@ import { users, refreshTokens } from '../../../../db/tenant/schema';
 import { generateAccessToken } from '../../../../utils/jwt';
 import { uploadToR2, deleteFromR2, getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
+import { buildPermissionsForUser } from './rbac.service';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -28,13 +29,18 @@ export async function login(username: string, password: string, userAgent?: stri
     throw new AuthError('Credenciales inválidas', 401);
   }
 
-  // 3. Generar access token
+  // 3. Cargar permisos del usuario (si tiene rol RBAC asignado)
+  const { roleId, permissions } = await buildPermissionsForUser(user.id);
+
+  // 4. Generar access token con permisos embebidos
   const accessToken = await generateAccessToken({
     userId: user.id,
     role: user.role,
+    roleId,
+    permissions: Object.keys(permissions).length > 0 ? permissions : undefined,
   });
 
-  // 4. Generar refresh token
+  // 5. Generar refresh token
   const rawRefreshToken = crypto.randomUUID();
   const tokenHash = hashToken(rawRefreshToken);
 
@@ -95,10 +101,13 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     throw new AuthError('Usuario no encontrado', 401);
   }
 
-  // 5. Generar nuevos tokens
+  // 5. Generar nuevos tokens (recargar permisos actualizados)
+  const { roleId, permissions } = await buildPermissionsForUser(user.id);
   const accessToken = await generateAccessToken({
     userId: user.id,
     role: user.role,
+    roleId,
+    permissions: Object.keys(permissions).length > 0 ? permissions : undefined,
   });
 
   const newRawRefreshToken = crypto.randomUUID();

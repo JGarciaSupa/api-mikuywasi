@@ -14,6 +14,7 @@ import kitchen from "./kitchen";
 import warehouse from "./warehouse";
 import dashboard from "./dashboard";
 import cash from "./cash";
+import rbac from "./rbac";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
@@ -38,5 +39,6 @@ routes.route('/kitchen', kitchen);
 routes.route('/warehouse', warehouse);
 routes.route('/dashboard', dashboard);
 routes.route('/cash', cash);
+routes.route('/rbac', rbac);
 
 export default routes;

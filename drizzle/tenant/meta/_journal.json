@@ -36,6 +36,13 @@
       "when": 1779494033799,
       "tag": "0004_migration_kardex",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779555395130,
+      "tag": "0005_roles_migration",
+      "breakpoints": true
     }
   ]
 }
