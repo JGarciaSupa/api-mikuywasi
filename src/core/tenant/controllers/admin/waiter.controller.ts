@@ -3,22 +3,11 @@ import * as tenantService from '../../services/client/tenant.service';
 
 /**
  * GET /api/admin/waiter/menu
- * Obtener menú del tenant autenticado usando tenantId del token.
+ * Menú del tenant activo (contexto vía X-Tenant-ID / tenantId query).
  */
 export const getWaiterMenuController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant no asociado al token' }, 400);
-    }
-
-    const categoriesWithProducts = await tenantService.getMenuByTenantId(tenantId);
-
-    if (!categoriesWithProducts) {
-      return c.json({ success: false, message: 'Tenant no encontrado' }, 404);
-    }
+    const categoriesWithProducts = await tenantService.getMenu();
 
     return c.json({
       success: true,
@@ -37,19 +26,12 @@ export const getWaiterMenuController = async (c: Context) => {
 
 /**
  * POST /api/admin/waiter/orders
- * Crear pedido para el tenant autenticado usando tenantId del token.
+ * Crear pedido en el tenant activo (contexto vía X-Tenant-ID / tenantId query).
  */
 export const createWaiterOrderController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant no asociado al token' }, 400);
-    }
-
     const body = await c.req.json();
-    const result = await tenantService.createOrder({ ...body, tenantId });
+    const result = await tenantService.createOrder(body);
 
     return c.json(
       {

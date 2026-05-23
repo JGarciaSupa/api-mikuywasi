@@ -722,6 +722,61 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 }));
 
 // ==========================================
+// 💵 CAJA — GESTIÓN DE SESIONES Y MOVIMIENTOS
+// ==========================================
+
+export const cashSessions = pgTable('cash_sessions', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 30 }).notNull().unique(),
+  openedBy: varchar('opened_by', { length: 100 }).notNull(),
+  closedBy: varchar('closed_by', { length: 100 }),
+  openingBalance: decimal('opening_balance', { precision: 12, scale: 2 }).notNull().default('0'),
+  closingBalance: decimal('closing_balance', { precision: 12, scale: 2 }),
+  // sum of all income movements
+  totalIncome: decimal('total_income', { precision: 12, scale: 2 }).notNull().default('0'),
+  // sum of all expense + withdrawal movements
+  totalExpense: decimal('total_expense', { precision: 12, scale: 2 }).notNull().default('0'),
+  // opening + totalIncome - totalExpense (calculated on each movement)
+  expectedBalance: decimal('expected_balance', { precision: 12, scale: 2 }).notNull().default('0'),
+  // closingBalance - expectedBalance (filled on close)
+  difference: decimal('difference', { precision: 12, scale: 2 }),
+  status: varchar('status', { length: 20, enum: ['open', 'closed'] as const }).notNull().default('open'),
+  notes: varchar('notes', { length: 300 }),
+  openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+}, (table) => ({
+  statusIdx: index('cash_sessions_status_idx').on(table.status),
+  openedAtIdx: index('cash_sessions_opened_at_idx').on(table.openedAt),
+}));
+
+export const cashMovements = pgTable('cash_movements', {
+  id: serial('id').primaryKey(),
+  sessionId: integer('session_id').notNull().references(() => cashSessions.id),
+  // income = dinero que entra; expense = gasto; withdrawal = retiro de fondo; deposit = depósito adicional
+  movementType: varchar('movement_type', { length: 20, enum: ['income', 'expense', 'withdrawal', 'deposit'] as const }).notNull(),
+  concept: varchar('concept', { length: 200 }).notNull(),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: varchar('payment_method', { length: 100 }),
+  orderId: varchar('order_id', { length: 12 }).references(() => orders.id),
+  reference: varchar('reference', { length: 100 }),
+  createdBy: varchar('created_by', { length: 100 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  sessionIdx: index('cash_movements_session_idx').on(table.sessionId),
+  typeIdx: index('cash_movements_type_idx').on(table.movementType),
+  orderIdx: index('cash_movements_order_idx').on(table.orderId),
+}));
+
+export const cashSessionsRelations = relations(cashSessions, ({ many }) => ({
+  movements: many(cashMovements),
+}));
+
+export const cashMovementsRelations = relations(cashMovements, ({ one }) => ({
+  session: one(cashSessions, { fields: [cashMovements.sessionId], references: [cashSessions.id] }),
+  order: one(orders, { fields: [cashMovements.orderId], references: [orders.id] }),
+}));
+
+// ==========================================
 // ⚙️ SUPPORT — SETTINGS & AUDIT
 // ==========================================
 

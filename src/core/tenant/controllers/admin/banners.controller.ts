@@ -61,9 +61,8 @@ export const createBannerController = async (c: Context) => {
     }
 
     const validatedData = c.req.valid('form' as never) as any;
-    const { tenantId, ...rest } = validatedData;
 
-    const result = await createBanner(rest, imageFile);
+    const result = await createBanner(validatedData, imageFile);
     
     return c.json({
       success: true,

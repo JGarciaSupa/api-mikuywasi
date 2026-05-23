@@ -6,13 +6,6 @@ import * as orderService from '../../services/admin/order.service';
  */
 export const getOrdersController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant ID no encontrado en la sesión' }, 403);
-    }
-
     const page = parseInt(c.req.query('page') || '1');
     const limit = parseInt(c.req.query('limit') || '10');
     const status = c.req.query('status');
@@ -22,25 +15,24 @@ export const getOrdersController = async (c: Context) => {
     const endDate = c.req.query('endDate');
 
     const result = await orderService.getOrders({
-      tenantId,
       page,
       limit,
       status,
       paymentStatus,
       search,
       startDate,
-      endDate
+      endDate,
     });
 
     return c.json({
       success: true,
-      ...result
+      ...result,
     });
   } catch (error: any) {
     console.error('Error in getOrdersController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las órdenes'
+      message: error.message || 'Error al obtener las órdenes',
     }, 500);
   }
 };
@@ -50,32 +42,26 @@ export const getOrdersController = async (c: Context) => {
  */
 export const getOrderByIdController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
     const id = c.req.param('id');
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant ID no encontrado' }, 403);
-    }
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
     }
 
-    const result = await orderService.getOrderById(id, tenantId);
-    
+    const result = await orderService.getOrderById(id);
+
     if (!result) {
       return c.json({ success: false, message: 'Orden no encontrada' }, 404);
     }
 
     return c.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el detalle'
+      message: error.message || 'Error al obtener el detalle',
     }, 500);
   }
 };
@@ -85,14 +71,8 @@ export const getOrderByIdController = async (c: Context) => {
  */
 export const updateOrderStatusController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
     const id = c.req.param('id');
     const { status } = await c.req.json();
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant ID no encontrado' }, 403);
-    }
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
@@ -102,17 +82,17 @@ export const updateOrderStatusController = async (c: Context) => {
       return c.json({ success: false, message: 'El estado es requerido' }, 400);
     }
 
-    const result = await orderService.updateOrderStatus(id, tenantId, status);
-    
+    const result = await orderService.updateOrderStatus(id, status);
+
     return c.json({
       success: true,
       message: 'Estado actualizado correctamente',
-      data: result
+      data: result,
     });
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado'
+      message: error.message || 'Error al actualizar el estado',
     }, 500);
   }
 };
@@ -122,14 +102,8 @@ export const updateOrderStatusController = async (c: Context) => {
  */
 export const updateOrderPaymentStatusController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
     const id = c.req.param('id');
     const { paymentStatus } = await c.req.json();
-
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant ID no encontrado' }, 403);
-    }
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
@@ -139,17 +113,17 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
       return c.json({ success: false, message: 'El estado de pago es requerido' }, 400);
     }
 
-    const result = await orderService.updateOrderPaymentStatus(id, tenantId, paymentStatus);
-    
+    const result = await orderService.updateOrderPaymentStatus(id, paymentStatus);
+
     return c.json({
       success: true,
       message: 'Estado de pago actualizado correctamente',
-      data: result
+      data: result,
     });
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado de pago'
+      message: error.message || 'Error al actualizar el estado de pago',
     }, 500);
   }
 };
@@ -159,23 +133,16 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
  */
 export const getOrderStatsController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
+    const result = await orderService.getOrderStats();
 
-    if (!tenantId) {
-      return c.json({ success: false, message: 'Tenant ID no encontrado' }, 403);
-    }
-
-    const result = await orderService.getOrderStats(tenantId);
-    
     return c.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener estadísticas'
+      message: error.message || 'Error al obtener estadísticas',
     }, 500);
   }
 };

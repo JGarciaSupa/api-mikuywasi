@@ -11,6 +11,9 @@ import waiter from "./waiter";
 import paymentMethods from "./payment-methods";
 import orders from "./orders";
 import kitchen from "./kitchen";
+import warehouse from "./warehouse";
+import dashboard from "./dashboard";
+import cash from "./cash";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
@@ -32,5 +35,8 @@ routes.route('/waiter', waiter);
 routes.route('/payment-methods', paymentMethods);
 routes.route('/orders', orders);
 routes.route('/kitchen', kitchen);
+routes.route('/warehouse', warehouse);
+routes.route('/dashboard', dashboard);
+routes.route('/cash', cash);
 
 export default routes;

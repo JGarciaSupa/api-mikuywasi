@@ -61,25 +61,21 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     );
   }
 
-  const whereClause = and(...conditions);
-  if (!whereClause) {
-    throw new Error('Clause where no pudo ser construida');
-  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // Consulta paginada
-  const data = await db
-    .select()
-    .from(orders)
-    .where(whereClause!)
+  const baseQuery = db.select().from(orders);
+  const countQuery = db.select({ total: count() }).from(orders);
+
+  const data = await (whereClause
+    ? baseQuery.where(whereClause)
+    : baseQuery)
     .limit(limit)
     .offset(offset)
     .orderBy(desc(orders.createdAt));
 
-  // Contar total
-  const [totalResult] = await db
-    .select({ total: count() })
-    .from(orders)
-    .where(whereClause!);
+  const [totalResult] = await (whereClause
+    ? countQuery.where(whereClause)
+    : countQuery);
 
   const total = totalResult?.total || 0;
 
@@ -130,6 +126,15 @@ export const updateOrderStatus = async (id: string, status: string) => {
     })
     .where(and(eq(orders.id, id)))
     .returning();
+
+  if (updated && status === 'completed') {
+    try {
+      const { autoDischargeOnOrderCompleted } = await import('../warehouse/sales-discharge.service');
+      await autoDischargeOnOrderCompleted(id);
+    } catch (err) {
+      console.warn('[warehouse] Descarga automática omitida:', err instanceof Error ? err.message : err);
+    }
+  }
 
   return updated;
 };

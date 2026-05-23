@@ -7,9 +7,8 @@ export const getAllProductsController = async (c: Context) => {
     const limit = parseInt(c.req.query('limit') || '10');
     const name = c.req.query('name');
     const categoryId = c.req.query('categoryId') ? parseInt(c.req.query('categoryId')!) : undefined;
-    const tenantId = c.req.query('tenantId') ? parseInt(c.req.query('tenantId')!) : undefined;
 
-    const result = await productService.getAllProducts(page, limit, { name, categoryId, tenantId });
+    const result = await productService.getAllProducts(page, limit, { name, categoryId });
     return c.json({
       success: true,
       ...result

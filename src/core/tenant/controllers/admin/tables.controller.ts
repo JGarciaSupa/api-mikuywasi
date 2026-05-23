@@ -29,7 +29,7 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { tenantId, name } = c.req.valid('json' as never);
+    const { name } = c.req.valid('json' as never);
     
     const result = await createTable({ name });
     

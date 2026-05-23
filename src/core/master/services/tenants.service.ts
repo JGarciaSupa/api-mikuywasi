@@ -42,6 +42,27 @@ async function createTenantDatabase(server: any, dbName: string) {
   }
 }
 
+// Helper to seed initial data on a fresh tenant database
+async function seedTenantData(server: any, dbName: string) {
+  const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
+  const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
+  const tempPool = new Pool({ connectionString, max: 1 });
+  const tempDb = drizzle(tempPool, { schema: tenantSchema });
+
+  try {
+    const [existing] = await tempDb.select().from(tenantSchema.tenantConfigs);
+    if (!existing) {
+      await tempDb.insert(tenantSchema.tenantConfigs).values({});
+    }
+    console.log(`[Seed] Datos iniciales insertados en "${dbName}".`);
+  } catch (error) {
+    console.error(`[Seed] Error al insertar datos iniciales en "${dbName}":`, error);
+    throw new Error(`Error al inicializar datos del tenant: ${(error as any).message}`);
+  } finally {
+    await tempPool.end();
+  }
+}
+
 // Helper to run migrations on tenant database
 async function runTenantMigrations(server: any, dbName: string) {
   const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
@@ -232,6 +253,9 @@ export const createTenant = async (data: CreateTenantInput) => {
 
     // 3. Ejecutar las migraciones en la nueva base de datos
     await runTenantMigrations(server, data.dbName);
+
+    // 4. Insertar datos iniciales (tenant_configs singleton, etc.)
+    await seedTenantData(server, data.dbName);
 
     return newTenant;
 

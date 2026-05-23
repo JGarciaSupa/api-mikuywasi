@@ -3,16 +3,6 @@ import { getTenantDashboardStats } from '../../services/admin/tenant-dashboard.s
 
 export const getTenantDashboardStatsController = async (c: Context) => {
   try {
-    const payload = c.get('jwtPayload');
-    const tenantId = payload?.tenantId;
-
-    if (!tenantId) {
-      return c.json({
-        success: false,
-        message: 'No se encontró el ID del tenant en la sesión'
-      }, 400);
-    }
-
     const stats = await getTenantDashboardStats();
     
     return c.json({

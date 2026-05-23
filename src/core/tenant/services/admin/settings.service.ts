@@ -6,19 +6,22 @@ import { getTenantDb } from '../../../../utils/tenant-context';
 
 export async function getSettings() {
   const db = getTenantDb();
-  const [config] = await db.select().from(tenantConfigs);
-  if (!config) throw new Error('Configuración no encontrada');
-
+  let [config] = await db.select().from(tenantConfigs);
+  if (!config) {
+    [config] = await db.insert(tenantConfigs).values({}).returning();
+  }
   return {
     ...config,
-    logo: getImageUrl(config.logo)
+    logo: getImageUrl(config.logo),
   };
 }
 
 export async function updateSettings(data: UpdateSettingsInput) {
   const db = getTenantDb();
-  const [existing] = await db.select().from(tenantConfigs);
-  if (!existing) throw new Error('Configuración no encontrada');
+  let [existing] = await db.select().from(tenantConfigs);
+  if (!existing) {
+    [existing] = await db.insert(tenantConfigs).values({}).returning();
+  }
 
   const [updated] = await db
     .update(tenantConfigs)
@@ -34,8 +37,10 @@ export async function updateSettings(data: UpdateSettingsInput) {
 
 export async function updateLogo(file: File) {
   const db = getTenantDb();
-  const [existing] = await db.select().from(tenantConfigs);
-  if (!existing) throw new Error('Configuración no encontrada');
+  let [existing] = await db.select().from(tenantConfigs);
+  if (!existing) {
+    [existing] = await db.insert(tenantConfigs).values({}).returning();
+  }
 
   if (existing.logo) {
     await deleteFromR2(existing.logo);
@@ -57,8 +62,10 @@ export async function updateLogo(file: File) {
 
 export async function deleteLogo() {
   const db = getTenantDb();
-  const [existing] = await db.select().from(tenantConfigs);
-  if (!existing) throw new Error('Configuración no encontrada');
+  let [existing] = await db.select().from(tenantConfigs);
+  if (!existing) {
+    [existing] = await db.insert(tenantConfigs).values({}).returning();
+  }
 
   if (existing.logo) {
     await deleteFromR2(existing.logo);
