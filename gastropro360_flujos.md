@@ -1,23 +1,40 @@
 # GastroPro 360 — Flujos del Sistema de Almacenes e Inventarios
 
 **Empresa:** Estrategia Gastronómica A & G S.A.C.  
-**Sistema:** Almacenes e Inventarios  
-**Versión:** Manual Completo · Ingeniería Inversa
+**Sistema:** Almacenes e Inventarios (Mikuy Wasi)  
+**Versión:** Manual Completo · Ingeniería Inversa + API multi-tenant  
+**Esquema Drizzle:** `src/db/tenant/schema.ts`  
+**Implementación API:** `src/core/tenant/routes/admin/warehouse/`
 
 ---
 
-## Índice
+## Índice (reorganizado)
+
+### A — Arquitectura e integración API
+
+- [Contexto multi-tenant](#contexto-multi-tenant)
+- [Equivalencia tablas y campos (ES → PostgreSQL)](#equivalencia-tablas-y-campos-es--postgresql)
+- [Estados de documentos (ES ↔ API)](#estados-de-documentos-es--api)
+- [Endpoints REST por flujo](#endpoints-rest-por-flujo)
+
+### B — Flujos operativos de almacén
 
 1. [Flujo 1 — Ingreso de Documentos (Compras)](#flujo-1--ingreso-de-documentos-compras)
-2. [Flujo 2 — Requerimientos (Almacén Central → Subalmacén)](#flujo-2--requerimientos-almacén-central--subalmacén)
+2. [Flujo 2 — Requerimientos](#flujo-2--requerimientos-almacén-central--subalmacén)
 3. [Flujo 3 — Transferencias entre Subalmacenes](#flujo-3--transferencias-entre-subalmacenes)
 4. [Flujo 4 — Salidas (Bajas de Stock)](#flujo-4--salidas-bajas-de-stock)
 5. [Flujo 5 — Porcionamiento](#flujo-5--porcionamiento)
 6. [Flujo 6 — Ajuste de Inventarios (Cierre)](#flujo-6--ajuste-de-inventarios-cierre)
 7. [Flujo 7 — Ciclo Diario del Almacenero](#flujo-7--ciclo-diario-del-almacenero)
+
+### C — Integración menú ↔ inventario
+
 8. [Flujo 8 — Carga de Recetas](#flujo-8--carga-de-recetas)
-9. [Flujo 9 — Descarga de Venta (Descarga por Receta)](#flujo-9--descarga-de-venta-descarga-por-receta)
+9. [Flujo 9 — Descarga de Venta](#flujo-9--descarga-de-venta-descarga-por-receta)
 10. [Flujo 10 — Control de Vencimientos y Lotes](#flujo-10--control-de-vencimientos-y-lotes)
+
+### D — Reglas, soporte y referencia
+
 11. [Reglas de Negocio Transversales](#reglas-de-negocio-transversales)
 12. [Tablas afectadas por flujo](#tablas-afectadas-por-flujo)
 13. [Tablas de Soporte del Sistema](#tablas-de-soporte-del-sistema)
@@ -25,6 +42,117 @@
 15. [Comparativa con Sistemas a Mayor Escala](#comparativa-con-sistemas-a-mayor-escala)
 
 ---
+
+## Contexto multi-tenant
+
+Cada restaurante tiene **su propia base de datos** con el esquema completo de almacenes. El patrón es el de `IMPLEMENTATION_SUMMARY.md`:
+
+| Paso | Componente |
+|------|------------|
+| 1 | `tenantContextMiddleware` resuelve `tenantId` (`?tenantId=` o header `X-Tenant-ID`) |
+| 2 | Servicios usan `getTenantDb()` — sin filtrar por `tenant_id` en tablas |
+| 3 | Rutas admin bajo `/api/admin/warehouse/*` con JWT + rol `admin` |
+
+Documentación detallada de endpoints: [`docs/admin/warehouse.md`](docs/admin/warehouse.md).
+
+---
+
+## Equivalencia tablas y campos (ES → PostgreSQL)
+
+En este documento los **nombres en español** son la referencia funcional (GastroPro 360). En la API y Drizzle se usan los nombres de la columna derecha.
+
+| Documento (ES) | Tabla PostgreSQL | Export Drizzle |
+|----------------|------------------|----------------|
+| `documentos` | `purchase_documents` | `purchaseDocuments` |
+| `documento_detalle` | `purchase_document_lines` | `purchaseDocumentLines` |
+| `proveedores` | `suppliers` | `suppliers` |
+| `requerimientos` | `requisitions` | `requisitions` |
+| `requerimiento_detalle` | `requisition_lines` | `requisitionLines` |
+| `transferencias` | `stock_transfers` | `stockTransfers` |
+| `transferencia_detalle` | `stock_transfer_lines` | `stockTransferLines` |
+| `salidas` | `stock_exits` | `stockExits` |
+| `salida_detalle` | `stock_exit_lines` | `stockExitLines` |
+| `porcionamientos` | `portionings` | `portionings` |
+| `porcionamiento_detalle` | `portioning_lines` | `portioningLines` |
+| `ajuste_inventarios` | `inventory_adjustments` | `inventoryAdjustments` |
+| `ajuste_detalle` | `adjustment_lines` | `adjustmentLines` |
+| `articulos` | `items` | `items` |
+| `familias` / `subfamilias` | `item_families` / `item_subfamilies` | `itemFamilies` / `itemSubfamilies` |
+| `areas` | `storage_areas` | `storageAreas` |
+| `articulos_areas` | `item_area_assignments` | `itemAreaAssignments` |
+| `kardex_central` | `main_ledger` | `mainLedger` |
+| `kardex_subalmacen` | `area_ledger` | `areaLedger` |
+| `pivot_stock_por_area` | `stock_snapshot` | `stockSnapshot` |
+| `pivot_mermas` | `waste_log` | `wasteLog` |
+| `recetas` | `recipes` | `recipes` |
+| `receta_detalle` | `recipe_lines` | `recipeLines` |
+| `descarga_venta` | `sales_discharge` | `salesDischarge` |
+| `descarga_venta_detalle` | `sales_discharge_lines` | `salesDischargeLines` |
+| `lotes` | `batches` | `batches` |
+| `pivot_auditoria` | `audit_log` | `auditLog` |
+| `configuracion_sistema` | `system_settings` | `systemSettings` |
+| `usuarios` | `users` | `users` |
+
+### Campos frecuentes `articulos` → `items`
+
+| ES (manual) | Columna API |
+|-------------|-------------|
+| `codigo` | `code` |
+| `descripcion_completa` | `full_description` |
+| `descripcion_corta` | `short_description` |
+| `precio_promedio` | `avg_price` |
+| `stock_actual` | `current_stock` |
+| `stock_minimo` | `min_stock` |
+| `dias_vencimiento` | `expiry_days` |
+| `porcionable` | `portionable` |
+| `descarga_por_receta` | `recipe_discharge` |
+| `unidad_kardex` | `ledger_unit` |
+| `unidad_costos` | `cost_unit` |
+| `factor_equivalencia` | `conversion_factor` |
+
+---
+
+## Estados de documentos (ES ↔ API)
+
+| GastroPro (ES) | Valor API (`status`) | Afecta stock |
+|----------------|----------------------|:------------:|
+| GENERADO | `draft` | No |
+| PROCESADO | `processed` | Sí |
+| ANULADO | `voided` | No / revierte según módulo |
+| ABIERTO (ajuste) | `open` | No |
+| CERRADO (ajuste) | `closed` | Sí |
+
+Operaciones de auditoría API: `INSERT`, `UPDATE`, `DELETE`, `PROCESS`, `VOID`, `ADJUST`.
+
+---
+
+## Endpoints REST por flujo
+
+**Base:** `GET|POST /api/admin/warehouse/...`  
+**Headers:** `Authorization: Bearer <token>`, `X-Tenant-ID: <id>` (o `?tenantId=`)
+
+| Flujo | Método | Ruta |
+|:-----:|--------|------|
+| 1 Compras | `POST` | `/purchase-documents` |
+| 1 | `POST` | `/purchase-documents/:id/process` |
+| 2 Requerimientos | `POST` | `/requisitions` → `/requisitions/:id/process` |
+| 3 Transferencias | `POST` | `/stock-transfers` → `.../process` |
+| 4 Salidas | `POST` | `/stock-exits` → `.../process` |
+| 5 Porcionamiento | `POST` | `/portionings` → `.../process` |
+| 6 Ajuste | `POST` | `/inventory-adjustments/open` |
+| 6 | `PATCH` | `/inventory-adjustments/:id/lines` |
+| 6 | `POST` | `/inventory-adjustments/:id/close` |
+| 8 Recetas | `POST` | `/recipes` |
+| 9 Descarga venta | `GET` | `/sales-discharge/preview/:orderId` |
+| 9 | `POST` | `/sales-discharge` → `.../process` |
+| 9 (auto) | — | Al marcar pedido `completed`, intenta descarga automática |
+| 10 Lotes | `GET` | `/batches` · `POST /batches/refresh-statuses` |
+| Kardex | `GET` | `/kardex/area/:areaId` |
+| Stock | `GET` | `/stock-snapshot` |
+| Maestros | `GET/POST` | `/families`, `/areas`, `/suppliers`, `/items`, … |
+
+---
+
 
 ## Flujo 1 — Ingreso de Documentos (Compras)
 
@@ -827,19 +955,19 @@ Para asignar: Maestro de Artículos → botón Áreas → agregar subalmacén
 
 ## Tablas afectadas por flujo
 
-| Flujo | Tablas de cabecera | Tablas de detalle | Kardex afectado | Artículo actualizado |
-|-------|--------------------|-------------------|-----------------|:--------------------:|
-| Ingreso documentos | `documentos` | `documento_detalle` | `kardex_central` o `kardex_subalmacen` | `precio_promedio`, `stock_actual` |
-| Requerimientos | `requerimientos` | `requerimiento_detalle` | `kardex_central` (salida) + `kardex_subalmacen` (ingreso) | `pivot_stock_por_area` |
-| Transferencias | `transferencias` | `transferencia_detalle` | `kardex_subalmacen` (salida + ingreso) | `pivot_stock_por_area` |
-| Salidas | `salidas` | `salida_detalle` | `kardex_subalmacen` (salida) | `pivot_stock_por_area` |
-| Porcionamiento | `porcionamientos` | `porcionamiento_detalle` | `kardex_subalmacen` (salida origen + ingreso derivado) | `precio_promedio` derivado, `pivot_mermas` |
-| Ajuste inventarios | `ajuste_inventarios` | `ajuste_detalle` | `kardex_central` o `kardex_subalmacen` | `stock_actual`, `pivot_stock_por_area` |
-| Carga de recetas | `recetas` | `receta_detalle` | — | — |
-| Descarga de venta | `descarga_venta` | `descarga_venta_detalle` | `kardex_subalmacen` (salida) | `pivot_stock_por_area` |
-| Control vencimientos | `lotes` | — | — | `lotes.estado`, `lotes.cantidad_actual` |
+| Flujo | Cabecera (ES) | Detalle (ES) | Tabla API | Kardex API |
+|-------|---------------|--------------|-----------|------------|
+| Ingreso documentos | `documentos` | `documento_detalle` | `purchase_documents` | `main_ledger` / `area_ledger` |
+| Requerimientos | `requerimientos` | `requerimiento_detalle` | `requisitions` | central salida + sub ingreso |
+| Transferencias | `transferencias` | `transferencia_detalle` | `stock_transfers` | `area_ledger` |
+| Salidas | `salidas` | `salida_detalle` | `stock_exits` | `area_ledger` |
+| Porcionamiento | `porcionamientos` | `porcionamiento_detalle` | `portionings` | `area_ledger` + `waste_log` |
+| Ajuste inventarios | `ajuste_inventarios` | `ajuste_detalle` | `inventory_adjustments` | según área |
+| Carga de recetas | `recetas` | `receta_detalle` | `recipes` | — |
+| Descarga de venta | `descarga_venta` | `descarga_venta_detalle` | `sales_discharge` | `area_ledger` |
+| Control vencimientos | `lotes` | — | `batches` | FIFO en salidas |
 
-> **Auditoría transversal:** todos los flujos que cambian de estado (GENERADO → PROCESADO, ANULADO) y toda modificación a datos maestros (`articulos`, `proveedores`, `configuracion_sistema`) deben generar un registro en `pivot_auditoria`. Ver [Sistema de Auditoría](#sistema-de-auditoría).
+> **Auditoría:** la API escribe en `audit_log` (`pivot_auditoria`) en cada `PROCESS`, `VOID`, `ADJUST` e INSERT/UPDATE de maestros. Ver [Sistema de Auditoría](#sistema-de-auditoría).
 
 ---
 
@@ -879,24 +1007,24 @@ Parámetros operativos editables en caliente sin necesidad de despliegue de cód
 
 ## Sistema de Auditoría
 
-### Tabla `pivot_auditoria`
+### Tabla `pivot_auditoria` → `audit_log`
 
-Registro centralizado de todas las operaciones que alteran datos críticos. Se escribe desde la **capa de aplicación (API)**, no por triggers de base de datos, lo que facilita el testing y la depuración.
+Registro centralizado de todas las operaciones que alteran datos críticos. Se escribe desde la **capa de aplicación (API)** (`writeAuditLog` en `services/warehouse/shared/audit.service.ts`).
 
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| `id` | BIGSERIAL PK | Identificador secuencial único |
-| `tabla` | VARCHAR(100) | Tabla principal afectada (`documentos`, `articulos`, etc.) |
-| `operacion` | VARCHAR(20) | Tipo de evento (ver tabla más abajo) |
-| `id_registro` | INTEGER | PK del registro afectado |
-| `datos_anterior` | JSONB | Snapshot completo del registro **antes** del cambio (NULL en INSERT) |
-| `datos_nuevo` | JSONB | Snapshot completo del registro **después** del cambio (NULL en DELETE) |
-| `id_usuario` | INT FK → `usuarios` | Operador que ejecutó la acción |
-| `usuario_nombre` | VARCHAR(100) | Nombre desnormalizado — historial permanente aunque el usuario sea modificado |
-| `modulo` | VARCHAR(100) | Módulo de negocio (`documentos`, `requerimientos`, `kardex`, etc.) |
-| `descripcion` | VARCHAR(300) | Texto legible: `"Procesó Factura F001-0123 — S/ 1,250.00"` |
-| `ip_address` | VARCHAR(45) | IP del cliente que realizó la operación |
-| `fecha` | TIMESTAMPTZ | Marca de tiempo de la operación |
+| Columna (ES) | Columna API | Descripción |
+|--------------|-------------|-------------|
+| `id` | `id` | BIGSERIAL PK |
+| `tabla` | `table_name` | Tabla afectada (`purchase_documents`, `items`, …) |
+| `operacion` | `operation` | `INSERT` · `UPDATE` · `DELETE` · `PROCESS` · `VOID` · `ADJUST` |
+| `id_registro` | `record_id` | PK del registro |
+| `datos_anterior` | `before_data` | JSONB snapshot previo |
+| `datos_nuevo` | `after_data` | JSONB snapshot nuevo |
+| `id_usuario` | `user_id` | FK → `users` |
+| `usuario_nombre` | `user_name` | Desnormalizado |
+| `modulo` | `module` | Módulo de negocio |
+| `descripcion` | `description` | Texto legible |
+| `ip_address` | `ip_address` | IP del cliente |
+| `fecha` | `created_at` | TIMESTAMPTZ |
 
 ### Tipos de operación (`operacion`)
 
