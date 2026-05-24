@@ -132,13 +132,13 @@ export const getWaiterTablesStatus = async () => {
       status: activeOrder ? 'occupied' : 'available',
       activeOrder: activeOrder
         ? {
-            id: activeOrder.id,
-            trackingCode: activeOrder.trackingCode,
-            customerName: activeOrder.customerName,
-            status: activeOrder.status,
-            total: activeOrder.total,
-            createdAt: activeOrder.createdAt,
-          }
+          id: activeOrder.id,
+          trackingCode: activeOrder.trackingCode,
+          customerName: activeOrder.customerName,
+          status: activeOrder.status,
+          total: activeOrder.total,
+          createdAt: activeOrder.createdAt,
+        }
         : null,
     };
   });
@@ -289,7 +289,7 @@ export const validateOrderStockBeforeCreate = async (orderData: any) => {
  */
 export const triggerStockDischargeForOrder = async (orderId: string): Promise<string[]> => {
   try {
-    const { autoDischargeOnOrderCreated } = await import('../warehouse/sales-discharge.service');
+    const { autoDischargeOnOrderCreated } = await import('../admin/warehouse/sales-discharge.service');
     await autoDischargeOnOrderCreated(orderId);
     return [];
   } catch (err: any) {

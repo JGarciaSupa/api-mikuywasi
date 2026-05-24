@@ -11,10 +11,10 @@ import {
   validateCreateRecipe,
   validateCreateSalesDischarge,
   validateUpsertSetting,
-} from '../../../validations/warehouse/warehouse.validation';
-import * as catalog from '../../../controllers/warehouse/catalog.controller';
-import * as movements from '../../../controllers/warehouse/movements.controller';
-import * as recipesLedger from '../../../controllers/warehouse/recipes-ledger.controller';
+} from '../../../validations/admin/warehouse/warehouse.validation';
+import * as catalog from '../../../controllers/admin/warehouse/catalog.controller';
+import * as movements from '../../../controllers/admin/warehouse/movements.controller';
+import * as recipesLedger from '../../../controllers/admin/warehouse/recipes-ledger.controller';
 
 const routes = new Hono();
 
