@@ -60,6 +60,30 @@ export const updateRecipe = async (c: Context) => {
   }
 };
 
+export const listSalesDischarges = async (c: Context) => {
+  try {
+    const page = c.req.query('page') ? parseInt(c.req.query('page')!) : 1;
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 20;
+    const status = c.req.query('status') || undefined;
+    const orderId = c.req.query('orderId') || undefined;
+    const result = await salesDischarge.listSalesDischarges({ page, limit, status, orderId });
+    return c.json({ success: true, ...result });
+  } catch (e) {
+    return jsonError(c, e, 'Error al listar descargas');
+  }
+};
+
+export const getSalesDischarge = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id'));
+    const data = await salesDischarge.getSalesDischargeDetail(id);
+    if (!data) return c.json({ success: false, message: 'Descarga no encontrada' }, 404);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al obtener descarga');
+  }
+};
+
 export const previewSalesDischarge = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');

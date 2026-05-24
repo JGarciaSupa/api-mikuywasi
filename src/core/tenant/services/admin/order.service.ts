@@ -127,15 +127,6 @@ export const updateOrderStatus = async (id: string, status: string) => {
     .where(and(eq(orders.id, id)))
     .returning();
 
-  if (updated && status === 'completed') {
-    try {
-      const { autoDischargeOnOrderCompleted } = await import('../warehouse/sales-discharge.service');
-      await autoDischargeOnOrderCompleted(id);
-    } catch (err) {
-      console.warn('[warehouse] Descarga automática omitida:', err instanceof Error ? err.message : err);
-    }
-  }
-
   return updated;
 };
 

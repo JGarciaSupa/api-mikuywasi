@@ -1,8 +1,13 @@
-import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems } from '../../../../db/tenant/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, recipes, recipeLines, items } from '../../../../db/tenant/schema';
+import { eq, and, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
+
+function toNum(v: unknown) {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
 /**
  * Obtener información pública del tenant (config, banners, social links)
@@ -81,6 +86,65 @@ export const getTables = async () => {
 };
 
 /**
+ * Obtener mesas con estado operativo para mozo.
+ * El estado "occupied" se calcula en base a pedidos dine_in activos.
+ */
+export const getWaiterTablesStatus = async () => {
+  const db = getTenantDb();
+
+  const allTables = await db.select().from(tables).orderBy(tables.name);
+
+  const activeDineInOrders = await db
+    .select({
+      id: orders.id,
+      status: orders.status,
+      tableId: orders.tableId,
+      tableName: orders.tableName,
+      trackingCode: orders.trackingCode,
+      customerName: orders.customerName,
+      total: orders.total,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.deliveryType, 'dine_in'),
+        isNotNull(orders.tableId),
+        inArray(orders.status, ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched']),
+      ),
+    );
+
+  const activeByTableId = new Map<number, any>();
+  for (const order of activeDineInOrders) {
+    if (order.tableId == null) continue;
+    const prev = activeByTableId.get(order.tableId);
+    const currentCreatedAt = order.createdAt ? new Date(order.createdAt).getTime() : 0;
+    const prevCreatedAt = prev?.createdAt ? new Date(prev.createdAt).getTime() : 0;
+    if (!prev || currentCreatedAt > prevCreatedAt) {
+      activeByTableId.set(order.tableId, order);
+    }
+  }
+
+  return allTables.map((table) => {
+    const activeOrder = activeByTableId.get(table.id) ?? null;
+    return {
+      ...table,
+      status: activeOrder ? 'occupied' : 'available',
+      activeOrder: activeOrder
+        ? {
+            id: activeOrder.id,
+            trackingCode: activeOrder.trackingCode,
+            customerName: activeOrder.customerName,
+            status: activeOrder.status,
+            total: activeOrder.total,
+            createdAt: activeOrder.createdAt,
+          }
+        : null,
+    };
+  });
+};
+
+/**
  * Obtener métodos de pago activos
  */
 export const getPaymentMethods = async () => {
@@ -149,6 +213,89 @@ export const createOrder = async (orderData: any) => {
       if (error.code === '23505' && attempts < maxAttempts) continue;
       throw error;
     }
+  }
+};
+
+/**
+ * Valida receta y stock antes de crear pedido.
+ * Lanza Error si falta receta activa o no alcanza stock.
+ */
+export const validateOrderStockBeforeCreate = async (orderData: any) => {
+  const db = getTenantDb();
+  const requiredByItem = new Map<number, number>();
+  const orderItemsInput = orderData?.items ?? [];
+
+  for (const oi of orderItemsInput) {
+    if (!oi?.productId) continue;
+
+    const [recipe] = await db
+      .select()
+      .from(recipes)
+      .where(and(eq(recipes.productId, oi.productId), eq(recipes.isActive, true)))
+      .limit(1);
+
+    if (!recipe) {
+      throw new Error(`El producto "${oi.productName}" no tiene receta activa para descargar stock.`);
+    }
+
+    const lines = await db
+      .select()
+      .from(recipeLines)
+      .where(eq(recipeLines.recipeId, recipe.id));
+
+    const orderQty = toNum(oi.quantity);
+    const servings = toNum(recipe.servings) || 1;
+    const yieldFactor = (toNum(recipe.yieldPct) || 100) / 100;
+
+    for (const rl of lines) {
+      if (rl.isOptional) continue;
+      const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+      if (!item?.recipeDischarge) continue;
+
+      let ingredientQty = (toNum(rl.qty) / servings) * orderQty / yieldFactor;
+      if (rl.isCost && toNum(item.conversionFactor) > 0) {
+        ingredientQty = ingredientQty / toNum(item.conversionFactor);
+      }
+
+      requiredByItem.set(rl.itemId, (requiredByItem.get(rl.itemId) ?? 0) + ingredientQty);
+    }
+  }
+
+  if (requiredByItem.size === 0) return;
+
+  const missing: string[] = [];
+  const requiredEntries = Array.from(requiredByItem.entries());
+  for (const entry of requiredEntries) {
+    const itemId = entry[0];
+    const requiredQty = entry[1];
+    const [stockItem] = await db.select().from(items).where(eq(items.id, itemId));
+    if (!stockItem) continue;
+    const current = toNum(stockItem.currentStock);
+    if (requiredQty > current) {
+      missing.push(
+        `${stockItem.shortDescription}: requerido ${requiredQty.toFixed(3)}, disponible ${current.toFixed(3)}`
+      );
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Stock insuficiente para procesar el pedido. ${missing.join(' | ')}`);
+  }
+};
+
+/**
+ * Descarga de stock inmediata al crear un pedido.
+ * Se llama fire-and-forget: los errores de stock no bloquean al mozo.
+ */
+export const triggerStockDischargeForOrder = async (orderId: string): Promise<string[]> => {
+  try {
+    const { autoDischargeOnOrderCreated } = await import('../warehouse/sales-discharge.service');
+    await autoDischargeOnOrderCreated(orderId);
+    return [];
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[stock] Descarga omitida para pedido ${orderId}: ${msg}`);
+    return [msg];
   }
 };
 

@@ -98,7 +98,9 @@ routes.post('/recipes', validateCreateRecipe, recipesLedger.createRecipe);
 routes.put('/recipes/:id', recipesLedger.updateRecipe);
 
 // ── Flujo 8 — Descarga de venta ──────────────────────────────────────────────
+routes.get('/sales-discharge', recipesLedger.listSalesDischarges);
 routes.get('/sales-discharge/preview/:orderId', recipesLedger.previewSalesDischarge);
+routes.get('/sales-discharge/:id', recipesLedger.getSalesDischarge);
 routes.post('/sales-discharge', validateCreateSalesDischarge, recipesLedger.createSalesDischarge);
 routes.post('/sales-discharge/:id/process', recipesLedger.processSalesDischarge);
 

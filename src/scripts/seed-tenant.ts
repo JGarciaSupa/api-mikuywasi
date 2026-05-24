@@ -397,6 +397,33 @@ async function main() {
     }
     log(`${recipesCreated} recetas con ${linesCreated} líneas de ingredientes`);
 
+    // ── billing_series ──────────────────────────────────────────────────────
+    section('billing_series');
+    await db.insert(s.billingSeries).values([
+      {
+        documentType: 'factura',
+        series: 'F001',
+        priceInclTax: false,
+        taxRate: '18',
+        description: 'Factura estándar',
+      },
+      {
+        documentType: 'boleta',
+        series: 'B001',
+        priceInclTax: true,
+        taxRate: '18',
+        description: 'Boleta de venta',
+      },
+      {
+        documentType: 'nota_de_venta',
+        series: 'NV01',
+        priceInclTax: true,
+        taxRate: '18',
+        description: 'Nota de venta interna',
+      },
+    ]).onConflictDoNothing();
+    log('3 series de facturación (F001, B001, NV01)');
+
     // ── users ────────────────────────────────────────────────────────────────
     section('users');
     const adminPassword = await Bun.password.hash('admin123', { algorithm: 'bcrypt', cost: 10 });

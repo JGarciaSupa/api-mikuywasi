@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, ilike, count } from 'drizzle-orm';
 import {
   salesDischarge,
   salesDischargeLines,
@@ -8,11 +8,12 @@ import {
   recipeLines,
   items,
   products,
+  storageAreas,
 } from '../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './shared/numbers';
 import { writeAuditLog } from './shared/audit.service';
-import { applyStockExit } from './shared/stock-movement.service';
+import { applyStockExit, applyStockEntry } from './shared/stock-movement.service';
 import type { AuditActor } from './types';
 
 async function getDischargeWithLines(id: number) {
@@ -30,14 +31,11 @@ export async function getSalesDischargeByOrderId(orderId: string) {
   return getDischargeWithLines(doc.id);
 }
 
-/** Calcula líneas de descarga a partir de un pedido completado */
+/** Calcula líneas de descarga a partir de un pedido (cualquier estado activo) */
 export async function buildDischargeFromOrder(orderId: string) {
   const db = getTenantDb();
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error('Pedido no encontrado');
-  if (order.status !== 'completed') {
-    throw new Error('El pedido debe estar en estado completed para generar descarga');
-  }
 
   const oItems = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
   const calculated: {
@@ -192,8 +190,8 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
   });
 }
 
-/** Hook para invocar al completar un pedido (opcional) */
-export async function autoDischargeOnOrderCompleted(orderId: string, actor?: AuditActor) {
+/** Hook para invocar al crear un pedido — descuenta stock inmediatamente */
+export async function autoDischargeOnOrderCreated(orderId: string, actor?: AuditActor) {
   const built = await buildDischargeFromOrder(orderId);
   if (!built.lines.length) return null;
 
@@ -202,4 +200,135 @@ export async function autoDischargeOnOrderCompleted(orderId: string, actor?: Aud
   if (!created) return null;
 
   return processSalesDischarge(created.id, actor);
+}
+
+/** Revierte la descarga de un pedido (cancel): repone stock y marca voided */
+export async function reverseDischargeForOrder(orderId: string, actor?: AuditActor) {
+  const db = getTenantDb();
+  const discharge = await getSalesDischargeByOrderId(orderId);
+  if (!discharge || discharge.status !== 'processed') return null;
+
+  const docNumber = `DV-VOID-${orderId}`;
+
+  await db.transaction(async (tx) => {
+    for (const line of discharge.lines) {
+      const qty = toNum(line.qty);
+      if (qty <= 0) continue;
+      await applyStockEntry(
+        {
+          itemId: line.itemId,
+          areaId: discharge.areaId,
+          qty,
+          unitPrice: toNum(line.avgPrice),
+          documentType: 'reverso_descarga',
+          documentNumber: docNumber,
+          originDest: `Cancelación pedido ${orderId}`,
+        },
+        tx
+      );
+    }
+
+    await tx
+      .update(salesDischarge)
+      .set({ status: 'voided' })
+      .where(eq(salesDischarge.id, discharge.id));
+
+    await writeAuditLog(
+      {
+        tableName: 'sales_discharge',
+        operation: 'VOID',
+        recordId: discharge.id,
+        userId: actor?.userId,
+        userName: actor?.userName,
+        module: 'descarga_venta',
+        description: `Reverso por cancelación del pedido ${orderId}`,
+        ipAddress: actor?.ip,
+      },
+      tx
+    );
+  });
+}
+
+export async function listSalesDischarges(filters: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  orderId?: string;
+}) {
+  const db = getTenantDb();
+  const page = Math.max(1, filters.page ?? 1);
+  const lim = Math.min(50, filters.limit ?? 20);
+  const offset = (page - 1) * lim;
+
+  const conditions = [];
+  if (filters.status) conditions.push(eq(salesDischarge.status, filters.status as any));
+  if (filters.orderId) conditions.push(ilike(salesDischarge.orderId, `%${filters.orderId}%`));
+  const where = conditions.length ? and(...conditions) : undefined;
+
+  const [{ total }] = await db.select({ total: count() }).from(salesDischarge).where(where);
+
+  const rows = await db
+    .select({
+      id: salesDischarge.id,
+      orderId: salesDischarge.orderId,
+      areaId: salesDischarge.areaId,
+      areaName: storageAreas.name,
+      date: salesDischarge.date,
+      status: salesDischarge.status,
+      totalCost: salesDischarge.totalCost,
+      createdBy: salesDischarge.createdBy,
+      createdAt: salesDischarge.createdAt,
+      processedAt: salesDischarge.processedAt,
+    })
+    .from(salesDischarge)
+    .leftJoin(storageAreas, eq(salesDischarge.areaId, storageAreas.id))
+    .where(where)
+    .orderBy(desc(salesDischarge.createdAt))
+    .limit(lim)
+    .offset(offset);
+
+  return {
+    data: rows,
+    pagination: { total, totalPages: Math.ceil(total / lim), currentPage: page, limit: lim },
+  };
+}
+
+export async function getSalesDischargeDetail(id: number) {
+  const db = getTenantDb();
+  const [doc] = await db
+    .select({
+      id: salesDischarge.id,
+      orderId: salesDischarge.orderId,
+      areaId: salesDischarge.areaId,
+      areaName: storageAreas.name,
+      date: salesDischarge.date,
+      status: salesDischarge.status,
+      totalCost: salesDischarge.totalCost,
+      createdBy: salesDischarge.createdBy,
+      createdAt: salesDischarge.createdAt,
+      processedAt: salesDischarge.processedAt,
+    })
+    .from(salesDischarge)
+    .leftJoin(storageAreas, eq(salesDischarge.areaId, storageAreas.id))
+    .where(eq(salesDischarge.id, id));
+
+  if (!doc) return null;
+
+  const lines = await db
+    .select({
+      id: salesDischargeLines.id,
+      itemId: salesDischargeLines.itemId,
+      itemName: items.shortDescription,
+      itemUnit: items.ledgerUnit,
+      recipeId: salesDischargeLines.recipeId,
+      qty: salesDischargeLines.qty,
+      unit: salesDischargeLines.unit,
+      avgPrice: salesDischargeLines.avgPrice,
+      lineCost: salesDischargeLines.lineCost,
+    })
+    .from(salesDischargeLines)
+    .leftJoin(items, eq(salesDischargeLines.itemId, items.id))
+    .where(eq(salesDischargeLines.dischargeId, id));
+
+  return { ...doc, lines };
 }
