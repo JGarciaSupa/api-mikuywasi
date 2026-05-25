@@ -1,0 +1,1 @@
+ALTER TABLE "items" ALTER COLUMN "family_id" DROP NOT NULL;

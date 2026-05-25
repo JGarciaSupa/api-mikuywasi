@@ -36,6 +36,34 @@
       "when": 1779494033799,
       "tag": "0004_migration_kardex",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779555395130,
+      "tag": "0005_roles_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779579341463,
+      "tag": "0006_document_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779678446551,
+      "tag": "0007_update_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779744518632,
+      "tag": "0008_change_branch_multidb_kardex",
+      "breakpoints": true
     }
   ]
 }

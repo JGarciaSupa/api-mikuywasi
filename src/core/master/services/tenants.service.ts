@@ -1,6 +1,7 @@
 import { masterDb } from '../../../db';
 import { tenants, subscriptions, plans, dbServers } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
+import { fullSyncTenant } from './rbac-sync.service';
 import type { CreateTenantInput, UpdateTenantInput, RenewSubscriptionInput } from '../validations/tenants.validation';
 import { Client, Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -256,6 +257,15 @@ export const createTenant = async (data: CreateTenantInput) => {
 
     // 4. Insertar datos iniciales (tenant_configs singleton, etc.)
     await seedTenantData(server, data.dbName);
+
+    // 5. Sincronizar RBAC: copia el catálogo de permisos y clona los roles base
+    //    que el Superadmin haya pre-concedido al tenant antes de su creación.
+    //    Si no hay grants aún, esta llamada es un no-op seguro.
+    try {
+      await fullSyncTenant(createdTenantId);
+    } catch (syncError) {
+      console.warn('[RBAC Sync] Sync RBAC inicial falló (no crítico):', syncError);
+    }
 
     return newTenant;
 

@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, varchar, boolean, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, varchar, boolean, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // ==========================================
 // 🌐 CONTROL CENTRAL DEL SAAS (SUPER ADMINS)
@@ -234,4 +234,114 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
     fields: [refreshTokens.userId],
     references: [users.id],
   }),
+}));
+
+// ==========================================
+// 🛡️ RBAC — CATÁLOGO GLOBAL
+// ==========================================
+
+// Módulos del sistema (ej: "Ventas", "Almacén", "Caja")
+export const actions = pgTable('actions', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 50 }).notNull().unique(),      // 'ventas'
+  name: varchar('name', { length: 100 }).notNull(),              // 'Ventas'
+  description: varchar('description', { length: 255 }),
+  icon: varchar('icon', { length: 50 }),                         // nombre del icono para el frontend
+  order: integer('order').default(0).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Operaciones bajo cada módulo (ej: "ventas.crear_factura")
+export const subActions = pgTable('sub_actions', {
+  id: serial('id').primaryKey(),
+  actionId: integer('action_id').notNull().references(() => actions.id, { onDelete: 'cascade' }),
+  code: varchar('code', { length: 100 }).notNull().unique(),     // 'ventas.crear_factura'
+  name: varchar('name', { length: 100 }).notNull(),              // 'Crear Factura'
+  description: varchar('description', { length: 255 }),
+  order: integer('order').default(0).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  actionIdx: index('sub_actions_action_idx').on(table.actionId),
+}));
+
+// Roles Plantilla globales (ej: "Administrador", "Cajero", "Mozo")
+export const baseRoles = pgTable('base_roles', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 50 }).notNull().unique(),      // 'admin', 'cashier'
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 255 }),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Qué sub-acciones incluye cada Rol Plantilla
+export const baseRolePermissions = pgTable('base_role_permissions', {
+  id: serial('id').primaryKey(),
+  baseRoleId: integer('base_role_id').notNull().references(() => baseRoles.id, { onDelete: 'cascade' }),
+  subActionId: integer('sub_action_id').notNull().references(() => subActions.id, { onDelete: 'cascade' }),
+}, (table) => ({
+  unique: uniqueIndex('base_role_perms_unique_idx').on(table.baseRoleId, table.subActionId),
+  roleIdx: index('base_role_perms_role_idx').on(table.baseRoleId),
+}));
+
+// Control por Tenant: qué sub-acciones están habilitadas (según plan)
+export const tenantFeatureGrants = pgTable('tenant_feature_grants', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  subActionId: integer('sub_action_id').notNull().references(() => subActions.id, { onDelete: 'cascade' }),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow(),
+  grantedBy: integer('granted_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  unique: uniqueIndex('tenant_feature_grants_unique_idx').on(table.tenantId, table.subActionId),
+  tenantIdx: index('tenant_feature_grants_tenant_idx').on(table.tenantId),
+}));
+
+// Control por Tenant: qué roles plantilla están disponibles para clonar
+export const tenantRoleGrants = pgTable('tenant_role_grants', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  baseRoleId: integer('base_role_id').notNull().references(() => baseRoles.id, { onDelete: 'cascade' }),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow(),
+  grantedBy: integer('granted_by').references(() => users.id, { onDelete: 'set null' }),
+}, (table) => ({
+  unique: uniqueIndex('tenant_role_grants_unique_idx').on(table.tenantId, table.baseRoleId),
+  tenantIdx: index('tenant_role_grants_tenant_idx').on(table.tenantId),
+}));
+
+// ── Relations RBAC Master ────────────────────────────────────────────────────
+
+export const actionsRelations = relations(actions, ({ many }) => ({
+  subActions: many(subActions),
+}));
+
+export const subActionsRelations = relations(subActions, ({ one, many }) => ({
+  action: one(actions, { fields: [subActions.actionId], references: [actions.id] }),
+  baseRolePermissions: many(baseRolePermissions),
+  tenantFeatureGrants: many(tenantFeatureGrants),
+}));
+
+export const baseRolesRelations = relations(baseRoles, ({ many }) => ({
+  permissions: many(baseRolePermissions),
+  tenantRoleGrants: many(tenantRoleGrants),
+}));
+
+export const baseRolePermissionsRelations = relations(baseRolePermissions, ({ one }) => ({
+  baseRole: one(baseRoles, { fields: [baseRolePermissions.baseRoleId], references: [baseRoles.id] }),
+  subAction: one(subActions, { fields: [baseRolePermissions.subActionId], references: [subActions.id] }),
+}));
+
+export const tenantFeatureGrantsRelations = relations(tenantFeatureGrants, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantFeatureGrants.tenantId], references: [tenants.id] }),
+  subAction: one(subActions, { fields: [tenantFeatureGrants.subActionId], references: [subActions.id] }),
+  grantedByUser: one(users, { fields: [tenantFeatureGrants.grantedBy], references: [users.id] }),
+}));
+
+export const tenantRoleGrantsRelations = relations(tenantRoleGrants, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantRoleGrants.tenantId], references: [tenants.id] }),
+  baseRole: one(baseRoles, { fields: [tenantRoleGrants.baseRoleId], references: [baseRoles.id] }),
+  grantedByUser: one(users, { fields: [tenantRoleGrants.grantedBy], references: [users.id] }),
 }));

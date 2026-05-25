@@ -1,5 +1,5 @@
 import { masterDb } from "@/db";
-import { tenants } from "@/db/schema";
+import { tenants } from "@/db/master/schema";
 import { redis } from "@/utils/redis";
 import { eq } from "drizzle-orm";
 

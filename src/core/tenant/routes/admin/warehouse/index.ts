@@ -11,10 +11,10 @@ import {
   validateCreateRecipe,
   validateCreateSalesDischarge,
   validateUpsertSetting,
-} from '../../../validations/warehouse/warehouse.validation';
-import * as catalog from '../../../controllers/warehouse/catalog.controller';
-import * as movements from '../../../controllers/warehouse/movements.controller';
-import * as recipesLedger from '../../../controllers/warehouse/recipes-ledger.controller';
+} from '../../../validations/admin/warehouse/warehouse.validation';
+import * as catalog from '../../../controllers/admin/warehouse/catalog.controller';
+import * as movements from '../../../controllers/admin/warehouse/movements.controller';
+import * as recipesLedger from '../../../controllers/admin/warehouse/recipes-ledger.controller';
 
 const routes = new Hono();
 
@@ -26,10 +26,6 @@ routes.get('/families', catalog.listFamilies);
 routes.post('/families', catalog.createFamily);
 routes.put('/families/:id', catalog.updateFamily);
 
-routes.get('/subfamilies', catalog.listSubfamilies);
-routes.post('/subfamilies', catalog.createSubfamily);
-routes.put('/subfamilies/:id', catalog.updateSubfamily);
-
 routes.get('/areas', catalog.listAreas);
 routes.post('/areas', catalog.createArea);
 routes.put('/areas/:id', catalog.updateArea);
@@ -38,6 +34,10 @@ routes.get('/suppliers', catalog.listSuppliers);
 routes.get('/suppliers/:id', catalog.getSupplier);
 routes.post('/suppliers', catalog.createSupplier);
 routes.put('/suppliers/:id', catalog.updateSupplier);
+
+routes.get('/measurement-units', catalog.listMeasurementUnits);
+routes.post('/measurement-units', catalog.createMeasurementUnit);
+routes.put('/measurement-units/:id', catalog.updateMeasurementUnit);
 
 routes.get('/items', catalog.listItems);
 routes.post('/items', catalog.createItem);
@@ -98,7 +98,9 @@ routes.post('/recipes', validateCreateRecipe, recipesLedger.createRecipe);
 routes.put('/recipes/:id', recipesLedger.updateRecipe);
 
 // ── Flujo 8 — Descarga de venta ──────────────────────────────────────────────
+routes.get('/sales-discharge', recipesLedger.listSalesDischarges);
 routes.get('/sales-discharge/preview/:orderId', recipesLedger.previewSalesDischarge);
+routes.get('/sales-discharge/:id', recipesLedger.getSalesDischarge);
 routes.post('/sales-discharge', validateCreateSalesDischarge, recipesLedger.createSalesDischarge);
 routes.post('/sales-discharge/:id/process', recipesLedger.processSalesDischarge);
 

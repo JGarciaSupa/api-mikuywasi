@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import type { AuditActor } from '../core/tenant/services/warehouse/types';
+import type { AuditActor } from '../core/tenant/services/admin/warehouse/types';
 
 export function getAuditActor(c: Context): AuditActor {
   const payload = c.get('jwtPayload');
@@ -23,7 +23,7 @@ export function jsonError(c: Context, error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
   const status =
     message.includes('no encontrad') || message.includes('no existe') ? 404
-    : message.includes('GENERADO') || message.includes('draft') || message.includes('inválid') ? 400
-    : 500;
+      : message.includes('GENERADO') || message.includes('draft') || message.includes('inválid') ? 400
+        : 500;
   return c.json({ success: false, message }, status);
 }
