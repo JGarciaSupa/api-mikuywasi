@@ -13,16 +13,6 @@ export const itemFamilies = pgTable('item_families', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
-export const itemSubfamilies = pgTable('item_subfamilies', {
-	id: serial('id').primaryKey(),
-	familyId: integer('family_id').notNull().references(() => itemFamilies.id),
-	name: varchar('name', { length: 100 }).notNull(),
-	description: varchar('description', { length: 255 }),
-	isActive: boolean('is_active').default(true).notNull(),
-}, (table) => ({
-	familyNameUnique: uniqueIndex('item_subfamilies_family_name_idx').on(table.familyId, table.name),
-}));
-
 export const storageAreas = pgTable('storage_areas', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 100 }).notNull().unique(),
@@ -48,23 +38,35 @@ export const suppliers = pgTable('suppliers', {
 });
 
 // ==========================================
+// 🏬 WAREHOUSE — MEASUREMENT UNITS CATALOG
+// ==========================================
+
+export const measurementUnits = pgTable('measurement_units', {
+	id: serial('id').primaryKey(),
+	code: varchar('code', { length: 30 }).notNull().unique(),
+	name: varchar('name', { length: 100 }).notNull(),
+	dimension: varchar('dimension', { length: 50 }).notNull(),
+	baseFactor: decimal('base_factor', { precision: 14, scale: 6 }),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }),
+});
+
+// ==========================================
 // 🏬 WAREHOUSE — ITEM MASTER
 // ==========================================
 
 export const items = pgTable('items', {
 	id: serial('id').primaryKey(),
 	code: varchar('code', { length: 20 }).notNull().unique(),
-	fullDescription: varchar('full_description', { length: 200 }).notNull(),
 	shortDescription: varchar('short_description', { length: 100 }).notNull(),
-	subfamilyId: integer('subfamily_id').notNull().references(() => itemSubfamilies.id),
-	itemType: varchar('item_type', { length: 50, enum: ['goods', 'service', 'fixed_asset'] as const })
-		.notNull().default('goods'),
-	ledgerUnit: varchar('ledger_unit', { length: 30 }).notNull(),
-	costUnit: varchar('cost_unit', { length: 30 }).notNull(),
+	familyId: integer('family_id').references(() => itemFamilies.id),
+	ledgerUnitId: integer('ledger_unit_id').references(() => measurementUnits.id),
+	costUnitId: integer('cost_unit_id').references(() => measurementUnits.id),
+	ledgerUnit: varchar('ledger_unit', { length: 30 }).notNull().default(''),
+	costUnit: varchar('cost_unit', { length: 30 }).notNull().default(''),
 	conversionFactor: decimal('conversion_factor', { precision: 12, scale: 4 }).notNull().default('1'),
 	minStock: decimal('min_stock', { precision: 12, scale: 3 }).notNull().default('0'),
-	maxStock: decimal('max_stock', { precision: 12, scale: 3 }).notNull().default('0'),
-	targetStock: decimal('target_stock', { precision: 12, scale: 3 }).notNull().default('0'),
 	currentStock: decimal('current_stock', { precision: 12, scale: 3 }).notNull().default('0'),
 	expiryDays: integer('expiry_days').notNull().default(0),
 	marketPrice: decimal('market_price', { precision: 12, scale: 4 }).notNull().default('0'),
@@ -83,7 +85,7 @@ export const items = pgTable('items', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
 	updatedBy: varchar('updated_by', { length: 100 }),
 }, (table) => ({
-	subfamilyIdx: index('items_subfamily_idx').on(table.subfamilyId),
+	familyIdx: index('items_family_idx').on(table.familyId),
 	codeIdx: index('items_code_idx').on(table.code),
 	activeIdx: index('items_active_idx').on(table.isActive),
 }));
@@ -399,7 +401,6 @@ export const wasteLog = pgTable('waste_log', {
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	familyId: integer('family_id').notNull().references(() => itemFamilies.id),
-	subfamilyId: integer('subfamily_id').notNull().references(() => itemSubfamilies.id),
 	date: date('date').notNull(),
 	usedQty: decimal('used_qty', { precision: 12, scale: 3 }).notNull(),
 	waste: decimal('waste', { precision: 12, scale: 3 }).notNull(),
@@ -588,12 +589,12 @@ export const auditLog = pgTable('audit_log', {
 // 🔗 RELATIONS — WAREHOUSE
 // ==========================================
 
-export const itemFamiliesRelations = relations(itemFamilies, ({ many }) => ({
-	subfamilies: many(itemSubfamilies),
+export const measurementUnitsRelations = relations(measurementUnits, ({ many }) => ({
+	itemsAsLedger: many(items, { relationName: 'ledgerUnit' }),
+	itemsAsCost: many(items, { relationName: 'costUnit' }),
 }));
 
-export const itemSubfamiliesRelations = relations(itemSubfamilies, ({ one, many }) => ({
-	family: one(itemFamilies, { fields: [itemSubfamilies.familyId], references: [itemFamilies.id] }),
+export const itemFamiliesRelations = relations(itemFamilies, ({ many }) => ({
 	items: many(items),
 }));
 
@@ -613,7 +614,9 @@ export const suppliersRelations = relations(suppliers, ({ many }) => ({
 }));
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
-	subfamily: one(itemSubfamilies, { fields: [items.subfamilyId], references: [itemSubfamilies.id] }),
+	family: one(itemFamilies, { fields: [items.familyId], references: [itemFamilies.id] }),
+	ledgerUnitRef: one(measurementUnits, { fields: [items.ledgerUnitId], references: [measurementUnits.id], relationName: 'ledgerUnit' }),
+	costUnitRef: one(measurementUnits, { fields: [items.costUnitId], references: [measurementUnits.id], relationName: 'costUnit' }),
 	areaAssignments: many(itemAreaAssignments),
 	recipeLines: many(recipeLines),
 	batches: many(batches),

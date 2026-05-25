@@ -21,26 +21,6 @@ export const createFamily = async (c: Context) => {
   }
 };
 
-export const listSubfamilies = async (c: Context) => {
-  try {
-    const familyId = c.req.query('familyId') ? parseInt(c.req.query('familyId')!) : undefined;
-    const data = await catalog.listSubfamilies(familyId);
-    return c.json({ success: true, data });
-  } catch (e) {
-    return jsonError(c, e, 'Error al listar subfamilias');
-  }
-};
-
-export const createSubfamily = async (c: Context) => {
-  try {
-    const body = await c.req.json();
-    const data = await catalog.createSubfamily(body);
-    return c.json({ success: true, data }, 201);
-  } catch (e) {
-    return jsonError(c, e, 'Error al crear subfamilia');
-  }
-};
-
 export const listAreas = async (c: Context) => {
   try {
     const data = await catalog.listAreas();
@@ -83,7 +63,7 @@ export const listItems = async (c: Context) => {
   try {
     const data = await catalog.listItems({
       search: c.req.query('search'),
-      subfamilyId: c.req.query('subfamilyId') ? parseInt(c.req.query('subfamilyId')!) : undefined,
+      familyId: c.req.query('familyId') ? parseInt(c.req.query('familyId')!) : undefined,
       isActive: c.req.query('isActive') === 'true' ? true : c.req.query('isActive') === 'false' ? false : undefined,
     });
     return c.json({ success: true, data });
@@ -157,18 +137,6 @@ export const updateFamily = async (c: Context) => {
   }
 };
 
-export const updateSubfamily = async (c: Context) => {
-  try {
-    const id = parseInt(c.req.param('id'));
-    const body = await c.req.json();
-    const data = await catalog.updateSubfamily(id, body);
-    if (!data) return c.json({ success: false, message: 'Subfamilia no encontrada' }, 404);
-    return c.json({ success: true, data });
-  } catch (e) {
-    return jsonError(c, e, 'Error al actualizar subfamilia');
-  }
-};
-
 export const updateArea = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id'));
@@ -213,5 +181,39 @@ export const updateItem = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al actualizar artículo');
+  }
+};
+
+// ─── Unidades de medida ──────────────────────────────────────
+
+export const listMeasurementUnits = async (c: Context) => {
+  try {
+    const dimension = c.req.query('dimension') as 'weight' | 'volume' | 'unit' | 'length' | undefined;
+    const data = await catalog.listMeasurementUnits(dimension);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al listar unidades de medida');
+  }
+};
+
+export const createMeasurementUnit = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    const data = await catalog.createMeasurementUnit(body);
+    return c.json({ success: true, data }, 201);
+  } catch (e) {
+    return jsonError(c, e, 'Error al crear unidad de medida');
+  }
+};
+
+export const updateMeasurementUnit = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id'));
+    const body = await c.req.json();
+    const data = await catalog.updateMeasurementUnit(id, body);
+    if (!data) return c.json({ success: false, message: 'Unidad no encontrada' }, 404);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al actualizar unidad de medida');
   }
 };

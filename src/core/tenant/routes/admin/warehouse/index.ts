@@ -26,10 +26,6 @@ routes.get('/families', catalog.listFamilies);
 routes.post('/families', catalog.createFamily);
 routes.put('/families/:id', catalog.updateFamily);
 
-routes.get('/subfamilies', catalog.listSubfamilies);
-routes.post('/subfamilies', catalog.createSubfamily);
-routes.put('/subfamilies/:id', catalog.updateSubfamily);
-
 routes.get('/areas', catalog.listAreas);
 routes.post('/areas', catalog.createArea);
 routes.put('/areas/:id', catalog.updateArea);
@@ -38,6 +34,10 @@ routes.get('/suppliers', catalog.listSuppliers);
 routes.get('/suppliers/:id', catalog.getSupplier);
 routes.post('/suppliers', catalog.createSupplier);
 routes.put('/suppliers/:id', catalog.updateSupplier);
+
+routes.get('/measurement-units', catalog.listMeasurementUnits);
+routes.post('/measurement-units', catalog.createMeasurementUnit);
+routes.put('/measurement-units/:id', catalog.updateMeasurementUnit);
 
 routes.get('/items', catalog.listItems);
 routes.post('/items', catalog.createItem);

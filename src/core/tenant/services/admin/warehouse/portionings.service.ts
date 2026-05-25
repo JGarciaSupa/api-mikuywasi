@@ -4,7 +4,6 @@ import {
   portioningLines,
   items,
   wasteLog,
-  itemSubfamilies,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundQty, roundMoney, weightedAveragePrice } from './shared/numbers';
@@ -170,17 +169,11 @@ export async function processPortioning(id: number, actor?: AuditActor) {
 
     const waste = toNum(doc.waste);
     if (waste > 0 && source) {
-      const [sub] = await tx
-        .select()
-        .from(itemSubfamilies)
-        .where(eq(itemSubfamilies.id, source.subfamilyId));
-
       await tx.insert(wasteLog).values({
         portioningId: id,
         itemId: doc.sourceItemId,
         areaId: doc.areaId,
-        familyId: sub?.familyId ?? source.subfamilyId,
-        subfamilyId: source.subfamilyId,
+        familyId: source.familyId,
         date: new Date().toISOString().slice(0, 10),
         usedQty: String(inputQty),
         waste: String(waste),

@@ -3,7 +3,7 @@
  * Uso: bun run src/scripts/seed-tenant.ts <tenantId>
  *
  * Crea datos demo en: tenant_configs, payment_methods, tables, categories,
- * products, social_links, item_families, item_subfamilies, storage_areas,
+ * products, social_links, item_families, storage_areas,
  * suppliers, items, item_area_assignments y un usuario admin.
  *
  * Es IDEMPOTENTE: usa onConflictDoNothing en todos los inserts.
@@ -171,28 +171,6 @@ async function main() {
     allFamilies.forEach((f) => { fMap[f.name] = f.id; });
     log(`${allFamilies.length} familias`);
 
-    // ── item_subfamilies ────────────────────────────────────────────────────
-    section('item_subfamilies');
-    const subfamilyData = [
-      { familyId: fMap['Carnes y Aves'], name: 'Res' },
-      { familyId: fMap['Carnes y Aves'], name: 'Pollo' },
-      { familyId: fMap['Carnes y Aves'], name: 'Cerdo' },
-      { familyId: fMap['Carnes y Aves'], name: 'Pescado y Mariscos' },
-      { familyId: fMap['Verduras y Frutas'], name: 'Verduras' },
-      { familyId: fMap['Verduras y Frutas'], name: 'Frutas' },
-      { familyId: fMap['Abarrotes'], name: 'Granos y Cereales' },
-      { familyId: fMap['Abarrotes'], name: 'Aceites y Salsas' },
-      { familyId: fMap['Lácteos'], name: 'Quesos y Huevos' },
-      { familyId: fMap['Lácteos'], name: 'Cremas y Mantequilla' },
-      { familyId: fMap['Bebidas e Insumos'], name: 'Bebidas' },
-      { familyId: fMap['Condimentos y Especias'], name: 'Especias' },
-    ].filter((sf) => sf.familyId);
-    await db.insert(s.itemSubfamilies).values(subfamilyData as any).onConflictDoNothing();
-    const allSubfamilies = await db.select().from(s.itemSubfamilies);
-    const sfMap: Record<string, number> = {};
-    allSubfamilies.forEach((sf) => { sfMap[sf.name] = sf.id; });
-    log(`${allSubfamilies.length} subfamilias`);
-
     // ── storage_areas ───────────────────────────────────────────────────────
     section('storage_areas');
     await db.insert(s.storageAreas).values([
@@ -219,30 +197,30 @@ async function main() {
     section('items');
     const itemsData = [
       // Carnes
-      { code: 'CAR-001', fullDescription: 'Lomo fino de res', shortDescription: 'Lomo fino', subfamilyId: sfMap['Res'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '5.000', avgPrice: '35.0000', minStock: '2', maxStock: '15' },
-      { code: 'CAR-002', fullDescription: 'Pechuga de pollo sin hueso', shortDescription: 'Pechuga pollo', subfamilyId: sfMap['Pollo'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '8.000', avgPrice: '12.0000', minStock: '3', maxStock: '20' },
-      { code: 'CAR-003', fullDescription: 'Filete de trucha fresca', shortDescription: 'Trucha filete', subfamilyId: sfMap['Pescado y Mariscos'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '4.000', avgPrice: '22.0000', minStock: '2', maxStock: '10' },
-      { code: 'CAR-004', fullDescription: 'Filete de pescado (merluza)', shortDescription: 'Filete merluza', subfamilyId: sfMap['Pescado y Mariscos'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '3.000', avgPrice: '18.0000', minStock: '1', maxStock: '8', portionable: true },
+      { code: 'CAR-001', shortDescription: 'Lomo fino', familyId: fMap['Carnes y Aves'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '5.000', avgPrice: '35.0000', minStock: '2' },
+      { code: 'CAR-002', shortDescription: 'Pechuga pollo', familyId: fMap['Carnes y Aves'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '8.000', avgPrice: '12.0000', minStock: '3' },
+      { code: 'CAR-003', shortDescription: 'Trucha filete', familyId: fMap['Carnes y Aves'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '4.000', avgPrice: '22.0000', minStock: '2' },
+      { code: 'CAR-004', shortDescription: 'Filete merluza', familyId: fMap['Carnes y Aves'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '3.000', avgPrice: '18.0000', minStock: '1', portionable: true },
       // Verduras
-      { code: 'VER-001', fullDescription: 'Papa blanca por kilogramo', shortDescription: 'Papa blanca', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '20.000', avgPrice: '2.5000', minStock: '5', maxStock: '50' },
-      { code: 'VER-002', fullDescription: 'Cebolla roja por kilogramo', shortDescription: 'Cebolla roja', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '10.000', avgPrice: '2.0000', minStock: '3', maxStock: '20' },
-      { code: 'VER-003', fullDescription: 'Tomate fresco por kilogramo', shortDescription: 'Tomate', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '8.000', avgPrice: '2.5000', minStock: '2', maxStock: '15' },
-      { code: 'VER-004', fullDescription: 'Ajo pelado por kilogramo', shortDescription: 'Ajo pelado', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '2.000', avgPrice: '12.0000', minStock: '0.5', maxStock: '5' },
-      { code: 'VER-005', fullDescription: 'Limón sutil por kilogramo', shortDescription: 'Limón sutil', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '5.000', avgPrice: '3.0000', minStock: '2', maxStock: '10' },
+      { code: 'VER-001', shortDescription: 'Papa blanca', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '20.000', avgPrice: '2.5000', minStock: '5' },
+      { code: 'VER-002', shortDescription: 'Cebolla roja', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '10.000', avgPrice: '2.0000', minStock: '3' },
+      { code: 'VER-003', shortDescription: 'Tomate', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '8.000', avgPrice: '2.5000', minStock: '2' },
+      { code: 'VER-004', shortDescription: 'Ajo pelado', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '2.000', avgPrice: '12.0000', minStock: '0.5' },
+      { code: 'VER-005', shortDescription: 'Limón sutil', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '5.000', avgPrice: '3.0000', minStock: '2' },
       // Abarrotes
-      { code: 'ABA-001', fullDescription: 'Arroz extra por kilogramo', shortDescription: 'Arroz extra', subfamilyId: sfMap['Granos y Cereales'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '25.000', avgPrice: '3.5000', minStock: '5', maxStock: '50' },
-      { code: 'ABA-002', fullDescription: 'Aceite vegetal litro', shortDescription: 'Aceite vegetal', subfamilyId: sfMap['Aceites y Salsas'], ledgerUnit: 'LT', costUnit: 'LT', currentStock: '6.000', avgPrice: '8.0000', minStock: '2', maxStock: '12' },
-      { code: 'ABA-003', fullDescription: 'Sillao / Soya oscuro 1L', shortDescription: 'Sillao', subfamilyId: sfMap['Aceites y Salsas'], ledgerUnit: 'LT', costUnit: 'LT', currentStock: '3.000', avgPrice: '6.0000', minStock: '1', maxStock: '6' },
+      { code: 'ABA-001', shortDescription: 'Arroz extra', familyId: fMap['Abarrotes'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '25.000', avgPrice: '3.5000', minStock: '5' },
+      { code: 'ABA-002', shortDescription: 'Aceite vegetal', familyId: fMap['Abarrotes'], ledgerUnit: 'LT', costUnit: 'LT', currentStock: '6.000', avgPrice: '8.0000', minStock: '2' },
+      { code: 'ABA-003', shortDescription: 'Sillao', familyId: fMap['Abarrotes'], ledgerUnit: 'LT', costUnit: 'LT', currentStock: '3.000', avgPrice: '6.0000', minStock: '1' },
       // Lácteos
-      { code: 'LAC-001', fullDescription: 'Queso fresco por kilogramo', shortDescription: 'Queso fresco', subfamilyId: sfMap['Quesos y Huevos'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '3.000', avgPrice: '18.0000', minStock: '1', maxStock: '8' },
-      { code: 'LAC-002', fullDescription: 'Huevos por unidad', shortDescription: 'Huevo', subfamilyId: sfMap['Quesos y Huevos'], ledgerUnit: 'UND', costUnit: 'UND', currentStock: '60.000', avgPrice: '0.5000', minStock: '12', maxStock: '120' },
+      { code: 'LAC-001', shortDescription: 'Queso fresco', familyId: fMap['Lácteos'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '3.000', avgPrice: '18.0000', minStock: '1' },
+      { code: 'LAC-002', shortDescription: 'Huevo', familyId: fMap['Lácteos'], ledgerUnit: 'UND', costUnit: 'UND', currentStock: '60.000', avgPrice: '0.5000', minStock: '12' },
       // Bebidas
-      { code: 'BEB-001', fullDescription: 'Maíz morado seco por kilogramo', shortDescription: 'Maíz morado', subfamilyId: sfMap['Bebidas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '4.000', avgPrice: '5.0000', minStock: '1', maxStock: '10' },
-      { code: 'BEB-002', fullDescription: 'Azúcar rubia por kilogramo', shortDescription: 'Azúcar rubia', subfamilyId: sfMap['Especias'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '10.000', avgPrice: '3.0000', minStock: '3', maxStock: '20' },
+      { code: 'BEB-001', shortDescription: 'Maíz morado', familyId: fMap['Bebidas e Insumos'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '4.000', avgPrice: '5.0000', minStock: '1' },
+      { code: 'BEB-002', shortDescription: 'Azúcar rubia', familyId: fMap['Condimentos y Especias'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '10.000', avgPrice: '3.0000', minStock: '3' },
       // Especias
-      { code: 'ESP-001', fullDescription: 'Ají amarillo pasta por kilogramo', shortDescription: 'Ají amarillo pasta', subfamilyId: sfMap['Especias'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '2.000', avgPrice: '8.0000', minStock: '0.5', maxStock: '5' },
-      { code: 'ESP-002', fullDescription: 'Culantro fresco por kilogramo', shortDescription: 'Culantro', subfamilyId: sfMap['Verduras'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '1.000', avgPrice: '4.0000', minStock: '0.3', maxStock: '3' },
-    ].filter((i) => i.subfamilyId);
+      { code: 'ESP-001', shortDescription: 'Ají amarillo pasta', familyId: fMap['Condimentos y Especias'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '2.000', avgPrice: '8.0000', minStock: '0.5' },
+      { code: 'ESP-002', shortDescription: 'Culantro', familyId: fMap['Verduras y Frutas'], ledgerUnit: 'KG', costUnit: 'KG', currentStock: '1.000', avgPrice: '4.0000', minStock: '0.3' },
+    ].filter((i) => i.familyId);
     await db.insert(s.items).values(itemsData as any).onConflictDoNothing();
     const allItems = await db.select().from(s.items);
     log(`${allItems.length} artículos`);
@@ -456,3 +434,4 @@ main().catch((err) => {
   console.error('\n❌ Error durante el seed:', err.message || err);
   process.exit(1);
 });
+

@@ -50,6 +50,13 @@
       "when": 1779579341463,
       "tag": "0006_document_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779678446551,
+      "tag": "0007_update_items",
+      "breakpoints": true
     }
   ]
 }

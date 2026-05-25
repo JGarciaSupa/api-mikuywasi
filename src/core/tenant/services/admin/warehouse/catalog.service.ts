@@ -1,11 +1,11 @@
-import { eq, asc, and, like, or, sql } from 'drizzle-orm';
+import { eq, asc, and, like, or } from 'drizzle-orm';
 import {
   itemFamilies,
-  itemSubfamilies,
   storageAreas,
   suppliers,
   items,
   itemAreaAssignments,
+  measurementUnits,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 
@@ -24,28 +24,6 @@ export async function createFamily(data: { name: string; description?: string; i
 export async function updateFamily(id: number, data: Partial<{ name: string; description: string; isActive: boolean }>) {
   const db = getTenantDb();
   const [row] = await db.update(itemFamilies).set(data).where(eq(itemFamilies.id, id)).returning();
-  return row;
-}
-
-// ─── Subfamilias ────────────────────────────────────────────
-export async function listSubfamilies(familyId?: number) {
-  const db = getTenantDb();
-  const q = db.select().from(itemSubfamilies);
-  if (familyId) {
-    return q.where(eq(itemSubfamilies.familyId, familyId)).orderBy(asc(itemSubfamilies.name));
-  }
-  return q.orderBy(asc(itemSubfamilies.name));
-}
-
-export async function createSubfamily(data: { familyId: number; name: string; description?: string; isActive?: boolean }) {
-  const db = getTenantDb();
-  const [row] = await db.insert(itemSubfamilies).values(data).returning();
-  return row;
-}
-
-export async function updateSubfamily(id: number, data: Partial<{ familyId: number; name: string; description: string; isActive: boolean }>) {
-  const db = getTenantDb();
-  const [row] = await db.update(itemSubfamilies).set(data).where(eq(itemSubfamilies.id, id)).returning();
   return row;
 }
 
@@ -146,17 +124,57 @@ export async function updateSupplier(id: number, data: Partial<{
   return row;
 }
 
+// ─── Unidades de medida ─────────────────────────────────────
+type UnitDimension = string;
+
+export async function listMeasurementUnits(dimension?: UnitDimension) {
+  const db = getTenantDb();
+  const q = db.select().from(measurementUnits).where(eq(measurementUnits.isActive, true));
+  if (dimension) {
+    return db.select().from(measurementUnits)
+      .where(and(eq(measurementUnits.isActive, true), eq(measurementUnits.dimension, dimension)))
+      .orderBy(asc(measurementUnits.code));
+  }
+  return q.orderBy(asc(measurementUnits.code));
+}
+
+export async function createMeasurementUnit(data: {
+  code: string;
+  name: string;
+  dimension: UnitDimension;
+  baseFactor?: string | null;
+  isActive?: boolean;
+}) {
+  const db = getTenantDb();
+  const [row] = await db.insert(measurementUnits).values(data).returning();
+  return row;
+}
+
+export async function updateMeasurementUnit(id: number, data: Partial<{
+  code: string;
+  name: string;
+  dimension: UnitDimension;
+  baseFactor: string | null;
+  isActive: boolean;
+}>) {
+  const db = getTenantDb();
+  const [row] = await db.update(measurementUnits)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(measurementUnits.id, id))
+    .returning();
+  return row;
+}
+
 // ─── Artículos (maestro) ────────────────────────────────────
-export async function listItems(filters?: { search?: string; subfamilyId?: number; isActive?: boolean }) {
+export async function listItems(filters?: { search?: string; familyId?: number; isActive?: boolean }) {
   const db = getTenantDb();
   const conditions = [];
-  if (filters?.subfamilyId) conditions.push(eq(items.subfamilyId, filters.subfamilyId));
+  if (filters?.familyId) conditions.push(eq(items.familyId, filters.familyId));
   if (filters?.isActive !== undefined) conditions.push(eq(items.isActive, filters.isActive));
   if (filters?.search) {
     conditions.push(
       or(
         like(items.code, `%${filters.search}%`),
-        like(items.fullDescription, `%${filters.search}%`),
         like(items.shortDescription, `%${filters.search}%`)
       )!
     );
@@ -191,16 +209,14 @@ export async function getItemById(id: number) {
 
 export async function createItem(data: {
   code: string;
-  fullDescription: string;
   shortDescription: string;
-  subfamilyId: number;
-  itemType?: 'goods' | 'service' | 'fixed_asset';
-  ledgerUnit: string;
-  costUnit: string;
+  familyId: number;
+  ledgerUnitId?: number;
+  costUnitId?: number;
+  ledgerUnit?: string;
+  costUnit?: string;
   conversionFactor?: string;
   minStock?: string;
-  maxStock?: string;
-  targetStock?: string;
   expiryDays?: number;
   portionable?: boolean;
   recipeDischarge?: boolean;
@@ -212,6 +228,18 @@ export async function createItem(data: {
   const { centralAreaId, ...itemData } = data;
 
   return db.transaction(async (tx) => {
+    // Resolve legacy string unit codes from FK if provided
+    if (itemData.ledgerUnitId && !itemData.ledgerUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, itemData.ledgerUnitId));
+      if (u) itemData.ledgerUnit = u.code;
+    }
+    if (itemData.costUnitId && !itemData.costUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, itemData.costUnitId));
+      if (u) itemData.costUnit = u.code;
+    }
+    if (!itemData.ledgerUnit) itemData.ledgerUnit = '';
+    if (!itemData.costUnit) itemData.costUnit = itemData.ledgerUnit;
+
     const [item] = await tx.insert(items).values(itemData).returning();
 
     const [central] = centralAreaId
@@ -232,12 +260,22 @@ export async function createItem(data: {
 
 export async function updateItem(id: number, data: Record<string, unknown>) {
   const db = getTenantDb();
-  const [row] = await db
-    .update(items)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(items.id, id))
-    .returning();
-  return row;
+
+  return db.transaction(async (tx) => {
+    const payload: Record<string, unknown> = { ...data, updatedAt: new Date() };
+
+    if (payload.ledgerUnitId && !payload.ledgerUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, payload.ledgerUnitId as number));
+      if (u) payload.ledgerUnit = u.code;
+    }
+    if (payload.costUnitId && !payload.costUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, payload.costUnitId as number));
+      if (u) payload.costUnit = u.code;
+    }
+
+    const [row] = await tx.update(items).set(payload).where(eq(items.id, id)).returning();
+    return row;
+  });
 }
 
 export async function assignItemToArea(itemId: number, areaId: number) {
@@ -267,7 +305,7 @@ export async function listItemsByArea(areaId: number, search?: string) {
   if (search) {
     conditions.push(
       or(
-        like(items.fullDescription, `%${search}%`),
+        like(items.shortDescription, `%${search}%`),
         like(items.code, `%${search}%`)
       )!
     );
@@ -281,5 +319,5 @@ export async function listItemsByArea(areaId: number, search?: string) {
     .from(itemAreaAssignments)
     .innerJoin(items, eq(itemAreaAssignments.itemId, items.id))
     .where(and(...conditions))
-    .orderBy(asc(items.fullDescription));
+    .orderBy(asc(items.shortDescription));
 }
