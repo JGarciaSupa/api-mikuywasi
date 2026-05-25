@@ -85,3 +85,79 @@ export const deleteTenantController = async (c: Context) => {
     return c.json({ success: false, message: error.message || 'Error al eliminar el tenant', data: null }, 400);
   }
 };
+
+// ── TENANT USERS CONTROLLERS ─────────────────────────────────────────────────
+
+export const getTenantUsersController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const result = await tenantsService.getTenantUsers(tenantId);
+    return c.json({
+      success: true,
+      message: 'Usuarios obtenidos con éxito',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al obtener usuarios', data: null }, 500);
+  }
+};
+
+export const createTenantUserController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await tenantsService.createTenantUser(tenantId, data);
+    return c.json({
+      success: true,
+      message: 'Usuario creado con éxito',
+      data: result,
+    }, 201);
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al crear usuario', data: null }, 400);
+  }
+};
+
+export const updateTenantUserController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const userId = parseInt(c.req.param('userId') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await tenantsService.updateTenantUser(tenantId, userId, data);
+    return c.json({
+      success: true,
+      message: 'Usuario actualizado con éxito',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al actualizar usuario', data: null }, 400);
+  }
+};
+
+export const updateTenantUserPasswordController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const userId = parseInt(c.req.param('userId') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await tenantsService.updateTenantUserPassword(tenantId, userId, data);
+    return c.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al actualizar contraseña', data: null }, 400);
+  }
+};
+
+export const deleteTenantUserController = async (c: Context) => {
+  try {
+    const tenantId = parseInt(c.req.param('id') || '0');
+    const userId = parseInt(c.req.param('userId') || '0');
+    const result = await tenantsService.deleteTenantUser(tenantId, userId);
+    return c.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al eliminar usuario', data: null }, 400);
+  }
+};

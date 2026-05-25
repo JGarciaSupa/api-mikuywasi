@@ -1,4 +1,4 @@
-import { masterDb } from '../../../db';
+import { masterDb, getTenantDb } from '../../../db';
 import { tenants, subscriptions, plans, dbServers } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
 import { fullSyncTenant } from './rbac-sync.service';
@@ -397,3 +397,135 @@ export const deleteTenant = async (id: number) => {
 
   return { message: 'Tenant eliminado correctamente' };
 };
+
+// ── GET TENANT DATABASE INSTANCE (HELPER) ────────────────────────────────────
+async function getTenantDatabaseInstance(tenantId: number) {
+  const tenantData = await masterDb.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+    with: { server: true },
+  });
+  if (!tenantData) throw new Error('Tenant no encontrado');
+
+  const server = tenantData.server;
+  const host = process.env.DB_HOST_OVERRIDE || server.dbHost;
+  const dbUrl = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${host}:${server.dbPort}/${tenantData.dbName}`;
+
+  return await getTenantDb(dbUrl);
+}
+
+// ── TENANT USERS CRUD SERVICES ───────────────────────────────────────────────
+
+export const getTenantUsers = async (tenantId: number) => {
+  const db = await getTenantDatabaseInstance(tenantId);
+  const items = await db
+    .select({
+      id: tenantSchema.users.id,
+      name: tenantSchema.users.name,
+      username: tenantSchema.users.username,
+      role: tenantSchema.users.role,
+      image: tenantSchema.users.image,
+      createdAt: tenantSchema.users.createdAt,
+      updatedAt: tenantSchema.users.updatedAt,
+    })
+    .from(tenantSchema.users)
+    .orderBy(tenantSchema.users.createdAt);
+  return items;
+};
+
+export const createTenantUser = async (tenantId: number, data: any) => {
+  const db = await getTenantDatabaseInstance(tenantId);
+
+  const [existing] = await db
+    .select()
+    .from(tenantSchema.users)
+    .where(eq(tenantSchema.users.username, data.username));
+  if (existing) throw new Error('El username ya está en uso');
+
+  const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
+
+  const [newUser] = await db
+    .insert(tenantSchema.users)
+    .values({
+      username: data.username,
+      password: hashedPassword,
+      name: data.name,
+      role: data.role,
+      image: data.image ?? null,
+    })
+    .returning();
+
+  const { password: _, ...safeUser } = newUser;
+  return safeUser;
+};
+
+export const updateTenantUser = async (tenantId: number, userId: number, data: any) => {
+  const db = await getTenantDatabaseInstance(tenantId);
+
+  const [existingUser] = await db
+    .select()
+    .from(tenantSchema.users)
+    .where(eq(tenantSchema.users.id, userId));
+  if (!existingUser) throw new Error('Usuario no encontrado');
+
+  if (data.username && data.username !== existingUser.username) {
+    const [taken] = await db
+      .select()
+      .from(tenantSchema.users)
+      .where(eq(tenantSchema.users.username, data.username));
+    if (taken) throw new Error('El username ya está en uso');
+  }
+
+  const [updatedUser] = await db
+    .update(tenantSchema.users)
+    .set({
+      name: data.name ?? existingUser.name,
+      username: data.username ?? existingUser.username,
+      role: data.role ?? existingUser.role,
+      image: data.image !== undefined ? data.image : existingUser.image,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantSchema.users.id, userId))
+    .returning();
+
+  const { password: _, ...safeUser } = updatedUser;
+  return safeUser;
+};
+
+export const updateTenantUserPassword = async (tenantId: number, userId: number, data: any) => {
+  const db = await getTenantDatabaseInstance(tenantId);
+
+  const [existingUser] = await db
+    .select()
+    .from(tenantSchema.users)
+    .where(eq(tenantSchema.users.id, userId));
+  if (!existingUser) throw new Error('Usuario no encontrado');
+
+  const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
+
+  await db
+    .update(tenantSchema.users)
+    .set({
+      password: hashedPassword,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantSchema.users.id, userId));
+
+  return { success: true, message: 'Contraseña actualizada con éxito' };
+};
+
+export const deleteTenantUser = async (tenantId: number, userId: number) => {
+  const db = await getTenantDatabaseInstance(tenantId);
+
+  const [existingUser] = await db
+    .select()
+    .from(tenantSchema.users)
+    .where(eq(tenantSchema.users.id, userId));
+  if (!existingUser) throw new Error('Usuario no encontrado');
+
+  await db
+    .delete(tenantSchema.users)
+    .where(eq(tenantSchema.users.id, userId));
+
+  return { success: true, message: 'Usuario eliminado correctamente' };
+};
+
