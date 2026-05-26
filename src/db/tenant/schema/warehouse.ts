@@ -1,7 +1,8 @@
 import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, jsonb, uniqueIndex, date, bigserial } from 'drizzle-orm/pg-core';
-import { users, products, orders } from './core';
+import { users, products, orders, branches } from './core';
 
+// ==========================================
 // 🏬 WAREHOUSE — CATALOGUE
 // ==========================================
 
@@ -13,16 +14,37 @@ export const itemFamilies = pgTable('item_families', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
-export const storageAreas = pgTable('storage_areas', {
+// Almacenes físicos. Pueden ser centrales (isCentral=true, branchId=null)
+// o propios de una sucursal (branchId=X).
+export const warehouses = pgTable('warehouses', {
 	id: serial('id').primaryKey(),
-	name: varchar('name', { length: 100 }).notNull().unique(),
-	type: varchar('type', { length: 50, enum: ['ambient', 'cold', 'frozen', 'sub_warehouse'] as const })
-		.notNull().default('ambient'),
-	isCentral: boolean('is_central').default(false).notNull(),
+	branchId: integer('branch_id').references(() => branches.id), // null = almacén central
+	name: varchar('name', { length: 100 }).notNull(),
+	code: varchar('code', { length: 20 }).notNull().unique(), // Ej: 'ALM-CENTRAL', 'ALM-MFL'
+	isCentral: boolean('is_central').default(false).notNull(), // true = abastece a todas las sedes
 	description: varchar('description', { length: 255 }),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('warehouses_branch_idx').on(table.branchId),
+	codeIdx: index('warehouses_code_idx').on(table.code),
+}));
+
+// Áreas de almacenamiento dentro de un almacén (ej: Cámara Fría, Ambiente, Congelado).
+// El nombre es único por almacén (no globalmente).
+export const storageAreas = pgTable('storage_areas', {
+	id: serial('id').primaryKey(),
+	warehouseId: integer('warehouse_id').notNull().references(() => warehouses.id),
+	name: varchar('name', { length: 100 }).notNull(),
+	type: varchar('type', { length: 50, enum: ['ambient', 'cold', 'frozen', 'sub_warehouse'] as const })
+		.notNull().default('ambient'),
+	description: varchar('description', { length: 255 }),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	warehouseIdx: index('storage_areas_warehouse_idx').on(table.warehouseId),
+	nameWarehouseUnique: uniqueIndex('storage_areas_name_warehouse_idx').on(table.warehouseId, table.name),
+}));
 
 export const suppliers = pgTable('suppliers', {
 	id: serial('id').primaryKey(),
@@ -77,7 +99,7 @@ export const items = pgTable('items', {
 	dailyControl: boolean('daily_control').default(true).notNull(),
 	portionable: boolean('portionable').default(false).notNull(),
 	useMarketPrice: boolean('use_market_price').default(false).notNull(),
-	recipeDischarge: boolean('recipe_discharge').default(false).notNull(),
+	recipeDischarge: boolean('recipe_discharge').default(false).notNull(), // true = se descarga por receta al vender
 	printCriteria: varchar('print_criteria', { length: 100 }),
 	externalCode: varchar('external_code', { length: 50 }),
 	taxCode: varchar('tax_code', { length: 30 }),
@@ -105,6 +127,7 @@ export const itemAreaAssignments = pgTable('item_area_assignments', {
 
 export const purchaseDocuments = pgTable('purchase_documents', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id), // Qué sede realiza la compra
 	documentType: varchar('document_type', { length: 30, enum: ['invoice', 'receipt', 'delivery_note'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull(),
 	sequential: varchar('sequential', { length: 20 }).notNull(),
@@ -135,6 +158,7 @@ export const purchaseDocuments = pgTable('purchase_documents', {
 }, (table) => ({
 	seriesSeqSupplierUnique: uniqueIndex('purchase_docs_series_seq_supplier_idx')
 		.on(table.series, table.sequential, table.supplierId),
+	branchIdx: index('purchase_docs_branch_idx').on(table.branchId),
 	supplierIdx: index('purchase_docs_supplier_idx').on(table.supplierId),
 	areaIdx: index('purchase_docs_area_idx').on(table.areaId),
 	statusIdx: index('purchase_docs_status_idx').on(table.status),
@@ -161,6 +185,7 @@ export const purchaseDocumentLines = pgTable('purchase_document_lines', {
 
 export const requisitions = pgTable('requisitions', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id), // Qué sede solicita
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	attendedAt: timestamp('attended_at', { withTimezone: true }),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
@@ -171,6 +196,7 @@ export const requisitions = pgTable('requisitions', {
 	createdBy: varchar('created_by', { length: 100 }),
 	processedAt: timestamp('processed_at', { withTimezone: true }),
 }, (table) => ({
+	branchIdx: index('requisitions_branch_idx').on(table.branchId),
 	areaIdx: index('requisitions_area_idx').on(table.areaId),
 	statusIdx: index('requisitions_status_idx').on(table.status),
 	dateIdx: index('requisitions_date_idx').on(table.createdAt),
@@ -192,11 +218,15 @@ export const requisitionLines = pgTable('requisition_lines', {
 // 🏬 WAREHOUSE — STOCK TRANSFERS
 // ==========================================
 
+// Traslados de stock entre áreas/almacenes/sucursales.
+// sourceBranchId/targetBranchId desnormalizados para reportes cross-branch eficientes.
 export const stockTransfers = pgTable('stock_transfers', {
 	id: serial('id').primaryKey(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	sourceAreaId: integer('source_area_id').notNull().references(() => storageAreas.id),
 	targetAreaId: integer('target_area_id').notNull().references(() => storageAreas.id),
+	sourceBranchId: integer('source_branch_id').notNull().references(() => branches.id),
+	targetBranchId: integer('target_branch_id').notNull().references(() => branches.id),
 	requisitionId: integer('requisition_id').references(() => requisitions.id),
 	reference: varchar('reference', { length: 100 }),
 	status: varchar('status', { length: 20, enum: ['draft', 'processed', 'voided'] as const })
@@ -206,6 +236,8 @@ export const stockTransfers = pgTable('stock_transfers', {
 }, (table) => ({
 	sourceIdx: index('stock_transfers_source_idx').on(table.sourceAreaId),
 	targetIdx: index('stock_transfers_target_idx').on(table.targetAreaId),
+	sourceBranchIdx: index('stock_transfers_source_branch_idx').on(table.sourceBranchId),
+	targetBranchIdx: index('stock_transfers_target_branch_idx').on(table.targetBranchId),
 	statusIdx: index('stock_transfers_status_idx').on(table.status),
 }));
 
@@ -225,6 +257,7 @@ export const stockTransferLines = pgTable('stock_transfer_lines', {
 
 export const stockExits = pgTable('stock_exits', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	exitType: varchar('exit_type', {
 		length: 30, enum: [
@@ -246,6 +279,7 @@ export const stockExits = pgTable('stock_exits', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	processedAt: timestamp('processed_at', { withTimezone: true }),
 }, (table) => ({
+	branchIdx: index('stock_exits_branch_idx').on(table.branchId),
 	areaIdx: index('stock_exits_area_idx').on(table.areaId),
 	dateIdx: index('stock_exits_date_idx').on(table.date),
 }));
@@ -267,6 +301,7 @@ export const stockExitLines = pgTable('stock_exit_lines', {
 
 export const portionings = pgTable('portionings', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	date: timestamp('date', { withTimezone: true }).defaultNow(),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	sourceItemId: integer('source_item_id').notNull().references(() => items.id),
@@ -279,7 +314,9 @@ export const portionings = pgTable('portionings', {
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	processedAt: timestamp('processed_at', { withTimezone: true }),
-});
+}, (table) => ({
+	branchIdx: index('portionings_branch_idx').on(table.branchId),
+}));
 
 export const portioningLines = pgTable('portioning_lines', {
 	id: serial('id').primaryKey(),
@@ -298,6 +335,7 @@ export const portioningLines = pgTable('portioning_lines', {
 
 export const inventoryAdjustments = pgTable('inventory_adjustments', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	code: varchar('code', { length: 30 }).notNull().unique(),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	date: date('date').notNull().default(sql`CURRENT_DATE`),
@@ -306,7 +344,9 @@ export const inventoryAdjustments = pgTable('inventory_adjustments', {
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	processedAt: timestamp('processed_at', { withTimezone: true }),
-});
+}, (table) => ({
+	branchIdx: index('inventory_adjustments_branch_idx').on(table.branchId),
+}));
 
 export const adjustmentLines = pgTable('adjustment_lines', {
 	id: serial('id').primaryKey(),
@@ -323,8 +363,11 @@ export const adjustmentLines = pgTable('adjustment_lines', {
 // 📊 LEDGER (KARDEX)
 // ==========================================
 
+// Kardex global del restaurante: todos los movimientos de todos los almacenes.
 export const mainLedger = pgTable('main_ledger', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	warehouseId: integer('warehouse_id').notNull().references(() => warehouses.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow(),
@@ -340,13 +383,17 @@ export const mainLedger = pgTable('main_ledger', {
 	currentStock: decimal('current_stock', { precision: 12, scale: 3 }).notNull().default('0'),
 	avgPrice: decimal('avg_price', { precision: 12, scale: 4 }).notNull().default('0'),
 }, (table) => ({
+	branchIdx: index('main_ledger_branch_idx').on(table.branchId),
+	warehouseIdx: index('main_ledger_warehouse_idx').on(table.warehouseId),
 	itemIdx: index('main_ledger_item_idx').on(table.itemId),
 	areaIdx: index('main_ledger_area_idx').on(table.areaId),
 	dateIdx: index('main_ledger_date_idx').on(table.recordedAt),
 }));
 
+// Kardex por área de almacenamiento (segmentado).
 export const areaLedger = pgTable('area_ledger', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow(),
@@ -361,6 +408,7 @@ export const areaLedger = pgTable('area_ledger', {
 	currentStock: decimal('current_stock', { precision: 12, scale: 3 }).notNull().default('0'),
 	avgPrice: decimal('avg_price', { precision: 12, scale: 4 }).notNull().default('0'),
 }, (table) => ({
+	branchIdx: index('area_ledger_branch_idx').on(table.branchId),
 	itemIdx: index('area_ledger_item_idx').on(table.itemId),
 	areaIdx: index('area_ledger_area_idx').on(table.areaId),
 	dateIdx: index('area_ledger_date_idx').on(table.recordedAt),
@@ -372,6 +420,7 @@ export const areaLedger = pgTable('area_ledger', {
 
 export const purchasePriceHistory = pgTable('purchase_price_history', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	supplierId: integer('supplier_id').notNull().references(() => suppliers.id),
 	documentId: integer('document_id').notNull().references(() => purchaseDocuments.id),
@@ -381,8 +430,10 @@ export const purchasePriceHistory = pgTable('purchase_price_history', {
 	currency: varchar('currency', { length: 10 }).notNull().default('PEN'),
 });
 
+// Snapshot del stock actual por ítem + área (desnormalizado para performance).
 export const stockSnapshot = pgTable('stock_snapshot', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	currentStock: decimal('current_stock', { precision: 12, scale: 3 }).notNull().default('0'),
@@ -391,12 +442,14 @@ export const stockSnapshot = pgTable('stock_snapshot', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	itemAreaUnique: uniqueIndex('stock_snapshot_item_area_idx').on(table.itemId, table.areaId),
+	branchIdx: index('stock_snapshot_branch_idx').on(table.branchId),
 	areaIdx: index('stock_snapshot_area_idx').on(table.areaId),
 	itemIdx: index('stock_snapshot_item_idx').on(table.itemId),
 }));
 
 export const wasteLog = pgTable('waste_log', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	portioningId: integer('portioning_id').notNull().references(() => portionings.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
@@ -408,6 +461,7 @@ export const wasteLog = pgTable('waste_log', {
 	wastePct: decimal('waste_pct', { precision: 6, scale: 2 }).notNull(),
 	unit: varchar('unit', { length: 30 }),
 }, (table) => ({
+	branchIdx: index('waste_log_branch_idx').on(table.branchId),
 	dateIdx: index('waste_log_date_idx').on(table.date),
 	areaIdx: index('waste_log_area_idx').on(table.areaId),
 }));
@@ -416,19 +470,20 @@ export const wasteLog = pgTable('waste_log', {
 // 🍳 RECIPES & SALES DISCHARGE
 // ==========================================
 
+// Receta de un producto: qué insumos y en qué cantidad se consumen al prepararlo.
+// Las recetas son GLOBALES (compartidas entre sucursales).
+// El área de producción por sucursal se configura en branch_recipe_areas.
 export const recipes = pgTable('recipes', {
 	id: serial('id').primaryKey(),
 	productId: integer('product_id').notNull().references(() => products.id),
 	name: varchar('name', { length: 200 }).notNull(),
 	servings: decimal('servings', { precision: 8, scale: 3 }).notNull().default('1'),
 	yieldPct: decimal('yield_pct', { precision: 6, scale: 2 }).notNull().default('100'),
-	productionAreaId: integer('production_area_id').references(() => storageAreas.id),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
 }, (table) => ({
 	productIdx: index('recipes_product_idx').on(table.productId),
-	areaIdx: index('recipes_area_idx').on(table.productionAreaId),
 }));
 
 export const recipeLines = pgTable('recipe_lines', {
@@ -444,6 +499,20 @@ export const recipeLines = pgTable('recipe_lines', {
 	recipeItemUnique: uniqueIndex('recipe_lines_recipe_item_idx').on(table.recipeId, table.itemId),
 	recipeIdx: index('recipe_lines_recipe_idx').on(table.recipeId),
 	itemIdx: index('recipe_lines_item_idx').on(table.itemId),
+}));
+
+// Mapeo de área de producción por sucursal y producto.
+// Determina de qué área de almacén se descuenta el stock cuando se vende
+// un producto en una sucursal específica.
+export const branchRecipeAreas = pgTable('branch_recipe_areas', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+	areaId: integer('area_id').notNull().references(() => storageAreas.id),
+}, (table) => ({
+	branchProductUnique: uniqueIndex('branch_recipe_areas_unique_idx').on(table.branchId, table.productId),
+	branchIdx: index('branch_recipe_areas_branch_idx').on(table.branchId),
+	productIdx: index('branch_recipe_areas_product_idx').on(table.productId),
 }));
 
 export const batches = pgTable('batches', {
@@ -466,9 +535,13 @@ export const batches = pgTable('batches', {
 	expiryIdx: index('batches_expiry_idx').on(table.expiryDate),
 }));
 
+// Descarga de stock generada automáticamente al procesar un pedido.
+// Se dispara cuando order.status cambia a 'preparing'.
+// Usa branch_recipe_areas para saber de qué área descontar por sucursal.
 export const salesDischarge = pgTable('sales_discharge', {
 	id: serial('id').primaryKey(),
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id).unique(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
 	date: timestamp('date', { withTimezone: true }).defaultNow(),
 	status: varchar('status', { length: 20, enum: ['draft', 'processed', 'voided'] as const })
@@ -479,6 +552,7 @@ export const salesDischarge = pgTable('sales_discharge', {
 	processedAt: timestamp('processed_at', { withTimezone: true }),
 }, (table) => ({
 	orderIdx: index('sales_discharge_order_idx').on(table.orderId),
+	branchIdx: index('sales_discharge_branch_idx').on(table.branchId),
 	areaIdx: index('sales_discharge_area_idx').on(table.areaId),
 	statusIdx: index('sales_discharge_status_idx').on(table.status),
 }));
@@ -503,6 +577,7 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 
 export const cashSessions = pgTable('cash_sessions', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	code: varchar('code', { length: 30 }).notNull().unique(),
 	openedBy: varchar('opened_by', { length: 100 }).notNull(),
 	closedBy: varchar('closed_by', { length: 100 }),
@@ -521,6 +596,7 @@ export const cashSessions = pgTable('cash_sessions', {
 	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow(),
 	closedAt: timestamp('closed_at', { withTimezone: true }),
 }, (table) => ({
+	branchIdx: index('cash_sessions_branch_idx').on(table.branchId),
 	statusIdx: index('cash_sessions_status_idx').on(table.status),
 	openedAtIdx: index('cash_sessions_opened_at_idx').on(table.openedAt),
 }));
@@ -541,15 +617,6 @@ export const cashMovements = pgTable('cash_movements', {
 	sessionIdx: index('cash_movements_session_idx').on(table.sessionId),
 	typeIdx: index('cash_movements_type_idx').on(table.movementType),
 	orderIdx: index('cash_movements_order_idx').on(table.orderId),
-}));
-
-export const cashSessionsRelations = relations(cashSessions, ({ many }) => ({
-	movements: many(cashMovements),
-}));
-
-export const cashMovementsRelations = relations(cashMovements, ({ one }) => ({
-	session: one(cashSessions, { fields: [cashMovements.sessionId], references: [cashSessions.id] }),
-	order: one(orders, { fields: [cashMovements.orderId], references: [orders.id] }),
 }));
 
 // ==========================================
@@ -598,7 +665,13 @@ export const itemFamiliesRelations = relations(itemFamilies, ({ many }) => ({
 	items: many(items),
 }));
 
-export const storageAreasRelations = relations(storageAreas, ({ many }) => ({
+export const warehousesRelations = relations(warehouses, ({ one, many }) => ({
+	branch: one(branches, { fields: [warehouses.branchId], references: [branches.id] }),
+	storageAreas: many(storageAreas),
+}));
+
+export const storageAreasRelations = relations(storageAreas, ({ one, many }) => ({
+	warehouse: one(warehouses, { fields: [storageAreas.warehouseId], references: [warehouses.id] }),
 	itemAssignments: many(itemAreaAssignments),
 	purchaseDocuments: many(purchaseDocuments),
 	requisitions: many(requisitions),
@@ -606,7 +679,6 @@ export const storageAreasRelations = relations(storageAreas, ({ many }) => ({
 	portionings: many(portionings),
 	mainLedger: many(mainLedger),
 	areaLedger: many(areaLedger),
-	recipes: many(recipes),
 }));
 
 export const suppliersRelations = relations(suppliers, ({ many }) => ({
@@ -628,6 +700,7 @@ export const itemAreaAssignmentsRelations = relations(itemAreaAssignments, ({ on
 }));
 
 export const purchaseDocumentsRelations = relations(purchaseDocuments, ({ one, many }) => ({
+	branch: one(branches, { fields: [purchaseDocuments.branchId], references: [branches.id] }),
 	supplier: one(suppliers, { fields: [purchaseDocuments.supplierId], references: [suppliers.id] }),
 	area: one(storageAreas, { fields: [purchaseDocuments.areaId], references: [storageAreas.id] }),
 	lines: many(purchaseDocumentLines),
@@ -635,6 +708,7 @@ export const purchaseDocumentsRelations = relations(purchaseDocuments, ({ one, m
 }));
 
 export const requisitionsRelations = relations(requisitions, ({ one, many }) => ({
+	branch: one(branches, { fields: [requisitions.branchId], references: [branches.id] }),
 	area: one(storageAreas, { fields: [requisitions.areaId], references: [storageAreas.id] }),
 	lines: many(requisitionLines),
 	stockTransfers: many(stockTransfers),
@@ -643,35 +717,46 @@ export const requisitionsRelations = relations(requisitions, ({ one, many }) => 
 export const stockTransfersRelations = relations(stockTransfers, ({ one, many }) => ({
 	sourceArea: one(storageAreas, { fields: [stockTransfers.sourceAreaId], references: [storageAreas.id] }),
 	targetArea: one(storageAreas, { fields: [stockTransfers.targetAreaId], references: [storageAreas.id] }),
+	sourceBranch: one(branches, { fields: [stockTransfers.sourceBranchId], references: [branches.id] }),
+	targetBranch: one(branches, { fields: [stockTransfers.targetBranchId], references: [branches.id] }),
 	requisition: one(requisitions, { fields: [stockTransfers.requisitionId], references: [requisitions.id] }),
 	lines: many(stockTransferLines),
 }));
 
 export const stockExitsRelations = relations(stockExits, ({ one, many }) => ({
+	branch: one(branches, { fields: [stockExits.branchId], references: [branches.id] }),
 	area: one(storageAreas, { fields: [stockExits.areaId], references: [storageAreas.id] }),
 	lines: many(stockExitLines),
 }));
 
 export const portioningsRelations = relations(portionings, ({ one, many }) => ({
+	branch: one(branches, { fields: [portionings.branchId], references: [branches.id] }),
 	area: one(storageAreas, { fields: [portionings.areaId], references: [storageAreas.id] }),
 	sourceItem: one(items, { fields: [portionings.sourceItemId], references: [items.id] }),
 	lines: many(portioningLines),
 }));
 
 export const inventoryAdjustmentsRelations = relations(inventoryAdjustments, ({ one, many }) => ({
+	branch: one(branches, { fields: [inventoryAdjustments.branchId], references: [branches.id] }),
 	area: one(storageAreas, { fields: [inventoryAdjustments.areaId], references: [storageAreas.id] }),
 	lines: many(adjustmentLines),
 }));
 
 export const recipesRelations = relations(recipes, ({ one, many }) => ({
 	product: one(products, { fields: [recipes.productId], references: [products.id] }),
-	productionArea: one(storageAreas, { fields: [recipes.productionAreaId], references: [storageAreas.id] }),
 	lines: many(recipeLines),
+	branchAreas: many(branchRecipeAreas),
 }));
 
 export const recipeLinesRelations = relations(recipeLines, ({ one }) => ({
 	recipe: one(recipes, { fields: [recipeLines.recipeId], references: [recipes.id] }),
 	item: one(items, { fields: [recipeLines.itemId], references: [items.id] }),
+}));
+
+export const branchRecipeAreasRelations = relations(branchRecipeAreas, ({ one }) => ({
+	branch: one(branches, { fields: [branchRecipeAreas.branchId], references: [branches.id] }),
+	product: one(products, { fields: [branchRecipeAreas.productId], references: [products.id] }),
+	area: one(storageAreas, { fields: [branchRecipeAreas.areaId], references: [storageAreas.id] }),
 }));
 
 export const batchesRelations = relations(batches, ({ one }) => ({
@@ -682,6 +767,7 @@ export const batchesRelations = relations(batches, ({ one }) => ({
 
 export const salesDischargeRelations = relations(salesDischarge, ({ one, many }) => ({
 	order: one(orders, { fields: [salesDischarge.orderId], references: [orders.id] }),
+	branch: one(branches, { fields: [salesDischarge.branchId], references: [branches.id] }),
 	area: one(storageAreas, { fields: [salesDischarge.areaId], references: [storageAreas.id] }),
 	lines: many(salesDischargeLines),
 }));
@@ -692,12 +778,21 @@ export const salesDischargeLinesRelations = relations(salesDischargeLines, ({ on
 	recipe: one(recipes, { fields: [salesDischargeLines.recipeId], references: [recipes.id] }),
 }));
 
+export const cashSessionsRelations = relations(cashSessions, ({ one, many }) => ({
+	branch: one(branches, { fields: [cashSessions.branchId], references: [branches.id] }),
+	movements: many(cashMovements),
+}));
+
+export const cashMovementsRelations = relations(cashMovements, ({ one }) => ({
+	session: one(cashSessions, { fields: [cashMovements.sessionId], references: [cashSessions.id] }),
+	order: one(orders, { fields: [cashMovements.orderId], references: [orders.id] }),
+}));
+
 export const productsWarehouseRelations = relations(products, ({ many }) => ({
 	recipes: many(recipes),
+	branchRecipeAreas: many(branchRecipeAreas),
 }));
 
 export const ordersWarehouseRelations = relations(orders, ({ one }) => ({
 	salesDischarge: one(salesDischarge, { fields: [orders.id], references: [salesDischarge.orderId] }),
 }));
-
-// ==========================================

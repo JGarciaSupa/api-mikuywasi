@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, integer, timestamp, index, varchar, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { users } from './core';
+import { users, branches } from './core';
 
 // 🛡️ RBAC — CONTROL DE ACCESO LOCAL
 // ==========================================
@@ -45,15 +45,19 @@ export const rolePermissions = pgTable('role_permissions', {
 	roleIdx: index('role_permissions_role_idx').on(table.roleId),
 }));
 
-// Asignación de rol a usuario (1 usuario → 1 rol)
+// Asignación de rol a usuario (1 usuario → 1 rol).
+// branchId permite que un usuario tenga distintos roles en distintas sucursales.
+// null = rol global (admin central sin restricción de sede).
 export const userRoles = pgTable('user_roles', {
 	id: serial('id').primaryKey(),
 	userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
 	roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'restrict' }),
+	branchId: integer('branch_id').references(() => branches.id, { onDelete: 'cascade' }), // null = rol global
 	assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
 	assignedBy: integer('assigned_by').references(() => users.id, { onDelete: 'set null' }),
 }, (table) => ({
 	roleIdx: index('user_roles_role_idx').on(table.roleId),
+	branchIdx: index('user_roles_branch_idx').on(table.branchId),
 }));
 
 // ── Relations RBAC Tenant ────────────────────────────────────────────────────
@@ -85,16 +89,19 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
 
 // Permisos individuales por usuario: grant amplía lo del rol, deny restringe (incluso lo del rol)
 // effective = (role_perms ∪ grants) − denies
+// branchId: null = override global; con valor = override solo en esa sede
 export const userPermissionOverrides = pgTable('user_permission_overrides', {
 	id: serial('id').primaryKey(),
 	userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
 	permCatalogId: integer('perm_catalog_id').notNull().references(() => permissionsCatalog.id, { onDelete: 'cascade' }),
+	branchId: integer('branch_id').references(() => branches.id, { onDelete: 'cascade' }), // null = override global
 	type: varchar('type', { length: 10, enum: ['grant', 'deny'] as const }).notNull().default('grant'),
 	grantedBy: integer('granted_by').references(() => users.id, { onDelete: 'set null' }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	unique: uniqueIndex('user_perm_overrides_unique_idx').on(table.userId, table.permCatalogId),
 	userIdx: index('user_perm_overrides_user_idx').on(table.userId),
+	branchIdx: index('user_perm_overrides_branch_idx').on(table.branchId),
 }));
 
 export const userPermissionOverridesRelations = relations(userPermissionOverrides, ({ one }) => ({

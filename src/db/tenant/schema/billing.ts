@@ -1,12 +1,13 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean } from 'drizzle-orm/pg-core';
-import { orders, products } from './core';
+import { orders, products, branches } from './core';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
 // ==========================================
 
 export const billingSeries = pgTable('billing_series', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id), // Serie es por sucursal
 	documentType: varchar('document_type', { length: 20,
 		enum: ['factura', 'boleta', 'nota_de_venta'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull().unique(),
@@ -17,10 +18,13 @@ export const billingSeries = pgTable('billing_series', {
 	description: varchar('description', { length: 200 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('billing_series_branch_idx').on(table.branchId),
+}));
 
 export const billingDocuments = pgTable('billing_documents', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id), // Documento emitido desde esta sede
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id),
 	seriesId: integer('series_id').notNull().references(() => billingSeries.id),
 	documentType: varchar('document_type', { length: 20,
@@ -52,6 +56,7 @@ export const billingDocuments = pgTable('billing_documents', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
+	branchIdx: index('billing_docs_branch_idx').on(table.branchId),
 	orderIdx: index('billing_docs_order_idx').on(table.orderId),
 	statusIdx: index('billing_docs_status_idx').on(table.status),
 	typeIdx: index('billing_docs_type_idx').on(table.documentType),
@@ -78,11 +83,13 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 
 // ── Relations Billing ────────────────────────────────────────────────────────
 
-export const billingSeriesRelations = relations(billingSeries, ({ many }) => ({
+export const billingSeriesRelations = relations(billingSeries, ({ one, many }) => ({
+	branch: one(branches, { fields: [billingSeries.branchId], references: [branches.id] }),
 	documents: many(billingDocuments),
 }));
 
 export const billingDocumentsRelations = relations(billingDocuments, ({ one, many }) => ({
+	branch: one(branches, { fields: [billingDocuments.branchId], references: [branches.id] }),
 	order: one(orders, { fields: [billingDocuments.orderId], references: [orders.id] }),
 	series: one(billingSeries, { fields: [billingDocuments.seriesId], references: [billingSeries.id] }),
 	lines: many(billingDocumentLines),

@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const tablaLobitoPrueba = pgTable('lobito_prueba', {
 	id: serial('id').primaryKey(),
@@ -11,19 +11,16 @@ export const tablaLobitoPrueba = pgTable('lobito_prueba', {
 })
 
 // ==========================================
-// 🏢 CONFIGURACIÓN LOCAL DEL RESTAURANTE
+// 🏪 SUCURSALES
 // ==========================================
 
-export const tenantConfigs = pgTable('tenant_configs', {
-	id: serial('id').primaryKey(), // Normalmente tendrá un único registro (ID: 1) por base de datos
-	logo: varchar('logo', { length: 255 }),
-	primaryColor: varchar('primary_color', { length: 255 }).default("#000000"),
-	phone: varchar('phone', { length: 255 }),
-	whatsapp: varchar('whatsapp', { length: 255 }),
-	email: varchar('email', { length: 255 }),
-	category: varchar('category', { length: 255 }), // Ej: 'Pollería', 'Chifa'
+export const branches = pgTable('branches', {
+	id: serial('id').primaryKey(),
+	name: varchar('name', { length: 100 }).notNull(),
+	code: varchar('code', { length: 20 }).notNull().unique(), // Ej: 'MFL-01', 'SJM-01'
+	isMain: boolean('is_main').default(false).notNull(),      // true = sucursal principal
 
-	// Datos de Ubicación y Delivery Pesados (Extraídos de la Maestra)
+	// Ubicación y canales propios de esta sede (antes estaban en tenant_configs)
 	address: jsonb('address').$type<{
 		fullAddress: string;
 		lat: number;
@@ -40,21 +37,45 @@ export const tenantConfigs = pgTable('tenant_configs', {
 		closed: boolean;
 	}[]>().default([]),
 
-	// Configuración de Canales de Atención
+	phone: varchar('phone', { length: 30 }),
+	whatsapp: varchar('whatsapp', { length: 30 }),
+	email: varchar('email', { length: 150 }),
+
+	// Canales de atención por sede
 	hasDelivery: boolean('has_delivery').default(false).notNull(),
 	hasPickup: boolean('has_pickup').default(false).notNull(),
 	hasDineIn: boolean('has_dine_in').default(false).notNull(),
 	hasLiveTracking: boolean('has_live_tracking').default(false).notNull(),
 
-	// Restricciones Económicas Locales
+	// Restricciones económicas por sede
 	minOrderAmount: decimal('min_order_amount', { precision: 10, scale: 2 }).default('0.00'),
 	defaultDeliveryFee: decimal('default_delivery_fee', { precision: 10, scale: 2 }).default('0.00'),
 	freeDeliveryThreshold: decimal('free_delivery_threshold', { precision: 10, scale: 2 }),
 
-	// Datos Fiscales locales (RUC / Razón Social para boletas/facturas del restaurante)
-	fiscalId: varchar('fiscal_id', { length: 255 }),
-	fiscalName: varchar('fiscal_name', { length: 255 }),
+	// Datos fiscales propios de la sede (RUC / Razón Social)
+	fiscalId: varchar('fiscal_id', { length: 30 }),
+	fiscalName: varchar('fiscal_name', { length: 200 }),
 
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	codeIdx: index('branches_code_idx').on(table.code),
+	activeIdx: index('branches_active_idx').on(table.isActive),
+}));
+
+// ==========================================
+// 🏢 CONFIGURACIÓN GLOBAL DE MARCA
+// ==========================================
+
+// Un único registro (ID: 1) con datos de marca globales del restaurante.
+// Los datos de ubicación/canales/fiscales ahora viven en branches.
+export const tenantConfigs = pgTable('tenant_configs', {
+	id: serial('id').primaryKey(),
+	logo: varchar('logo', { length: 255 }),
+	primaryColor: varchar('primary_color', { length: 255 }).default("#000000"),
+	email: varchar('email', { length: 255 }),
+	category: varchar('category', { length: 255 }), // Ej: 'Pollería', 'Chifa'
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -72,6 +93,21 @@ export const users = pgTable('users', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// Asignación de usuarios a sucursales.
+// Un usuario puede operar en una o varias sedes.
+// El JWT lleva el branchId de la sesión activa.
+export const userBranches = pgTable('user_branches', {
+	id: serial('id').primaryKey(),
+	userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	isDefault: boolean('is_default').default(false).notNull(), // Sucursal de inicio de sesión por defecto
+	assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	unique: uniqueIndex('user_branches_unique_idx').on(table.userId, table.branchId),
+	userIdx: index('user_branches_user_idx').on(table.userId),
+	branchIdx: index('user_branches_branch_idx').on(table.branchId),
+}));
 
 export const refreshTokens = pgTable('refresh_tokens', {
 	id: serial('id').primaryKey(),
@@ -93,22 +129,31 @@ export const refreshTokens = pgTable('refresh_tokens', {
 export const paymentMethods = pgTable('payment_methods', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 100 }).notNull(), // Ej: 'Yape', 'Efectivo', 'Visa'
+	branchId: integer('branch_id').references(() => branches.id), // null = disponible en todas las sedes
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('payment_methods_branch_idx').on(table.branchId),
+}));
 
 export const tables = pgTable('restaurant_tables', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	name: varchar('name', { length: 50 }).notNull(), // Ej: 'Mesa 1'
-	slug: varchar('slug', { length: 8 }).notNull().unique(), // URL única de la mesa directa en esta BD
+	slug: varchar('slug', { length: 8 }).notNull().unique(), // URL única del QR de la mesa
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('restaurant_tables_branch_idx').on(table.branchId),
+}));
 
 // ==========================================
 // 📦 CATÁLOGO / MENÚ DEL RESTAURANTE
 // ==========================================
+
+// Catálogo global — compartido entre todas las sucursales.
+// Si se necesitan precios distintos por sede en el futuro, usar branch_product_prices.
 
 export const categories = pgTable('categories', {
 	id: serial('id').primaryKey(),
@@ -160,6 +205,7 @@ export const productsRelations = relations(products, ({ one }) => ({
 
 export const orders = pgTable('orders', {
 	id: varchar('id', { length: 12 }).primaryKey(), // NanoID / UUID Corto
+	branchId: integer('branch_id').notNull().references(() => branches.id),
 	customerName: varchar('customer_name', { length: 100 }).notNull(),
 	customerPhone: varchar('customer_phone', { length: 20 }),
 	customerAddress: text('customer_address'),
@@ -189,11 +235,14 @@ export const orders = pgTable('orders', {
 	}).default('unpaid').notNull(),
 
 	trackingCode: varchar('tracking_code', { length: 20 }).unique(),
-	driverId: integer('driver_id').references(() => users.id), // Apunta al repartidor del propio tenant
+	driverId: integer('driver_id').references(() => users.id), // Repartidor de esta sede
 
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('orders_branch_idx').on(table.branchId),
+	statusIdx: index('orders_status_idx').on(table.status),
+}));
 
 export const orderItems = pgTable('order_items', {
 	id: serial('id').primaryKey(),
@@ -214,37 +263,60 @@ export const orderItems = pgTable('order_items', {
 
 export const banners = pgTable('banners', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').references(() => branches.id), // null = banner global
 	url: text('url').notNull(),
 	order: integer('order').notNull().default(0),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('banners_branch_idx').on(table.branchId),
+}));
 
 export const socialLinks = pgTable('social_links', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').references(() => branches.id), // null = link global
 	platform: text('platform').notNull(), // Ej: 'facebook', 'instagram'
 	url: text('url').notNull(),
 	order: integer('order').notNull().default(0),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('social_links_branch_idx').on(table.branchId),
+}));
 
 // ==========================================
 // 🔗 RELATIONS — CORE
 // ==========================================
 
+export const branchesRelations = relations(branches, ({ many }) => ({
+	userBranches: many(userBranches),
+	tables: many(tables),
+	orders: many(orders),
+	paymentMethods: many(paymentMethods),
+	banners: many(banners),
+	socialLinks: many(socialLinks),
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
 	refreshTokens: many(refreshTokens),
+	userBranches: many(userBranches),
+}));
+
+export const userBranchesRelations = relations(userBranches, ({ one }) => ({
+	user: one(users, { fields: [userBranches.userId], references: [users.id] }),
+	branch: one(branches, { fields: [userBranches.branchId], references: [branches.id] }),
 }));
 
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
 	user: one(users, { fields: [refreshTokens.userId], references: [users.id] }),
 }));
 
-export const tablesRelations = relations(tables, ({ many }) => ({
+export const tablesRelations = relations(tables, ({ one, many }) => ({
+	branch: one(branches, { fields: [tables.branchId], references: [branches.id] }),
 	orders: many(orders),
 }));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
+	branch: one(branches, { fields: [orders.branchId], references: [branches.id] }),
 	table: one(tables, { fields: [orders.tableId], references: [tables.id] }),
 	driver: one(users, { fields: [orders.driverId], references: [users.id] }),
 	orderItems: many(orderItems),
