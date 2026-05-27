@@ -18,7 +18,7 @@ export const listRecipes = async (c: Context) => {
 
 export const getRecipe = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await recipes.getRecipeById(id);
     if (!data) return c.json({ success: false, message: 'Receta no encontrada' }, 404);
     return c.json({ success: true, data });
@@ -29,7 +29,7 @@ export const getRecipe = async (c: Context) => {
 
 export const getRecipeByProduct = async (c: Context) => {
   try {
-    const productId = parseInt(c.req.param('productId'));
+    const productId = parseInt(c.req.param('productId') || '0', 10);
     const data = await recipes.getRecipeByProductId(productId);
     if (!data) return c.json({ success: false, message: 'Receta no encontrada para este producto' }, 404);
     return c.json({ success: true, data });
@@ -40,7 +40,7 @@ export const getRecipeByProduct = async (c: Context) => {
 
 export const createRecipe = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await recipes.createRecipe(header, lines);
     return c.json({ success: true, data }, 201);
   } catch (e) {
@@ -50,7 +50,7 @@ export const createRecipe = async (c: Context) => {
 
 export const updateRecipe = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const { lines, ...header } = await c.req.json();
     const data = await recipes.updateRecipe(id, header, lines);
     if (!data) return c.json({ success: false, message: 'Receta no encontrada' }, 404);
@@ -75,7 +75,7 @@ export const listSalesDischarges = async (c: Context) => {
 
 export const getSalesDischarge = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await salesDischarge.getSalesDischargeDetail(id);
     if (!data) return c.json({ success: false, message: 'Descarga no encontrada' }, 404);
     return c.json({ success: true, data });
@@ -86,7 +86,7 @@ export const getSalesDischarge = async (c: Context) => {
 
 export const previewSalesDischarge = async (c: Context) => {
   try {
-    const orderId = c.req.param('orderId');
+    const orderId = c.req.param('orderId') || '';
     const data = await salesDischarge.buildDischargeFromOrder(orderId);
     return c.json({ success: true, data });
   } catch (e) {
@@ -106,7 +106,7 @@ export const createSalesDischarge = async (c: Context) => {
 
 export const processSalesDischarge = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await salesDischarge.processSalesDischarge(id, getAuditActor(c));
     return c.json({ success: true, message: 'Descarga procesada', data });
   } catch (e) {
@@ -116,7 +116,7 @@ export const processSalesDischarge = async (c: Context) => {
 
 export const getKardex = async (c: Context) => {
   try {
-    const areaId = parseInt(c.req.param('areaId'));
+    const areaId = parseInt(c.req.param('areaId') || '0', 10);
     const itemId = c.req.query('itemId') ? parseInt(c.req.query('itemId')!) : undefined;
     const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 100;
     const data = await ledger.getKardexByArea(areaId, itemId, limit);
@@ -160,7 +160,7 @@ export const listSettings = async (c: Context) => {
 
 export const upsertSetting = async (c: Context) => {
   try {
-    const key = c.req.param('key');
+    const key = c.req.param('key') || '';
     const { value } = c.req.valid('json' as never);
     const data = await settings.upsertSetting(key, value, getAuditActor(c));
     return c.json({ success: true, data });

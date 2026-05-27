@@ -1,5 +1,5 @@
-import { products } from '@/db/tenant/schema';
-import { eq, and, ilike, desc, count } from 'drizzle-orm';
+import { products, categories } from '@/db/tenant/schema';
+import { eq, and, ilike, desc, count, inArray, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
 
@@ -8,7 +8,7 @@ const MAX_SIZE = 500;
 export const getAllProducts = async (
   page: number,
   limit: number,
-  filters: { name?: string; categoryId?: number }
+  filters: { name?: string; categoryId?: number; branchId?: number }
 ) => {
   const db = getTenantDb();
   const offset = (page - 1) * limit;
@@ -19,6 +19,24 @@ export const getAllProducts = async (
   }
   if (filters.categoryId) {
     whereClauses.push(eq(products.categoryId, filters.categoryId));
+  }
+  if (filters.branchId) {
+    const branchCategories = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(or(eq(categories.branchId, filters.branchId), isNull(categories.branchId)));
+
+    const categoryIds = branchCategories.map(c => c.id);
+    if (categoryIds.length > 0) {
+      whereClauses.push(
+        or(
+          inArray(products.categoryId, categoryIds),
+          isNull(products.categoryId)
+        )
+      );
+    } else {
+      whereClauses.push(isNull(products.categoryId));
+    }
   }
 
   const where = whereClauses.length > 0 ? and(...whereClauses) : undefined;

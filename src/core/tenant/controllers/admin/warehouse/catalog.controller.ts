@@ -23,7 +23,9 @@ export const createFamily = async (c: Context) => {
 
 export const listAreas = async (c: Context) => {
   try {
-    const data = await catalog.listAreas();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const data = await catalog.listAreas(branchId);
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al listar áreas');
@@ -74,7 +76,7 @@ export const listItems = async (c: Context) => {
 
 export const getItem = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await catalog.getItemById(id);
     if (!data) return c.json({ success: false, message: 'Artículo no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -95,7 +97,7 @@ export const createItem = async (c: Context) => {
 
 export const listItemsByArea = async (c: Context) => {
   try {
-    const areaId = parseInt(c.req.param('areaId'));
+    const areaId = parseInt(c.req.param('areaId') || '0', 10);
     const data = await catalog.listItemsByArea(areaId, c.req.query('search'));
     return c.json({ success: true, data });
   } catch (e) {
@@ -105,7 +107,7 @@ export const listItemsByArea = async (c: Context) => {
 
 export const assignItemArea = async (c: Context) => {
   try {
-    const itemId = parseInt(c.req.param('itemId'));
+    const itemId = parseInt(c.req.param('itemId') || '0', 10);
     const { areaId } = await c.req.json();
     const data = await catalog.assignItemToArea(itemId, areaId);
     return c.json({ success: true, data });
@@ -116,8 +118,8 @@ export const assignItemArea = async (c: Context) => {
 
 export const removeItemArea = async (c: Context) => {
   try {
-    const itemId = parseInt(c.req.param('itemId'));
-    const areaId = parseInt(c.req.param('areaId'));
+    const itemId = parseInt(c.req.param('itemId') || '0', 10);
+    const areaId = parseInt(c.req.param('areaId') || '0', 10);
     await catalog.removeItemFromArea(itemId, areaId);
     return c.json({ success: true, message: 'Asignación eliminada' });
   } catch (e) {
@@ -127,7 +129,7 @@ export const removeItemArea = async (c: Context) => {
 
 export const updateFamily = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
     const data = await catalog.updateFamily(id, body);
     if (!data) return c.json({ success: false, message: 'Familia no encontrada' }, 404);
@@ -139,7 +141,7 @@ export const updateFamily = async (c: Context) => {
 
 export const updateArea = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
     const data = await catalog.updateArea(id, body);
     if (!data) return c.json({ success: false, message: 'Área no encontrada' }, 404);
@@ -151,7 +153,7 @@ export const updateArea = async (c: Context) => {
 
 export const getSupplier = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await catalog.getSupplierById(id);
     if (!data) return c.json({ success: false, message: 'Proveedor no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -162,7 +164,7 @@ export const getSupplier = async (c: Context) => {
 
 export const updateSupplier = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
     const data = await catalog.updateSupplier(id, body);
     if (!data) return c.json({ success: false, message: 'Proveedor no encontrado' }, 404);
@@ -174,7 +176,7 @@ export const updateSupplier = async (c: Context) => {
 
 export const updateItem = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
     const data = await catalog.updateItem(id, body);
     if (!data) return c.json({ success: false, message: 'Artículo no encontrado' }, 404);
@@ -208,7 +210,7 @@ export const createMeasurementUnit = async (c: Context) => {
 
 export const updateMeasurementUnit = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
     const data = await catalog.updateMeasurementUnit(id, body);
     if (!data) return c.json({ success: false, message: 'Unidad no encontrada' }, 404);
@@ -217,3 +219,21 @@ export const updateMeasurementUnit = async (c: Context) => {
     return jsonError(c, e, 'Error al actualizar unidad de medida');
   }
 };
+
+export const deleteArea = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await catalog.deleteArea(id);
+    return c.json({ success: true, message: 'Área eliminada' });
+  } catch (e: any) {
+    const errorMsg = e?.message || '';
+    if (errorMsg.includes('foreign key') || errorMsg.includes('violates foreign key constraint')) {
+      return c.json({
+        success: false,
+        message: 'No se puede eliminar esta área porque tiene movimientos de almacén o artículos asociados. Le recomendamos desactivarla.'
+      }, 400);
+    }
+    return jsonError(c, e, 'Error al eliminar área');
+  }
+};
+

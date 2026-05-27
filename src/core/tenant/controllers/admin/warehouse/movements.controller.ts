@@ -22,7 +22,7 @@ export const listPurchaseDocuments = async (c: Context) => {
 
 export const getPurchaseDocument = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await purchase.getPurchaseDocumentById(id);
     if (!data) return c.json({ success: false, message: 'Documento no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -33,7 +33,7 @@ export const getPurchaseDocument = async (c: Context) => {
 
 export const createPurchaseDocument = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await purchase.createPurchaseDocument(header, lines, getAuditActor(c));
     return c.json({ success: true, message: 'Documento creado', data }, 201);
   } catch (e) {
@@ -43,7 +43,7 @@ export const createPurchaseDocument = async (c: Context) => {
 
 export const processPurchaseDocument = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await purchase.processPurchaseDocument(id, getAuditActor(c));
     return c.json({ success: true, message: 'Documento procesado', data });
   } catch (e) {
@@ -53,7 +53,7 @@ export const processPurchaseDocument = async (c: Context) => {
 
 export const voidPurchaseDocument = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await purchase.voidPurchaseDocument(id, getAuditActor(c));
     return c.json({ success: true, message: 'Documento anulado', data });
   } catch (e) {
@@ -63,7 +63,7 @@ export const voidPurchaseDocument = async (c: Context) => {
 
 export const updatePurchaseDocument = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const { lines, ...header } = await c.req.json();
     const data = await purchase.updatePurchaseDocument(id, header, lines, getAuditActor(c));
     return c.json({ success: true, message: 'Documento actualizado', data });
@@ -87,7 +87,7 @@ export const listRequisitions = async (c: Context) => {
 
 export const createRequisition = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await requisitions.createRequisition(header, lines, getAuditActor(c));
     return c.json({ success: true, data }, 201);
   } catch (e) {
@@ -97,7 +97,7 @@ export const createRequisition = async (c: Context) => {
 
 export const getRequisition = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await requisitions.getRequisitionById(id);
     if (!data) return c.json({ success: false, message: 'Requerimiento no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -108,7 +108,7 @@ export const getRequisition = async (c: Context) => {
 
 export const voidRequisition = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await requisitions.voidRequisition(id, getAuditActor(c));
     return c.json({ success: true, message: 'Requerimiento anulado', data });
   } catch (e) {
@@ -118,7 +118,7 @@ export const voidRequisition = async (c: Context) => {
 
 export const processRequisition = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await requisitions.processRequisition(id, getAuditActor(c));
     return c.json({ success: true, message: 'Requerimiento procesado', data });
   } catch (e) {
@@ -138,7 +138,7 @@ export const listStockTransfers = async (c: Context) => {
 
 export const createStockTransfer = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await transfers.createStockTransfer(header, lines, getAuditActor(c));
     return c.json({ success: true, data }, 201);
   } catch (e) {
@@ -148,7 +148,7 @@ export const createStockTransfer = async (c: Context) => {
 
 export const getStockTransfer = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await transfers.getStockTransferById(id);
     if (!data) return c.json({ success: false, message: 'Transferencia no encontrada' }, 404);
     return c.json({ success: true, data });
@@ -159,7 +159,7 @@ export const getStockTransfer = async (c: Context) => {
 
 export const voidStockTransfer = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await transfers.voidStockTransfer(id, getAuditActor(c));
     return c.json({ success: true, message: 'Transferencia anulada', data });
   } catch (e) {
@@ -169,7 +169,7 @@ export const voidStockTransfer = async (c: Context) => {
 
 export const processStockTransfer = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await transfers.processStockTransfer(id, getAuditActor(c));
     return c.json({ success: true, message: 'Transferencia procesada', data });
   } catch (e) {
@@ -192,7 +192,7 @@ export const listStockExits = async (c: Context) => {
 
 export const createStockExit = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await exits.createStockExit(header, lines, getAuditActor(c));
     return c.json({ success: true, data }, 201);
   } catch (e) {
@@ -202,7 +202,7 @@ export const createStockExit = async (c: Context) => {
 
 export const getStockExit = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await exits.getStockExitById(id);
     if (!data) return c.json({ success: false, message: 'Salida no encontrada' }, 404);
     return c.json({ success: true, data });
@@ -213,7 +213,7 @@ export const getStockExit = async (c: Context) => {
 
 export const voidStockExit = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await exits.voidStockExit(id, getAuditActor(c));
     return c.json({ success: true, message: 'Salida anulada', data });
   } catch (e) {
@@ -223,7 +223,7 @@ export const voidStockExit = async (c: Context) => {
 
 export const processStockExit = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await exits.processStockExit(id, getAuditActor(c));
     return c.json({ success: true, message: 'Salida procesada', data });
   } catch (e) {
@@ -246,7 +246,7 @@ export const listPortionings = async (c: Context) => {
 
 export const createPortioning = async (c: Context) => {
   try {
-    const { lines, ...header } = c.req.valid('json' as never);
+    const { lines, ...header } = c.req.valid('json' as never) as any;
     const data = await portionings.createPortioning(header, lines, getAuditActor(c));
     return c.json({ success: true, data }, 201);
   } catch (e) {
@@ -256,7 +256,7 @@ export const createPortioning = async (c: Context) => {
 
 export const getPortioning = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await portionings.getPortioningById(id);
     if (!data) return c.json({ success: false, message: 'Porcionamiento no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -267,7 +267,7 @@ export const getPortioning = async (c: Context) => {
 
 export const voidPortioning = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await portionings.voidPortioning(id, getAuditActor(c));
     return c.json({ success: true, message: 'Porcionamiento anulado', data });
   } catch (e) {
@@ -277,7 +277,7 @@ export const voidPortioning = async (c: Context) => {
 
 export const processPortioning = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await portionings.processPortioning(id, getAuditActor(c));
     return c.json({ success: true, message: 'Porcionamiento procesado', data });
   } catch (e) {
@@ -300,7 +300,7 @@ export const listAdjustments = async (c: Context) => {
 
 export const getAdjustment = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await adjustments.getInventoryAdjustmentById(id);
     if (!data) return c.json({ success: false, message: 'Ajuste no encontrado' }, 404);
     return c.json({ success: true, data });
@@ -321,7 +321,7 @@ export const openAdjustment = async (c: Context) => {
 
 export const updateAdjustmentLines = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const { lines } = c.req.valid('json' as never);
     const data = await adjustments.updateAdjustmentLines(id, lines);
     return c.json({ success: true, data });
@@ -332,7 +332,7 @@ export const updateAdjustmentLines = async (c: Context) => {
 
 export const closeAdjustment = async (c: Context) => {
   try {
-    const id = parseInt(c.req.param('id'));
+    const id = parseInt(c.req.param('id') || '0', 10);
     const data = await adjustments.closeInventoryAdjustment(id, getAuditActor(c));
     return c.json({ success: true, message: 'Ajuste cerrado', data });
   } catch (e) {

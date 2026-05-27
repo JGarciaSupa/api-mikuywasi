@@ -29,6 +29,7 @@ routes.put('/families/:id', catalog.updateFamily);
 routes.get('/areas', catalog.listAreas);
 routes.post('/areas', catalog.createArea);
 routes.put('/areas/:id', catalog.updateArea);
+routes.delete('/areas/:id', catalog.deleteArea);
 
 routes.get('/suppliers', catalog.listSuppliers);
 routes.get('/suppliers/:id', catalog.getSupplier);

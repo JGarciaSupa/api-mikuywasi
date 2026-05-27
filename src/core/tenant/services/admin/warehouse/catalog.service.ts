@@ -1,4 +1,4 @@
-import { eq, asc, and, like, or } from 'drizzle-orm';
+import { eq, asc, and, like, or, isNull } from 'drizzle-orm';
 import {
   itemFamilies,
   storageAreas,
@@ -30,9 +30,9 @@ export async function updateFamily(id: number, data: Partial<{ name: string; des
 }
 
 // ─── Áreas de almacén ───────────────────────────────────────
-export async function listAreas() {
+export async function listAreas(branchId?: number) {
   const db = getTenantDb();
-  return db
+  const query = db
     .select({
       id: storageAreas.id,
       warehouseId: storageAreas.warehouseId,
@@ -42,10 +42,18 @@ export async function listAreas() {
       isActive: storageAreas.isActive,
       createdAt: storageAreas.createdAt,
       isCentral: warehouses.isCentral,
+      branchId: warehouses.branchId,
     })
     .from(storageAreas)
-    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
-    .orderBy(asc(storageAreas.name));
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id));
+
+  if (branchId) {
+    return await query
+      .where(or(eq(warehouses.branchId, branchId), isNull(warehouses.branchId)))
+      .orderBy(asc(storageAreas.name));
+  }
+
+  return await query.orderBy(asc(storageAreas.name));
 }
 
 export async function getAreaById(id: number) {
@@ -60,6 +68,7 @@ export async function getAreaById(id: number) {
       isActive: storageAreas.isActive,
       createdAt: storageAreas.createdAt,
       isCentral: warehouses.isCentral,
+      branchId: warehouses.branchId,
     })
     .from(storageAreas)
     .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
@@ -74,6 +83,7 @@ export async function createArea(data: {
   description?: string;
   isActive?: boolean;
   isCentral?: boolean;
+  branchId?: number;
 }) {
   const db = getTenantDb();
   let warehouseId = data.warehouseId;
@@ -81,11 +91,18 @@ export async function createArea(data: {
   if (!warehouseId) {
     const isCentral = data.isCentral === true;
 
-    // Find an existing warehouse with matching isCentral
+    // Find an existing warehouse with matching isCentral and branchId (for local)
+    const conditions = [eq(warehouses.isCentral, isCentral)];
+    if (!isCentral && data.branchId) {
+      conditions.push(eq(warehouses.branchId, data.branchId));
+    } else if (!isCentral) {
+      conditions.push(isNull(warehouses.branchId));
+    }
+
     const [existingWh] = await db
       .select()
       .from(warehouses)
-      .where(eq(warehouses.isCentral, isCentral))
+      .where(and(...conditions))
       .limit(1);
 
     if (existingWh) {
@@ -105,10 +122,7 @@ export async function createArea(data: {
           .returning();
         warehouseId = newWh.id;
       } else {
-        // Get the main branch or any branch if possible
-        const [mainBranch] = await db.select().from(branches).where(eq(branches.isMain, true)).limit(1);
-        const branchId = mainBranch?.id || null;
-
+        const branchId = data.branchId || null;
         const [newWh] = await db
           .insert(warehouses)
           .values({
@@ -159,9 +173,84 @@ export async function updateArea(id: number, data: Partial<{
   type: 'ambient' | 'cold' | 'frozen' | 'sub_warehouse';
   description: string;
   isActive: boolean;
+  isCentral: boolean;
+  branchId: number | null;
 }>) {
   const db = getTenantDb();
-  const [row] = await db.update(storageAreas).set(data).where(eq(storageAreas.id, id)).returning();
+  let warehouseId = undefined;
+
+  if (data.isCentral !== undefined || data.branchId !== undefined) {
+    // We need to resolve the target warehouse
+    const [currentArea] = await db
+      .select({
+        isCentral: warehouses.isCentral,
+        branchId: warehouses.branchId,
+      })
+      .from(storageAreas)
+      .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+      .where(eq(storageAreas.id, id))
+      .limit(1);
+
+    const isCentral = data.isCentral !== undefined ? data.isCentral : (currentArea?.isCentral ?? false);
+    const branchId = data.branchId !== undefined ? data.branchId : (currentArea?.branchId ?? null);
+
+    const conditions = [eq(warehouses.isCentral, isCentral)];
+    if (!isCentral && branchId) {
+      conditions.push(eq(warehouses.branchId, branchId));
+    } else if (!isCentral) {
+      conditions.push(isNull(warehouses.branchId));
+    }
+
+    const [existingWh] = await db
+      .select()
+      .from(warehouses)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (existingWh) {
+      warehouseId = existingWh.id;
+    } else {
+      if (isCentral) {
+        const [newWh] = await db
+          .insert(warehouses)
+          .values({
+            name: 'Almacén Central',
+            code: 'ALM-CENTRAL-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+            isCentral: true,
+            isActive: true,
+            description: 'Almacén central autogenerado',
+          })
+          .returning();
+        warehouseId = newWh.id;
+      } else {
+        const [newWh] = await db
+          .insert(warehouses)
+          .values({
+            branchId,
+            name: 'Almacén Local',
+            code: 'ALM-LOCAL-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+            isCentral: false,
+            isActive: true,
+            description: 'Almacén local autogenerado',
+          })
+          .returning();
+        warehouseId = newWh.id;
+      }
+    }
+  }
+
+  const updateData: any = {
+    name: data.name,
+    type: data.type,
+    description: data.description,
+    isActive: data.isActive,
+  };
+
+  if (warehouseId !== undefined) {
+    updateData.warehouseId = warehouseId;
+  }
+
+  const [row] = await db.update(storageAreas).set(updateData).where(eq(storageAreas.id, id)).returning();
 
   const [result] = await db
     .select({
@@ -173,12 +262,19 @@ export async function updateArea(id: number, data: Partial<{
       isActive: storageAreas.isActive,
       createdAt: storageAreas.createdAt,
       isCentral: warehouses.isCentral,
+      branchId: warehouses.branchId,
     })
     .from(storageAreas)
     .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
     .where(eq(storageAreas.id, row.id));
 
   return result;
+}
+
+export async function deleteArea(id: number) {
+  const db = getTenantDb();
+  await db.delete(storageAreas).where(eq(storageAreas.id, id));
+  return true;
 }
 
 // ─── Proveedores ────────────────────────────────────────────
