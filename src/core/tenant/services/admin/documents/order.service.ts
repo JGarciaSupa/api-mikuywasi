@@ -1,6 +1,6 @@
 import { orders, orderItems } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte } from 'drizzle-orm';
-import { getTenantDb } from '../../../../../utils/tenant-context';
+import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 
 export interface GetOrdersFilters {
   page?: number;
@@ -10,6 +10,7 @@ export interface GetOrdersFilters {
   search?: string;
   startDate?: string;
   endDate?: string;
+  branchId?: number;
 }
 
 /**
@@ -24,13 +25,18 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     paymentStatus,
     search,
     startDate,
-    endDate
+    endDate,
+    branchId
   } = filters;
 
   const offset = (page - 1) * limit;
 
   // Construir condiciones
   const conditions = [];
+
+  if (branchId) {
+    conditions.push(eq(orders.branchId, branchId));
+  }
 
   if (status) {
     conditions.push(eq(orders.status, status as any));
@@ -150,10 +156,18 @@ export const updateOrderPaymentStatus = async (id: string, paymentStatus: string
 /**
  * Obtener estadísticas básicas para el dashboard
  */
-export const getOrderStats = async () => {
+export const getOrderStats = async (branchId?: number) => {
   const db = getTenantDb();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const conditions = [gte(orders.createdAt, today)];
+  const statusConditions = [];
+
+  if (branchId) {
+    conditions.push(eq(orders.branchId, branchId));
+    statusConditions.push(eq(orders.branchId, branchId));
+  }
 
   // Ventas de hoy (en total)
   const [todayStats] = await db
@@ -162,11 +176,7 @@ export const getOrderStats = async () => {
       totalSales: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
     })
     .from(orders)
-    .where(
-      and(
-        gte(orders.createdAt, today)
-      )
-    );
+    .where(and(...conditions));
 
   // Conteos por estado
   const statusStats = await db
@@ -175,6 +185,7 @@ export const getOrderStats = async () => {
       count: count()
     })
     .from(orders)
+    .where(statusConditions.length > 0 ? and(...statusConditions) : undefined)
     .groupBy(orders.status);
 
   return {

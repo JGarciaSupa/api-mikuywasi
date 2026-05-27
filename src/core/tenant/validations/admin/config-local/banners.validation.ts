@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 
 export const createBannerSchema = z.object({
   order: z.string().optional().default('0').transform(val => parseInt(val)),
+  branchId: z.string().optional().transform(val => (val ? parseInt(val) : undefined)),
 });
 
 export const updateBannerSchema = z.object({

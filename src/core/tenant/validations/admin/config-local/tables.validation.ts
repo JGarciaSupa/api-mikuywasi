@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 
 export const createTableSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(50, 'El nombre no puede exceder los 50 caracteres'),
+  branchId: z.number().optional(),
 });
 
 export const updateTableSchema = z.object({

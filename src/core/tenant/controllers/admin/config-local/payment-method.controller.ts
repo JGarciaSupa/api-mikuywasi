@@ -9,7 +9,9 @@ import {
 
 export const getAllPaymentMethodsController = async (c: Context) => {
   try {
-    const results = await getAllPaymentMethods();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const results = await getAllPaymentMethods(branchId);
     return c.json({
       success: true,
       data: results

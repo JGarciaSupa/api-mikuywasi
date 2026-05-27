@@ -13,6 +13,8 @@ export const getOrdersController = async (c: Context) => {
     const search = c.req.query('search');
     const startDate = c.req.query('startDate');
     const endDate = c.req.query('endDate');
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
 
     const result = await orderService.getOrders({
       page,
@@ -22,6 +24,7 @@ export const getOrdersController = async (c: Context) => {
       search,
       startDate,
       endDate,
+      branchId,
     });
 
     return c.json({
@@ -133,7 +136,9 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
  */
 export const getOrderStatsController = async (c: Context) => {
   try {
-    const result = await orderService.getOrderStats();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const result = await orderService.getOrderStats(branchId);
 
     return c.json({
       success: true,

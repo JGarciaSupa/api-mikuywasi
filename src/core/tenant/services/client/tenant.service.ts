@@ -89,10 +89,22 @@ export const getTables = async () => {
  * Obtener mesas con estado operativo para mozo.
  * El estado "occupied" se calcula en base a pedidos dine_in activos.
  */
-export const getWaiterTablesStatus = async () => {
+export const getWaiterTablesStatus = async (branchId?: number) => {
   const db = getTenantDb();
 
-  const allTables = await db.select().from(tables).orderBy(tables.name);
+  const allTables = branchId
+    ? await db.select().from(tables).where(eq(tables.branchId, branchId)).orderBy(tables.name)
+    : await db.select().from(tables).orderBy(tables.name);
+
+  const activeDineInConditions = [
+    eq(orders.deliveryType, 'dine_in'),
+    isNotNull(orders.tableId),
+    inArray(orders.status, ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched']),
+  ];
+
+  if (branchId) {
+    activeDineInConditions.push(eq(orders.branchId, branchId));
+  }
 
   const activeDineInOrders = await db
     .select({
@@ -106,13 +118,7 @@ export const getWaiterTablesStatus = async () => {
       createdAt: orders.createdAt,
     })
     .from(orders)
-    .where(
-      and(
-        eq(orders.deliveryType, 'dine_in'),
-        isNotNull(orders.tableId),
-        inArray(orders.status, ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched']),
-      ),
-    );
+    .where(and(...activeDineInConditions));
 
   const activeByTableId = new Map<number, any>();
   for (const order of activeDineInOrders) {

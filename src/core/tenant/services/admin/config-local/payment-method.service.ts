@@ -1,14 +1,21 @@
 import { paymentMethods } from '@/db/tenant/schema';
-import { eq, asc } from 'drizzle-orm';
-import { getTenantDb } from '@/utils/tenant-context';
+import { eq, asc, or, isNull } from 'drizzle-orm';
+import { getTenantDb, getTenantContext } from '@/utils/tenant-context';
 
 /**
  * Obtener todos los métodos de pago de un tenant
  */
-export async function getAllPaymentMethods() {
+export async function getAllPaymentMethods(branchId?: number) {
   const db = getTenantDb();
-  return await db.select().from(paymentMethods)
-    .orderBy(asc(paymentMethods.name));
+  const query = db.select().from(paymentMethods);
+
+  if (branchId) {
+    return await query
+      .where(or(eq(paymentMethods.branchId, branchId), isNull(paymentMethods.branchId)))
+      .orderBy(asc(paymentMethods.name));
+  }
+
+  return await query.orderBy(asc(paymentMethods.name));
 }
 
 /**
@@ -25,7 +32,10 @@ export async function getPaymentMethodById(id: number) {
  */
 export async function createPaymentMethod(data: any) {
   const db = getTenantDb();
-  const [newPaymentMethod] = await db.insert(paymentMethods).values(data).returning();
+  const [newPaymentMethod] = await db.insert(paymentMethods).values({
+    ...data,
+    branchId: data.branchId ?? null,
+  }).returning();
   return newPaymentMethod;
 }
 

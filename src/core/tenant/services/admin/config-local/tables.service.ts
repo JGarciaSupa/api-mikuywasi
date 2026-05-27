@@ -6,10 +6,16 @@ import { getTenantDb } from '@/utils/tenant-context';
 /**
  * Obtener todas las mesas de un tenant
  */
-export async function getAllTables() {
+export async function getAllTables(branchId?: number) {
   const db = getTenantDb();
-  return await db.select().from(tables)
-    .orderBy(tables.createdAt);
+  const query = db.select().from(tables);
+
+  if (branchId) {
+    return await query.where(eq(tables.branchId, branchId))
+      .orderBy(tables.createdAt);
+  }
+
+  return await query.orderBy(tables.createdAt);
 }
 
 /**
@@ -24,8 +30,10 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string }) {
+export async function createTable(data: { name: string; branchId?: number }) {
   const db = getTenantDb();
+  const branchId = data.branchId || 1;
+
   // 1. Verificar límite de 50 mesas por tenant
   const [totalResult] = await db.select({ count: sql<number>`count(*)` })
     .from(tables);
@@ -41,8 +49,8 @@ export async function createTable(data: { name: string }) {
     try {
       const slug = nanoid(8);
       const [newTable] = await db.insert(tables).values({
-        ...data,
-        branchId: 1,
+        name: data.name,
+        branchId,
         slug,
       }).returning();
 

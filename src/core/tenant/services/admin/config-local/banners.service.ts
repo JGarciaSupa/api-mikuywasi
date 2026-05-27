@@ -1,15 +1,24 @@
 import { banners } from '@/db/tenant/schema';
-import { eq, asc, count } from 'drizzle-orm';
+import { eq, asc, count, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
-import { getTenantDb } from '@/utils/tenant-context';
+import { getTenantDb, getTenantContext } from '@/utils/tenant-context';
 
 /**
  * Obtener todos los banners
  */
-export async function getAllBanners() {
+export async function getAllBanners(branchId?: number) {
   const db = getTenantDb();
-  const result = await db.select().from(banners)
-    .orderBy(asc(banners.order));
+  
+  const query = db.select().from(banners);
+  let result;
+
+  if (branchId) {
+    result = await query
+      .where(or(eq(banners.branchId, branchId), isNull(banners.branchId)))
+      .orderBy(asc(banners.order));
+  } else {
+    result = await query.orderBy(asc(banners.order));
+  }
 
   return result.map(banner => ({
     ...banner,
@@ -34,8 +43,9 @@ export async function getBannerById(id: number) {
 /**
  * Crear un nuevo banner
  */
-export async function createBanner(data: { order?: number }, imageFile: File) {
+export async function createBanner(data: { order?: number; branchId?: number }, imageFile: File) {
   const db = getTenantDb();
+
   const [totalResult] = await db.select({ count: count() })
     .from(banners);
 
@@ -48,6 +58,7 @@ export async function createBanner(data: { order?: number }, imageFile: File) {
   const [newBanner] = await db.insert(banners).values({
     url: imageKey,
     order: data.order || 0,
+    branchId: data.branchId || null,
   }).returning();
 
   return {

@@ -10,7 +10,9 @@ import {
 
 export const getAllBannersController = async (c: Context) => {
   try {
-    const results = await getAllBanners();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const results = await getAllBanners(branchId);
     return c.json({
       success: true,
       data: results

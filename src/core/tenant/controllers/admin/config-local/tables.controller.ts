@@ -12,7 +12,9 @@ import {
  */
 export const getAllTablesController = async (c: Context) => {
   try {
-    const results = await getAllTables();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const results = await getAllTables(branchId);
     return c.json({
       success: true,
       data: results
@@ -30,9 +32,9 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { name } = c.req.valid('json' as never);
+    const { name, branchId } = c.req.valid('json' as never) as { name: string; branchId?: number };
 
-    const result = await createTable({ name });
+    const result = await createTable({ name, branchId });
 
     return c.json({
       success: true,

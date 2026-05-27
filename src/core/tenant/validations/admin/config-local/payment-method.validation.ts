@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 export const createPaymentMethodSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   isActive: z.boolean().default(true),
+  branchId: z.number().optional(),
 });
 
 export const updatePaymentMethodSchema = z.object({

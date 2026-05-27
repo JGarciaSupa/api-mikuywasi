@@ -64,7 +64,9 @@ export const createWaiterOrderController = async (c: Context) => {
  */
 export const getWaiterTablesStatusController = async (c: Context) => {
   try {
-    const data = await tenantService.getWaiterTablesStatus();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const data = await tenantService.getWaiterTablesStatus(branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json(

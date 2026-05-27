@@ -7,8 +7,25 @@ import { getTenantDb } from '@/utils/tenant-context';
 import { buildPermissionsForUser } from './rbac.service';
 
 // Helper: obtener sucursales asignadas a un usuario
-async function getUserBranches(userId: number) {
+async function getUserBranches(userId: number, userRole: string) {
   const db = getTenantDb();
+
+  // Si es administrador, tiene acceso a todas las sucursales activas automáticamente
+  if (userRole === 'admin') {
+    const allBranches = await db
+      .select({
+        id: branches.id,
+        name: branches.name,
+        code: branches.code,
+        isMain: branches.isMain,
+        isActive: branches.isActive,
+        isDefault: branches.isMain,
+      })
+      .from(branches)
+      .where(eq(branches.isActive, true));
+    return allBranches;
+  }
+
   const results = await db
     .select({
       id: branches.id,
@@ -73,7 +90,7 @@ export async function login(username: string, password: string, userAgent?: stri
   });
 
   // 5. Obtener sucursales del usuario
-  const userBranchesList = await getUserBranches(user.id);
+  const userBranchesList = await getUserBranches(user.id, user.role);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   // 6. Retornar datos (sin password)
@@ -146,7 +163,7 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     expiresAt,
   });
 
-  const userBranchesList = await getUserBranches(user.id);
+  const userBranchesList = await getUserBranches(user.id, user.role);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   const { password: _, ...safeUser } = user;
@@ -191,7 +208,7 @@ export async function getProfile(userId: number) {
     throw new AuthError('Usuario no encontrado', 404);
   }
 
-  const userBranchesList = await getUserBranches(user.id);
+  const userBranchesList = await getUserBranches(user.id, user.role);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   const { password: _, ...safeUser } = user;

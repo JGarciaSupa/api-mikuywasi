@@ -6,6 +6,8 @@ import {
   items,
   itemAreaAssignments,
   measurementUnits,
+  warehouses,
+  branches,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 
@@ -30,25 +32,126 @@ export async function updateFamily(id: number, data: Partial<{ name: string; des
 // ─── Áreas de almacén ───────────────────────────────────────
 export async function listAreas() {
   const db = getTenantDb();
-  return db.select().from(storageAreas).orderBy(asc(storageAreas.name));
+  return db
+    .select({
+      id: storageAreas.id,
+      warehouseId: storageAreas.warehouseId,
+      name: storageAreas.name,
+      type: storageAreas.type,
+      description: storageAreas.description,
+      isActive: storageAreas.isActive,
+      createdAt: storageAreas.createdAt,
+      isCentral: warehouses.isCentral,
+    })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .orderBy(asc(storageAreas.name));
 }
 
 export async function getAreaById(id: number) {
   const db = getTenantDb();
-  const [row] = await db.select().from(storageAreas).where(eq(storageAreas.id, id));
+  const [row] = await db
+    .select({
+      id: storageAreas.id,
+      warehouseId: storageAreas.warehouseId,
+      name: storageAreas.name,
+      type: storageAreas.type,
+      description: storageAreas.description,
+      isActive: storageAreas.isActive,
+      createdAt: storageAreas.createdAt,
+      isCentral: warehouses.isCentral,
+    })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(storageAreas.id, id));
   return row;
 }
 
 export async function createArea(data: {
-  warehouseId: number;
+  warehouseId?: number;
   name: string;
   type?: 'ambient' | 'cold' | 'frozen' | 'sub_warehouse';
   description?: string;
   isActive?: boolean;
+  isCentral?: boolean;
 }) {
   const db = getTenantDb();
-  const [row] = await db.insert(storageAreas).values(data).returning();
-  return row;
+  let warehouseId = data.warehouseId;
+
+  if (!warehouseId) {
+    const isCentral = data.isCentral === true;
+
+    // Find an existing warehouse with matching isCentral
+    const [existingWh] = await db
+      .select()
+      .from(warehouses)
+      .where(eq(warehouses.isCentral, isCentral))
+      .limit(1);
+
+    if (existingWh) {
+      warehouseId = existingWh.id;
+    } else {
+      // Create a new warehouse
+      if (isCentral) {
+        const [newWh] = await db
+          .insert(warehouses)
+          .values({
+            name: 'Almacén Central',
+            code: 'ALM-CENTRAL-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+            isCentral: true,
+            isActive: true,
+            description: 'Almacén central autogenerado',
+          })
+          .returning();
+        warehouseId = newWh.id;
+      } else {
+        // Get the main branch or any branch if possible
+        const [mainBranch] = await db.select().from(branches).where(eq(branches.isMain, true)).limit(1);
+        const branchId = mainBranch?.id || null;
+
+        const [newWh] = await db
+          .insert(warehouses)
+          .values({
+            branchId,
+            name: 'Almacén Local',
+            code: 'ALM-LOCAL-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+            isCentral: false,
+            isActive: true,
+            description: 'Almacén local autogenerado',
+          })
+          .returning();
+        warehouseId = newWh.id;
+      }
+    }
+  }
+
+  const insertData = {
+    warehouseId: warehouseId!,
+    name: data.name,
+    type: data.type || 'ambient',
+    description: data.description,
+    isActive: data.isActive !== false,
+  };
+
+  const [row] = await db.insert(storageAreas).values(insertData).returning();
+
+  // Return the row with isCentral field
+  const [result] = await db
+    .select({
+      id: storageAreas.id,
+      warehouseId: storageAreas.warehouseId,
+      name: storageAreas.name,
+      type: storageAreas.type,
+      description: storageAreas.description,
+      isActive: storageAreas.isActive,
+      createdAt: storageAreas.createdAt,
+      isCentral: warehouses.isCentral,
+    })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(storageAreas.id, row.id));
+
+  return result;
 }
 
 export async function updateArea(id: number, data: Partial<{
@@ -59,7 +162,23 @@ export async function updateArea(id: number, data: Partial<{
 }>) {
   const db = getTenantDb();
   const [row] = await db.update(storageAreas).set(data).where(eq(storageAreas.id, id)).returning();
-  return row;
+
+  const [result] = await db
+    .select({
+      id: storageAreas.id,
+      warehouseId: storageAreas.warehouseId,
+      name: storageAreas.name,
+      type: storageAreas.type,
+      description: storageAreas.description,
+      isActive: storageAreas.isActive,
+      createdAt: storageAreas.createdAt,
+      isCentral: warehouses.isCentral,
+    })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(storageAreas.id, row.id));
+
+  return result;
 }
 
 // ─── Proveedores ────────────────────────────────────────────
