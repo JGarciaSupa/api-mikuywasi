@@ -29,7 +29,7 @@ app.get('/', (c) => {
 
   return c.json({
     ip: ipAddress,
-    version: '2.0.1'
+    version: '2.0.2'
   });
 });
 
