@@ -8,7 +8,9 @@ import * as waiterOrderService from '../../../services/admin/config-local/waiter
  */
 export const getWaiterMenuController = async (c: Context) => {
   try {
-    const categoriesWithProducts = await tenantService.getMenu();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const categoriesWithProducts = await tenantService.getMenu(branchId);
 
     return c.json({
       success: true,

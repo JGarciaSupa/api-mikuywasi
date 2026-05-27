@@ -1,5 +1,5 @@
 import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, recipes, recipeLines, items } from '../../../../db/tenant/schema';
-import { eq, and, isNull, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
@@ -34,11 +34,19 @@ export const getTenantInfo = async () => {
 /**
  * Obtener categorías y productos agrupados. Incluye productos sin categoría.
  */
-export const getMenu = async () => {
+export const getMenu = async (branchId?: number) => {
   const db = getTenantDb();
 
+  const conditions = [eq(categories.isActive, true)];
+  if (branchId) {
+    const branchCondition = or(eq(categories.branchId, branchId), isNull(categories.branchId));
+    if (branchCondition) {
+      conditions.push(branchCondition);
+    }
+  }
+
   const categoriesWithProducts = await db.query.categories.findMany({
-    where: eq(categories.isActive, true),
+    where: and(...conditions),
     orderBy: (cats, { asc }) => [asc(cats.order)],
     with: {
       products: {

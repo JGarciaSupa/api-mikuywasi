@@ -8,6 +8,7 @@ export const createCategorySchema = z.object({
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/, 'Formato de hora de inicio inválido (HH:mm o HH:mm:ss)').optional().nullable(),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/, 'Formato de hora de fin inválido (HH:mm o HH:mm:ss)').optional().nullable(),
   availableDays: z.array(z.number().min(0).max(6)).optional().default([0, 1, 2, 3, 4, 5, 6]),
+  branchId: z.number().int().optional().nullable(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();

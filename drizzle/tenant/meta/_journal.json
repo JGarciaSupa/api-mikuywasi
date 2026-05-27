@@ -71,6 +71,13 @@
       "when": 1779854140438,
       "tag": "0009_migracion_db_tenant_sucursal",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779914015551,
+      "tag": "0010_young_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

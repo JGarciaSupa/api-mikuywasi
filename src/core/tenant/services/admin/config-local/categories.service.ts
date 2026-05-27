@@ -1,14 +1,21 @@
 import { categories } from '@/db/tenant/schema';
-import { eq, asc, sql } from 'drizzle-orm';
+import { eq, asc, sql, or, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
  * Obtener todas las categorías
  */
-export async function getAllCategories() {
+export async function getAllCategories(branchId?: number) {
   const db = getTenantDb();
-  return await db.select().from(categories)
-    .orderBy(asc(categories.order));
+  const query = db.select().from(categories);
+
+  if (branchId) {
+    return await query
+      .where(or(eq(categories.branchId, branchId), isNull(categories.branchId)))
+      .orderBy(asc(categories.order));
+  }
+
+  return await query.orderBy(asc(categories.order));
 }
 
 /**

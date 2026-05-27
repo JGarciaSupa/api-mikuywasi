@@ -157,6 +157,7 @@ export const tables = pgTable('restaurant_tables', {
 
 export const categories = pgTable('categories', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').references(() => branches.id),
 	name: varchar('name', { length: 50 }).notNull(),
 	order: integer('order').default(0),
 	isActive: boolean('is_active').default(true).notNull(),
@@ -165,10 +166,13 @@ export const categories = pgTable('categories', {
 	availableDays: jsonb('available_days').default([0, 1, 2, 3, 4, 5, 6]),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+	branchIdx: index('categories_branch_idx').on(table.branchId),
+}));
 
-export const categoriesRelations = relations(categories, ({ many }) => ({
+export const categoriesRelations = relations(categories, ({ one, many }) => ({
 	products: many(products),
+	branch: one(branches, { fields: [categories.branchId], references: [branches.id] }),
 }));
 
 export const products = pgTable('products', {
@@ -294,6 +298,7 @@ export const branchesRelations = relations(branches, ({ many }) => ({
 	paymentMethods: many(paymentMethods),
 	banners: many(banners),
 	socialLinks: many(socialLinks),
+	categories: many(categories),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({

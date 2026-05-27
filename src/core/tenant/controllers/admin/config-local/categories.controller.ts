@@ -10,7 +10,9 @@ import {
 
 export const getAllCategoriesController = async (c: Context) => {
   try {
-    const results = await getAllCategories();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const results = await getAllCategories(branchId);
     return c.json({
       success: true,
       data: results
