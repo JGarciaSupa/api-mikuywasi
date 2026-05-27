@@ -10,9 +10,12 @@ import { getAuditActor, jsonError } from '@/utils/helpers';
 // ─── Documentos de compra ───────────────────────────────────
 export const listPurchaseDocuments = async (c: Context) => {
   try {
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await purchase.listPurchaseDocuments({
       status: c.req.query('status'),
       supplierId: c.req.query('supplierId') ? parseInt(c.req.query('supplierId')!) : undefined,
+      branchId,
     });
     return c.json({ success: true, data });
   } catch (e) {
@@ -75,9 +78,12 @@ export const updatePurchaseDocument = async (c: Context) => {
 // ─── Requerimientos ─────────────────────────────────────────
 export const listRequisitions = async (c: Context) => {
   try {
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await requisitions.listRequisitions({
       status: c.req.query('status'),
       areaId: c.req.query('areaId') ? parseInt(c.req.query('areaId')!) : undefined,
+      branchId,
     });
     return c.json({ success: true, data });
   } catch (e) {
@@ -129,7 +135,12 @@ export const processRequisition = async (c: Context) => {
 // ─── Transferencias ─────────────────────────────────────────
 export const listStockTransfers = async (c: Context) => {
   try {
-    const data = await transfers.listStockTransfers({ status: c.req.query('status') });
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const data = await transfers.listStockTransfers({
+      status: c.req.query('status'),
+      branchId,
+    });
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al listar transferencias');
@@ -180,9 +191,12 @@ export const processStockTransfer = async (c: Context) => {
 // ─── Salidas ────────────────────────────────────────────────
 export const listStockExits = async (c: Context) => {
   try {
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await exits.listStockExits({
       status: c.req.query('status'),
       areaId: c.req.query('areaId') ? parseInt(c.req.query('areaId')!) : undefined,
+      branchId,
     });
     return c.json({ success: true, data });
   } catch (e) {
@@ -234,9 +248,12 @@ export const processStockExit = async (c: Context) => {
 // ─── Porcionamientos ────────────────────────────────────────
 export const listPortionings = async (c: Context) => {
   try {
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await portionings.listPortionings({
       status: c.req.query('status'),
       areaId: c.req.query('areaId') ? parseInt(c.req.query('areaId')!) : undefined,
+      branchId,
     });
     return c.json({ success: true, data });
   } catch (e) {
@@ -288,9 +305,12 @@ export const processPortioning = async (c: Context) => {
 // ─── Ajustes de inventario ──────────────────────────────────
 export const listAdjustments = async (c: Context) => {
   try {
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await adjustments.listInventoryAdjustments({
       status: c.req.query('status'),
       areaId: c.req.query('areaId') ? parseInt(c.req.query('areaId')!) : undefined,
+      branchId,
     });
     return c.json({ success: true, data });
   } catch (e) {

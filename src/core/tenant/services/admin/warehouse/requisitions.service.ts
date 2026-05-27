@@ -24,11 +24,12 @@ async function getRequisitionWithLines(id: number) {
   return { ...req, lines };
 }
 
-export async function listRequisitions(filters?: { status?: string; areaId?: number }) {
+export async function listRequisitions(filters?: { status?: string; areaId?: number; branchId?: number }) {
   const db = getTenantDb();
   const conditions = [];
   if (filters?.status) conditions.push(eq(requisitions.status, filters.status as 'draft' | 'processed' | 'voided'));
   if (filters?.areaId) conditions.push(eq(requisitions.areaId, filters.areaId));
+  if (filters?.branchId) conditions.push(eq(requisitions.branchId, filters.branchId));
 
   const q = db
     .select({ requisition: requisitions, areaName: storageAreas.name })

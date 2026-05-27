@@ -14,11 +14,12 @@ async function getExitWithLines(id: number) {
   return { ...doc, lines };
 }
 
-export async function listStockExits(filters?: { status?: string; areaId?: number }) {
+export async function listStockExits(filters?: { status?: string; areaId?: number; branchId?: number }) {
   const db = getTenantDb();
   const conditions = [];
   if (filters?.status) conditions.push(eq(stockExits.status, filters.status as 'draft' | 'processed' | 'voided'));
   if (filters?.areaId) conditions.push(eq(stockExits.areaId, filters.areaId));
+  if (filters?.branchId) conditions.push(eq(stockExits.branchId, filters.branchId));
 
   const q = db.select().from(stockExits).orderBy(desc(stockExits.createdAt));
   if (conditions.length) return q.where(and(...conditions));

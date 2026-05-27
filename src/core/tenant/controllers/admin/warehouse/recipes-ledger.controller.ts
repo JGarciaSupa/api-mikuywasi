@@ -66,7 +66,9 @@ export const listSalesDischarges = async (c: Context) => {
     const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 20;
     const status = c.req.query('status') || undefined;
     const orderId = c.req.query('orderId') || undefined;
-    const result = await salesDischarge.listSalesDischarges({ page, limit, status, orderId });
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const result = await salesDischarge.listSalesDischarges({ page, limit, status, orderId, branchId });
     return c.json({ success: true, ...result });
   } catch (e) {
     return jsonError(c, e, 'Error al listar descargas');

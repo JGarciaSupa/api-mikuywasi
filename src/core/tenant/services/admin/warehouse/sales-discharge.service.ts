@@ -272,6 +272,7 @@ export async function listSalesDischarges(filters: {
   limit?: number;
   status?: string;
   orderId?: string;
+  branchId?: number;
 }) {
   const db = getTenantDb();
   const page = Math.max(1, filters.page ?? 1);
@@ -281,6 +282,7 @@ export async function listSalesDischarges(filters: {
   const conditions = [];
   if (filters.status) conditions.push(eq(salesDischarge.status, filters.status as any));
   if (filters.orderId) conditions.push(ilike(salesDischarge.orderId, `%${filters.orderId}%`));
+  if (filters.branchId) conditions.push(eq(salesDischarge.branchId, filters.branchId));
   const where = conditions.length ? and(...conditions) : undefined;
 
   const [{ total }] = await db.select({ total: count() }).from(salesDischarge).where(where);

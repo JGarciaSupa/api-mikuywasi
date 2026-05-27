@@ -28,11 +28,12 @@ async function getDocumentWithLines(id: number) {
   return { ...doc, lines };
 }
 
-export async function listPurchaseDocuments(filters?: { status?: string; supplierId?: number }) {
+export async function listPurchaseDocuments(filters?: { status?: string; supplierId?: number; branchId?: number }) {
   const db = getTenantDb();
   const conditions = [];
   if (filters?.status) conditions.push(eq(purchaseDocuments.status, filters.status as 'draft' | 'processed' | 'voided'));
   if (filters?.supplierId) conditions.push(eq(purchaseDocuments.supplierId, filters.supplierId));
+  if (filters?.branchId) conditions.push(eq(purchaseDocuments.branchId, filters.branchId));
 
   const q = db
     .select({

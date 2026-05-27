@@ -1,4 +1,4 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import {
   stockTransfers,
   stockTransferLines,
@@ -20,11 +20,24 @@ async function getTransferWithLines(id: number) {
   return { ...tr, lines };
 }
 
-export async function listStockTransfers(filters?: { status?: string }) {
+export async function listStockTransfers(filters?: { status?: string; branchId?: number }) {
   const db = getTenantDb();
-  const q = db.select().from(stockTransfers).orderBy(desc(stockTransfers.createdAt));
+  const conditions = [];
   if (filters?.status) {
-    return q.where(eq(stockTransfers.status, filters.status as 'draft' | 'processed' | 'voided'));
+    conditions.push(eq(stockTransfers.status, filters.status as 'draft' | 'processed' | 'voided'));
+  }
+  if (filters?.branchId) {
+    conditions.push(
+      or(
+        eq(stockTransfers.sourceBranchId, filters.branchId),
+        eq(stockTransfers.targetBranchId, filters.branchId)
+      )
+    );
+  }
+
+  const q = db.select().from(stockTransfers).orderBy(desc(stockTransfers.createdAt));
+  if (conditions.length) {
+    return q.where(and(...conditions));
   }
   return q;
 }

@@ -23,14 +23,22 @@ async function getAdjustmentWithLines(id: number) {
   return { ...adj, lines };
 }
 
-export async function listInventoryAdjustments(filters?: { status?: string; areaId?: number }) {
+export async function listInventoryAdjustments(filters?: { status?: string; areaId?: number; branchId?: number }) {
   const db = getTenantDb();
-  let q = db.select().from(inventoryAdjustments).orderBy(desc(inventoryAdjustments.createdAt));
+  const conditions = [];
   if (filters?.status) {
-    q = q.where(eq(inventoryAdjustments.status, filters.status as 'open' | 'closed')) as typeof q;
+    conditions.push(eq(inventoryAdjustments.status, filters.status as 'open' | 'closed'));
   }
   if (filters?.areaId) {
-    q = q.where(eq(inventoryAdjustments.areaId, filters.areaId)) as typeof q;
+    conditions.push(eq(inventoryAdjustments.areaId, filters.areaId));
+  }
+  if (filters?.branchId) {
+    conditions.push(eq(inventoryAdjustments.branchId, filters.branchId));
+  }
+
+  const q = db.select().from(inventoryAdjustments).orderBy(desc(inventoryAdjustments.createdAt));
+  if (conditions.length) {
+    return q.where(and(...conditions));
   }
   return q;
 }

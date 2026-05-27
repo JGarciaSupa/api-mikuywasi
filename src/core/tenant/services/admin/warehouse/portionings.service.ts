@@ -19,11 +19,12 @@ async function getPortioningWithLines(id: number) {
   return { ...doc, lines };
 }
 
-export async function listPortionings(filters?: { status?: string; areaId?: number }) {
+export async function listPortionings(filters?: { status?: string; areaId?: number; branchId?: number }) {
   const db = getTenantDb();
   const conditions = [];
   if (filters?.status) conditions.push(eq(portionings.status, filters.status as 'draft' | 'processed' | 'voided'));
   if (filters?.areaId) conditions.push(eq(portionings.areaId, filters.areaId));
+  if (filters?.branchId) conditions.push(eq(portionings.branchId, filters.branchId));
   const q = db.select().from(portionings).orderBy(desc(portionings.createdAt));
   if (conditions.length) return q.where(and(...conditions));
   return q;
