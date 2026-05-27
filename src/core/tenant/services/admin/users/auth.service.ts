@@ -1,10 +1,28 @@
 import { eq, and, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
-import { users, refreshTokens } from '@/db/tenant/schema';
+import { users, refreshTokens, userBranches, branches } from '@/db/tenant/schema';
 import { generateAccessToken } from '@/utils/jwt';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
 import { buildPermissionsForUser } from './rbac.service';
+
+// Helper: obtener sucursales asignadas a un usuario
+async function getUserBranches(userId: number) {
+  const db = getTenantDb();
+  const results = await db
+    .select({
+      id: branches.id,
+      name: branches.name,
+      code: branches.code,
+      isMain: branches.isMain,
+      isActive: branches.isActive,
+      isDefault: userBranches.isDefault,
+    })
+    .from(userBranches)
+    .innerJoin(branches, eq(userBranches.branchId, branches.id))
+    .where(eq(userBranches.userId, userId));
+  return results;
+}
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -54,7 +72,11 @@ export async function login(username: string, password: string, userAgent?: stri
     expiresAt,
   });
 
-  // 5. Retornar datos (sin password)
+  // 5. Obtener sucursales del usuario
+  const userBranchesList = await getUserBranches(user.id);
+  const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
+
+  // 6. Retornar datos (sin password)
   const { password: _, ...safeUser } = user;
 
   return {
@@ -64,7 +86,9 @@ export async function login(username: string, password: string, userAgent?: stri
     user: {
       ...safeUser,
       image: getImageUrl(safeUser.image)
-    }
+    },
+    branches: userBranchesList,
+    currentBranch: defaultBranch,
   }
 }
 
@@ -122,6 +146,9 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     expiresAt,
   });
 
+  const userBranchesList = await getUserBranches(user.id);
+  const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
+
   const { password: _, ...safeUser } = user;
 
   return {
@@ -131,7 +158,9 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     user: {
       ...safeUser,
       image: getImageUrl(safeUser.image)
-    }
+    },
+    branches: userBranchesList,
+    currentBranch: defaultBranch,
   };
 }
 
@@ -162,10 +191,15 @@ export async function getProfile(userId: number) {
     throw new AuthError('Usuario no encontrado', 404);
   }
 
+  const userBranchesList = await getUserBranches(user.id);
+  const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
+
   const { password: _, ...safeUser } = user;
   return {
     ...safeUser,
-    image: getImageUrl(safeUser.image)
+    image: getImageUrl(safeUser.image),
+    branches: userBranchesList,
+    currentBranch: defaultBranch,
   };
 }
 

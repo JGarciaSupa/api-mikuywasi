@@ -64,6 +64,13 @@
       "when": 1779744518632,
       "tag": "0008_change_branch_multidb_kardex",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779854140438,
+      "tag": "0009_migracion_db_tenant_sucursal",
+      "breakpoints": true
     }
   ]
 }

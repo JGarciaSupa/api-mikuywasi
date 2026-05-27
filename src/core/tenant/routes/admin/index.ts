@@ -16,6 +16,7 @@ import dashboard from "./config-local/dashboard";
 import cash from "./documents/cash";
 import rbac from "./users/rbac";
 import billing from "./documents/billing";
+import branches from "./config-local/branches";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
@@ -42,5 +43,6 @@ routes.route('/dashboard', dashboard);
 routes.route('/cash', cash);
 routes.route('/rbac', rbac);
 routes.route('/billing', billing);
+routes.route('/branches', branches);
 
 export default routes;

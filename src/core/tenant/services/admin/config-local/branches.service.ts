@@ -1,0 +1,187 @@
+import { branches, userBranches } from '@/db/tenant/schema';
+import { eq, sql, and } from 'drizzle-orm';
+import { getTenantDb } from '@/utils/tenant-context';
+
+// ────────────────────────────────────────────
+// LISTAR SUCURSALES
+// ────────────────────────────────────────────
+
+export async function getAllBranches() {
+  const db = getTenantDb();
+  return db.select().from(branches).orderBy(branches.createdAt);
+}
+
+// ────────────────────────────────────────────
+// OBTENER SUCURSAL POR ID
+// ────────────────────────────────────────────
+
+export async function getBranchById(id: number) {
+  const db = getTenantDb();
+  const [branch] = await db.select().from(branches).where(eq(branches.id, id));
+  return branch;
+}
+
+// ────────────────────────────────────────────
+// CREAR SUCURSAL
+// ────────────────────────────────────────────
+
+export interface CreateBranchInput {
+  name: string;
+  code: string;
+  isMain?: boolean;
+  isActive?: boolean;
+  address?: {
+    fullAddress: string;
+    lat: number;
+    lng: number;
+  } | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  hasDelivery?: boolean;
+  hasPickup?: boolean;
+  hasDineIn?: boolean;
+  hasLiveTracking?: boolean;
+  minOrderAmount?: string;
+  defaultDeliveryFee?: string;
+  freeDeliveryThreshold?: string | null;
+  fiscalId?: string | null;
+  fiscalName?: string | null;
+  schedules?: {
+    day: string;
+    startTime: string;
+    endTime: string;
+    closed: boolean;
+  }[];
+}
+
+// Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
+function emptyToNull(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  return value;
+}
+
+export async function createBranch(data: CreateBranchInput) {
+  const db = getTenantDb();
+
+  // Verificar código único
+  const existing = await db.select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.code, data.code));
+
+  if (existing.length > 0) {
+    throw new Error(`Ya existe una sucursal con el código "${data.code}"`);
+  }
+
+  // Si es la primera sucursal, hacerla principal automáticamente
+  const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(branches);
+  const isFirstBranch = Number(countResult?.count || 0) === 0;
+
+  const [newBranch] = await db.insert(branches).values({
+    name: data.name,
+    code: data.code,
+    isMain: isFirstBranch ? true : (data.isMain ?? false),
+    address: data.address ?? null,
+    phone: emptyToNull(data.phone),
+    whatsapp: emptyToNull(data.whatsapp),
+    email: emptyToNull(data.email),
+    hasDelivery: data.hasDelivery ?? false,
+    hasPickup: data.hasPickup ?? false,
+    hasDineIn: data.hasDineIn ?? false,
+    hasLiveTracking: data.hasLiveTracking ?? false,
+    minOrderAmount: emptyToNull(data.minOrderAmount) ?? '0.00',
+    defaultDeliveryFee: emptyToNull(data.defaultDeliveryFee) ?? '0.00',
+    freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
+    fiscalId: emptyToNull(data.fiscalId),
+    fiscalName: emptyToNull(data.fiscalName),
+    schedules: data.schedules ?? [],
+  }).returning();
+
+  return newBranch;
+}
+
+// ────────────────────────────────────────────
+// ACTUALIZAR SUCURSAL
+// ────────────────────────────────────────────
+
+export async function updateBranch(id: number, data: Partial<CreateBranchInput>) {
+  const db = getTenantDb();
+
+  // Si se cambia el código, verificar unicidad
+  if (data.code) {
+    const existing = await db.select({ id: branches.id })
+      .from(branches)
+      .where(and(eq(branches.code, data.code)));
+
+    if (existing.length > 0 && existing[0].id !== id) {
+      throw new Error(`Ya existe una sucursal con el código "${data.code}"`);
+    }
+  }
+
+  // Sanitizar campos para evitar '' en columnas decimal/nullable
+  const updateData: Record<string, any> = { updatedAt: new Date() };
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.code !== undefined) updateData.code = data.code;
+  if (data.isMain !== undefined) updateData.isMain = data.isMain;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.address !== undefined) updateData.address = data.address ?? null;
+  if (data.phone !== undefined) updateData.phone = emptyToNull(data.phone);
+  if (data.whatsapp !== undefined) updateData.whatsapp = emptyToNull(data.whatsapp);
+  if (data.email !== undefined) updateData.email = emptyToNull(data.email);
+  if (data.hasDelivery !== undefined) updateData.hasDelivery = data.hasDelivery;
+  if (data.hasPickup !== undefined) updateData.hasPickup = data.hasPickup;
+  if (data.hasDineIn !== undefined) updateData.hasDineIn = data.hasDineIn;
+  if (data.hasLiveTracking !== undefined) updateData.hasLiveTracking = data.hasLiveTracking;
+  if (data.minOrderAmount !== undefined) updateData.minOrderAmount = emptyToNull(data.minOrderAmount) ?? '0.00';
+  if (data.defaultDeliveryFee !== undefined) updateData.defaultDeliveryFee = emptyToNull(data.defaultDeliveryFee) ?? '0.00';
+  if (data.freeDeliveryThreshold !== undefined) updateData.freeDeliveryThreshold = emptyToNull(data.freeDeliveryThreshold);
+  if (data.fiscalId !== undefined) updateData.fiscalId = emptyToNull(data.fiscalId);
+  if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
+  if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
+
+  const [updated] = await db.update(branches)
+    .set(updateData)
+    .where(eq(branches.id, id))
+    .returning();
+
+  return updated;
+}
+
+// ────────────────────────────────────────────
+// ELIMINAR SUCURSAL
+// ────────────────────────────────────────────
+
+export async function deleteBranch(id: number) {
+  const db = getTenantDb();
+
+  // No permitir eliminar la sucursal principal
+  const branch = await getBranchById(id);
+  if (!branch) throw new Error('Sucursal no encontrada');
+  if (branch.isMain) throw new Error('No se puede eliminar la sucursal principal');
+
+  const [deleted] = await db.delete(branches)
+    .where(eq(branches.id, id))
+    .returning();
+  return deleted;
+}
+
+// ────────────────────────────────────────────
+// MIS SUCURSALES (para un usuario)
+// ────────────────────────────────────────────
+
+export async function getMyBranches(userId: number) {
+  const db = getTenantDb();
+  const results = await db
+    .select({
+      id: branches.id,
+      name: branches.name,
+      code: branches.code,
+      isMain: branches.isMain,
+      isActive: branches.isActive,
+      isDefault: userBranches.isDefault,
+    })
+    .from(userBranches)
+    .innerJoin(branches, eq(userBranches.branchId, branches.id))
+    .where(eq(userBranches.userId, userId));
+  return results;
+}
