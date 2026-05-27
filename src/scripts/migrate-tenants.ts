@@ -38,6 +38,7 @@ async function execute() {
       console.log(`   Base de datos: ${dbName}`);
 
       const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
+      console.log(`   🔌 Intentando conectar a: postgres://${server.dbUser}:***@${dbHost}:${server.dbPort}/${dbName}`);
 
       const tempPool = new Pool({
         connectionString,
@@ -54,7 +55,7 @@ async function execute() {
         console.log(`   ✅ Migraciones ejecutadas con éxito en "${dbName}".`);
         successCount++;
       } catch (error: any) {
-        console.error(`   ❌ Fallo al ejecutar migraciones en "${dbName}":`, error.message || error);
+        console.error(`   ❌ Fallo al ejecutar migraciones en "${dbName}":`, error);
         failureCount++;
       } finally {
         await tempPool.end();

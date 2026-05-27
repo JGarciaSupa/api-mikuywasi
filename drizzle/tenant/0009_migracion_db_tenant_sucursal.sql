@@ -24,6 +24,31 @@ CREATE TABLE "branches" (
 	CONSTRAINT "branches_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
+INSERT INTO "branches" ("name", "code", "is_main", "phone", "whatsapp", "email", "has_delivery", "has_pickup", "has_dine_in", "has_live_tracking", "min_order_amount", "default_delivery_fee", "free_delivery_threshold", "fiscal_id", "fiscal_name", "is_active")
+SELECT 
+  'Sede Principal', 
+  'MAIN-01', 
+  true, 
+  "phone", 
+  "whatsapp", 
+  "email", 
+  "has_delivery", 
+  "has_pickup", 
+  "has_dine_in", 
+  "has_live_tracking", 
+  "min_order_amount", 
+  "default_delivery_fee", 
+  "free_delivery_threshold", 
+  "fiscal_id", 
+  "fiscal_name", 
+  true
+FROM "tenant_configs"
+LIMIT 1;
+--> statement-breakpoint
+INSERT INTO "branches" ("name", "code", "is_main", "is_active")
+SELECT 'Sede Principal', 'MAIN-01', true, true
+WHERE NOT EXISTS (SELECT 1 FROM "branches" WHERE "code" = 'MAIN-01');
+--> statement-breakpoint
 CREATE TABLE "user_branches" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
@@ -51,35 +76,79 @@ CREATE TABLE "warehouses" (
 	CONSTRAINT "warehouses_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
+INSERT INTO "warehouses" ("branch_id", "name", "code", "is_central", "is_active")
+VALUES ((SELECT id FROM "branches" LIMIT 1), 'Almacén Principal', 'ALM-MAIN', true, true)
+ON CONFLICT ("code") DO NOTHING;
+--> statement-breakpoint
 ALTER TABLE "storage_areas" DROP CONSTRAINT "storage_areas_name_unique";--> statement-breakpoint
 ALTER TABLE "recipes" DROP CONSTRAINT "recipes_production_area_id_storage_areas_id_fk";
 --> statement-breakpoint
 DROP INDEX "recipes_area_idx";--> statement-breakpoint
 ALTER TABLE "banners" ADD COLUMN "branch_id" integer;--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "orders" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "orders" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "payment_methods" ADD COLUMN "branch_id" integer;--> statement-breakpoint
 ALTER TABLE "social_links" ADD COLUMN "branch_id" integer;--> statement-breakpoint
-ALTER TABLE "restaurant_tables" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "area_ledger" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "cash_sessions" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "inventory_adjustments" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "main_ledger" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "main_ledger" ADD COLUMN "warehouse_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "portionings" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "purchase_documents" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "purchase_price_history" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "requisitions" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "sales_discharge" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "stock_exits" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "stock_snapshot" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "stock_transfers" ADD COLUMN "source_branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "stock_transfers" ADD COLUMN "target_branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "storage_areas" ADD COLUMN "warehouse_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "waste_log" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
+ALTER TABLE "restaurant_tables" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "restaurant_tables" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "restaurant_tables" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "area_ledger" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "area_ledger" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "area_ledger" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "cash_sessions" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "cash_sessions" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "cash_sessions" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "inventory_adjustments" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "inventory_adjustments" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "inventory_adjustments" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "main_ledger" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "main_ledger" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "main_ledger" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "main_ledger" ADD COLUMN "warehouse_id" integer;--> statement-breakpoint
+UPDATE "main_ledger" SET "warehouse_id" = (SELECT id FROM "warehouses" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "main_ledger" ALTER COLUMN "warehouse_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "portionings" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "portionings" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "portionings" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "purchase_documents" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "purchase_documents" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "purchase_documents" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "purchase_price_history" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "purchase_price_history" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "purchase_price_history" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "requisitions" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "requisitions" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "requisitions" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "sales_discharge" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "sales_discharge" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "sales_discharge" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "stock_exits" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "stock_exits" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "stock_exits" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "stock_snapshot" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "stock_snapshot" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "stock_snapshot" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "stock_transfers" ADD COLUMN "source_branch_id" integer;--> statement-breakpoint
+UPDATE "stock_transfers" SET "source_branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "stock_transfers" ALTER COLUMN "source_branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "stock_transfers" ADD COLUMN "target_branch_id" integer;--> statement-breakpoint
+UPDATE "stock_transfers" SET "target_branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "stock_transfers" ALTER COLUMN "target_branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "storage_areas" ADD COLUMN "warehouse_id" integer;--> statement-breakpoint
+UPDATE "storage_areas" SET "warehouse_id" = (SELECT id FROM "warehouses" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "storage_areas" ALTER COLUMN "warehouse_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "waste_log" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "waste_log" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "waste_log" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "user_permission_overrides" ADD COLUMN "branch_id" integer;--> statement-breakpoint
 ALTER TABLE "user_roles" ADD COLUMN "branch_id" integer;--> statement-breakpoint
-ALTER TABLE "billing_documents" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
-ALTER TABLE "billing_series" ADD COLUMN "branch_id" integer NOT NULL;--> statement-breakpoint
+ALTER TABLE "billing_documents" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "billing_documents" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "billing_documents" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "billing_series" ADD COLUMN "branch_id" integer;--> statement-breakpoint
+UPDATE "billing_series" SET "branch_id" = (SELECT id FROM "branches" LIMIT 1);--> statement-breakpoint
+ALTER TABLE "billing_series" ALTER COLUMN "branch_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "user_branches" ADD CONSTRAINT "user_branches_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_branches" ADD CONSTRAINT "user_branches_branch_id_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."branches"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "branch_recipe_areas" ADD CONSTRAINT "branch_recipe_areas_branch_id_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."branches"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
