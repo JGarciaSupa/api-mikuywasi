@@ -5,10 +5,10 @@ import { validationHook } from "../../hook";
 // Schemas
 export const loginSchema = z.object({
   username: z
-    .string({ error: "El username es requerido" })
+    .string({ error: "El nombre de usuario es requerido" })
     .trim()
-    .min(1, "El username es requerido")
-    .max(50, "El username no puede exceder los 50 caracteres"),
+    .min(1, "El nombre de usuario es requerido")
+    .max(50, "El nombre de usuario no puede exceder los 50 caracteres"),
   password: z
     .string({ error: "La contraseña es requerida" })
     .min(1, "La contraseña es requerida")

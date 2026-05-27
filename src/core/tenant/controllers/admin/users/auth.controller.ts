@@ -2,6 +2,8 @@ import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { getClientIp } from '../../../../../utils/ip';
 import { login, refreshAccessToken, logout, getProfile, updateProfile, updatePassword, AuthError } from '../../../services/admin/users/auth.service';
+import redisApi from '@/redis/index';
+import { getTenantDb } from '@/db';
 
 // ────────────────────────────────────────────
 // Helpers
@@ -31,6 +33,7 @@ function clearRefreshTokenCookie(c: Context) {
 export async function loginController(c: Context) {
   try {
     const { username, password } = c.req.valid('json' as never);
+
     const platform = getPlatform(c);
     const userAgent = c.req.header('user-agent') || '';
     const ipAddress = getClientIp(c);
@@ -63,6 +66,7 @@ export async function loginController(c: Context) {
         message: error.message
       }, error.status as any);
     }
+    console.error("Login Error:", error);
     return c.json({
       success: false,
       message: 'Error interno del servidor'

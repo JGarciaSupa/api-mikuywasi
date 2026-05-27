@@ -306,7 +306,7 @@ export async function buildPermissionsForUser(userId: number): Promise<{
   }
 
   const permissions: PermissionsMap = {};
-  for (const { actionCode, subActionCode } of permMap.values()) {
+  for (const { actionCode, subActionCode } of Array.from(permMap.values())) {
     if (!permissions[actionCode]) permissions[actionCode] = [];
     permissions[actionCode].push(subActionCode);
   }

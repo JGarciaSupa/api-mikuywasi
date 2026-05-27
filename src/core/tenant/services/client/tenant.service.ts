@@ -171,6 +171,7 @@ export const createOrder = async (orderData: any) => {
       return await db.transaction(async (tx) => {
         const [result] = await tx.insert(orders).values({
           id: orderId,
+          branchId: orderData.branchId ?? 1, // branchId requerido; el cliente debe enviarlo
           customerName: orderData.customerName,
           customerPhone: orderData.customerPhone,
           customerAddress: orderData.customerAddress,

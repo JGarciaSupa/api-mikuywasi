@@ -40,9 +40,9 @@ export async function getAreaById(id: number) {
 }
 
 export async function createArea(data: {
+  warehouseId: number;
   name: string;
   type?: 'ambient' | 'cold' | 'frozen' | 'sub_warehouse';
-  isCentral?: boolean;
   description?: string;
   isActive?: boolean;
 }) {
@@ -54,7 +54,6 @@ export async function createArea(data: {
 export async function updateArea(id: number, data: Partial<{
   name: string;
   type: 'ambient' | 'cold' | 'frozen' | 'sub_warehouse';
-  isCentral: boolean;
   description: string;
   isActive: boolean;
 }>) {
@@ -198,7 +197,6 @@ export async function getItemById(id: number) {
       areaId: itemAreaAssignments.areaId,
       isActive: itemAreaAssignments.isActive,
       areaName: storageAreas.name,
-      isCentral: storageAreas.isCentral,
     })
     .from(itemAreaAssignments)
     .innerJoin(storageAreas, eq(itemAreaAssignments.areaId, storageAreas.id))
@@ -244,7 +242,7 @@ export async function createItem(data: {
 
     const [central] = centralAreaId
       ? await tx.select().from(storageAreas).where(eq(storageAreas.id, centralAreaId))
-      : await tx.select().from(storageAreas).where(eq(storageAreas.isCentral, true)).limit(1);
+      : [];
 
     if (central) {
       await tx.insert(itemAreaAssignments).values({

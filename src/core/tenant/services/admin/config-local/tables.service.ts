@@ -42,6 +42,7 @@ export async function createTable(data: { name: string }) {
       const slug = nanoid(8);
       const [newTable] = await db.insert(tables).values({
         ...data,
+        branchId: 1,
         slug,
       }).returning();
 

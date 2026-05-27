@@ -232,6 +232,7 @@ export async function createDocument(input: CreateDocumentInput) {
     const [doc] = await tx
       .insert(billingDocuments)
       .values({
+        branchId: order.branchId,
         orderId: input.orderId,
         seriesId: series.id,
         documentType: input.documentType,

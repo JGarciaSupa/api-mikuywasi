@@ -5,6 +5,7 @@ import { getTenantDb } from '../../../../../utils/tenant-context';
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
 
 export interface CreateSeriesInput {
+  branchId?: number;
   documentType: DocumentType;
   series: string;
   priceInclTax?: boolean;
@@ -40,6 +41,7 @@ export async function createSeries(input: CreateSeriesInput) {
   const [row] = await db
     .insert(billingSeries)
     .values({
+      branchId: input.branchId ?? 1,
       documentType: input.documentType,
       series,
       priceInclTax,

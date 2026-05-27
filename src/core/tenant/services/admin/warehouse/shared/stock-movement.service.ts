@@ -2,6 +2,7 @@ import { eq, and, asc, desc, or, inArray } from 'drizzle-orm';
 import {
   items,
   storageAreas,
+  warehouses,
   stockSnapshot,
   mainLedger,
   areaLedger,
@@ -17,6 +18,7 @@ import { getTenantDb, type TenantDb } from '../../../../../../utils/tenant-conte
 import { toNum, roundQty, roundMoney, weightedAveragePrice } from './numbers';
 
 export interface MovementContext {
+  branchId: number;
   itemId: number;
   areaId: number;
   qty: number;
@@ -32,6 +34,14 @@ async function getArea(db: TenantDb, areaId: number) {
   return area;
 }
 
+async function isMainLedgerArea(db: TenantDb, areaId: number): Promise<boolean> {
+  // An area belongs to the main ledger if its warehouse is the central warehouse
+  const [area] = await db.select().from(storageAreas).where(eq(storageAreas.id, areaId));
+  if (!area) return false;
+  const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
+  return wh?.isCentral ?? false;
+}
+
 async function getItem(db: TenantDb, itemId: number) {
   const [item] = await db.select().from(items).where(eq(items.id, itemId));
   if (!item) throw new Error(`Artículo ${itemId} no encontrado`);
@@ -40,6 +50,7 @@ async function getItem(db: TenantDb, itemId: number) {
 
 async function upsertStockSnapshot(
   db: TenantDb,
+  branchId: number,
   itemId: number,
   areaId: number,
   qtyDelta: number,
@@ -67,6 +78,7 @@ async function upsertStockSnapshot(
       .where(eq(stockSnapshot.id, existing.id));
   } else {
     await db.insert(stockSnapshot).values({
+      branchId,
       itemId,
       areaId,
       currentStock: String(newStock),
@@ -94,7 +106,11 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
   const newGlobalAvg = weightedAveragePrice(globalStock, globalAvg, qty, unitPrice);
   const newGlobalStock = roundQty(globalStock + qty);
 
-  if (area.isCentral) {
+  // Determine warehouse to get warehouseId and isCentral
+  const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
+  const isCentral = wh?.isCentral ?? false;
+
+  if (isCentral) {
     const [lastMain] = await db
       .select()
       .from(mainLedger)
@@ -106,6 +122,8 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
     const ledgerStock = roundQty(prevLedgerStock + qty);
 
     await db.insert(mainLedger).values({
+      branchId: ctx.branchId,
+      warehouseId: area.warehouseId,
       itemId: ctx.itemId,
       areaId: ctx.areaId,
       documentType: ctx.documentType,
@@ -143,6 +161,7 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
     const ledgerStock = roundQty(prevLedgerStock + qty);
 
     await db.insert(areaLedger).values({
+      branchId: ctx.branchId,
       itemId: ctx.itemId,
       areaId: ctx.areaId,
       documentType: ctx.documentType,
@@ -167,9 +186,9 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
   const snapAvg = toNum(snapBefore?.avgPrice) || globalAvg;
   const finalSnapAvg = weightedAveragePrice(snapStock, snapAvg, qty, unitPrice);
 
-  await upsertStockSnapshot(db, ctx.itemId, ctx.areaId, qty, finalSnapAvg);
+  await upsertStockSnapshot(db, ctx.branchId, ctx.itemId, ctx.areaId, qty, finalSnapAvg);
 
-  return { qty, unitPrice, newAvg: area.isCentral ? newGlobalAvg : finalSnapAvg };
+  return { qty, unitPrice, newAvg: isCentral ? newGlobalAvg : finalSnapAvg };
 }
 
 /** Salida de stock (requerimientos, transferencias origen, salidas, descarga venta, ajuste negativo) */
@@ -198,7 +217,11 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
   const globalStock = toNum(item.currentStock);
   const globalAvg = toNum(item.avgPrice);
 
-  if (area.isCentral) {
+  // Determine warehouse to get warehouseId and isCentral
+  const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
+  const isCentral = wh?.isCentral ?? false;
+
+  if (isCentral) {
     const [lastMain] = await db
       .select()
       .from(mainLedger)
@@ -210,6 +233,8 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
     const ledgerStock = roundQty(Math.max(0, prevLedgerStock - qty));
 
     await db.insert(mainLedger).values({
+      branchId: ctx.branchId,
+      warehouseId: area.warehouseId,
       itemId: ctx.itemId,
       areaId: ctx.areaId,
       documentType: ctx.documentType,
@@ -246,6 +271,7 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
 
     // area_ledger no tiene exit_price; el costo de salida va en exit_value
     await db.insert(areaLedger).values({
+      branchId: ctx.branchId,
       itemId: ctx.itemId,
       areaId: ctx.areaId,
       documentType: ctx.documentType,
@@ -261,7 +287,7 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
     });
   }
 
-  await upsertStockSnapshot(db, ctx.itemId, ctx.areaId, -qty, toNum(snap?.avgPrice) || globalAvg);
+  await upsertStockSnapshot(db, ctx.branchId, ctx.itemId, ctx.areaId, -qty, toNum(snap?.avgPrice) || globalAvg);
 
   // FIFO en lotes si el artículo es perecible
   if (item.expiryDays > 0) {
@@ -341,6 +367,7 @@ export async function createBatchFromPurchase(
 export async function recordPurchasePriceHistory(
   db: TenantDb,
   params: {
+    branchId: number;
     itemId: number;
     supplierId: number;
     documentId: number;
@@ -351,6 +378,7 @@ export async function recordPurchasePriceHistory(
   }
 ) {
   await db.insert(purchasePriceHistory).values({
+    branchId: params.branchId,
     itemId: params.itemId,
     supplierId: params.supplierId,
     documentId: params.documentId,

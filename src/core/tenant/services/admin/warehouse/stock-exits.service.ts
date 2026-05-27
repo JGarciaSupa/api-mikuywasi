@@ -116,6 +116,7 @@ export async function processStockExit(id: number, actor?: AuditActor) {
 
       await applyStockExit(
         {
+          branchId: doc.branchId,
           itemId: line.itemId,
           areaId: doc.areaId,
           qty,

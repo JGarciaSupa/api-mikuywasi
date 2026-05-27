@@ -40,7 +40,7 @@ export async function getInventoryAdjustmentById(id: number) {
 }
 
 export async function openInventoryAdjustment(
-  params: { areaId: number; code: string; createdBy?: string },
+  params: { branchId: number; areaId: number; code: string; createdBy?: string },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -55,6 +55,7 @@ export async function openInventoryAdjustment(
     const [adj] = await tx
       .insert(inventoryAdjustments)
       .values({
+        branchId: params.branchId,
         code: params.code,
         areaId: params.areaId,
         status: 'open',
@@ -142,6 +143,7 @@ export async function closeInventoryAdjustment(id: number, actor?: AuditActor) {
       if (diff > 0) {
         await applyStockEntry(
           {
+            branchId: adj.branchId,
             itemId: line.itemId,
             areaId: adj.areaId,
             qty: diff,
@@ -155,6 +157,7 @@ export async function closeInventoryAdjustment(id: number, actor?: AuditActor) {
       } else {
         await applyStockExit(
           {
+            branchId: adj.branchId,
             itemId: line.itemId,
             areaId: adj.areaId,
             qty: Math.abs(diff),

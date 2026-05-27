@@ -70,7 +70,7 @@ export async function getCashSessionById(id: number) {
 // ─── mutations ────────────────────────────────────────────────────────────────
 
 export async function openCashSession(
-  data: { openingBalance: number; notes?: string },
+  data: { branchId?: number; openingBalance: number; notes?: string },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -84,6 +84,7 @@ export async function openCashSession(
     .insert(cashSessions)
     .values({
       code,
+      branchId: data.branchId ?? 1,
       openedBy: actor?.userName ?? 'sistema',
       openingBalance: round2(data.openingBalance),
       expectedBalance: round2(data.openingBalance),
@@ -97,7 +98,9 @@ export async function openCashSession(
     operation: 'INSERT',
     recordId: session.id,
     afterData: session,
-    actor,
+    userId: actor?.userId,
+    userName: actor?.userName,
+    module: 'caja',
     description: `Sesión de caja abierta: ${code} con saldo inicial S/ ${round2(data.openingBalance)}`,
   });
 
@@ -160,7 +163,9 @@ export async function addCashMovement(
       operation: 'INSERT',
       recordId: movement.id,
       afterData: movement,
-      actor,
+      userId: actor?.userId,
+      userName: actor?.userName,
+      module: 'caja',
       description: `Movimiento de caja [${data.movementType}]: ${data.concept} — S/ ${round2(data.amount)}`,
     });
 
@@ -200,7 +205,9 @@ export async function closeCashSession(
     recordId: id,
     beforeData: session,
     afterData: closed,
-    actor,
+    userId: actor?.userId,
+    userName: actor?.userName,
+    module: 'caja',
     description: `Sesión de caja cerrada: ${session.code}. Diferencia: S/ ${round2(difference)}`,
   });
 

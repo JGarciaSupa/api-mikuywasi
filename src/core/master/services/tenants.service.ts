@@ -22,7 +22,7 @@ async function createTenantDatabase(server: any, dbName: string) {
 
   try {
     await client.connect();
-    
+
     // Check if the database already exists
     const checkRes = await client.query(
       "SELECT 1 FROM pg_database WHERE datname = $1",
@@ -102,7 +102,7 @@ async function dropTenantDatabase(server: any, dbName: string) {
 
   try {
     await client.connect();
-    
+
     // Terminate any active connections to drop database cleanly
     await client.query(`
       SELECT pg_terminate_backend(pg_stat_activity.pid)
@@ -273,7 +273,7 @@ export const createTenant = async (data: CreateTenantInput) => {
     console.error('[Tenant Creation Flow] Falló el proceso. Iniciando rollback de seguridad...', error);
 
     // Rollback paso a paso en caso de fallos posteriores al registro:
-    
+
     // Si se llegó a crear físicamente la base de datos, la eliminamos del servidor
     if (dbCreated) {
       try {
@@ -289,7 +289,7 @@ export const createTenant = async (data: CreateTenantInput) => {
         await masterDb.transaction(async (tx) => {
           // Eliminar suscripciones asociadas
           await tx.delete(subscriptions).where(eq(subscriptions.tenantId, createdTenantId!));
-          
+
           // Eliminar el tenant
           await tx.delete(tenants).where(eq(tenants.id, createdTenantId!));
 

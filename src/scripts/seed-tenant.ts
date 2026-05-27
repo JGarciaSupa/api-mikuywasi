@@ -2,9 +2,9 @@
  * Seed genérico para un tenant.
  * Uso: bun run src/scripts/seed-tenant.ts <tenantId>
  *
- * Crea datos demo en: tenant_configs, payment_methods, tables, categories,
- * products, social_links, item_families, storage_areas,
- * suppliers, items, item_area_assignments y un usuario admin.
+ * Crea datos demo en: branches, tenant_configs, payment_methods, tables,
+ * categories, products, social_links, item_families, warehouses, storage_areas,
+ * suppliers, items, item_area_assignments, recipes y un usuario admin.
  *
  * Es IDEMPOTENTE: usa onConflictDoNothing en todos los inserts.
  */
@@ -54,44 +54,57 @@ async function main() {
   const db = drizzle(pool, { schema: s });
 
   try {
-    // ── tenant_configs ──────────────────────────────────────────────────────
+    // ── branch principal ────────────────────────────────────────────────────
+    section('branches');
+    const [branch] = await db.insert(s.branches).values({
+      name: 'Sede Principal',
+      code: 'MAIN-01',
+      isMain: true,
+      phone: '987654321',
+      whatsapp: '987654321',
+      email: 'contacto@restaurante.com',
+      hasDelivery: true,
+      hasPickup: true,
+      hasDineIn: true,
+      hasLiveTracking: false,
+      minOrderAmount: '0.00',
+      defaultDeliveryFee: '0.00',
+      fiscalId: '20123456789',
+      fiscalName: 'RESTAURANTE DEMO S.A.C.',
+      isActive: true,
+      schedules: [
+        { day: 'Lunes', startTime: '08:00', endTime: '22:00', closed: false },
+        { day: 'Martes', startTime: '08:00', endTime: '22:00', closed: false },
+        { day: 'Miércoles', startTime: '08:00', endTime: '22:00', closed: false },
+        { day: 'Jueves', startTime: '08:00', endTime: '22:00', closed: false },
+        { day: 'Viernes', startTime: '08:00', endTime: '22:00', closed: false },
+        { day: 'Sábado', startTime: '09:00', endTime: '23:00', closed: false },
+        { day: 'Domingo', startTime: '09:00', endTime: '22:00', closed: false },
+      ],
+    }).returning().onConflictDoNothing();
+
+    // Si ya existía, tomar la primera
+    const allBranches = await db.select().from(s.branches);
+    const mainBranch = branch ?? allBranches[0];
+    if (!mainBranch) { console.error('❌ No se pudo crear la sucursal'); process.exit(1); }
+    log(`Sucursal principal: ${mainBranch.name} (ID: ${mainBranch.id})`);
+    const branchId = mainBranch.id;
+
+    // ── tenant_configs (datos globales de marca) ─────────────────────────────
     section('tenant_configs');
     const [existing] = await db.select().from(s.tenantConfigs);
     if (existing) {
       await db.update(s.tenantConfigs)
         .set({
-          phone: '987654321',
-          whatsapp: '987654321',
           email: 'contacto@restaurante.com',
           category: 'Restaurante',
-          hasDineIn: true,
-          hasDelivery: true,
-          hasPickup: true,
-          fiscalId: '20123456789',
-          fiscalName: 'RESTAURANTE DEMO S.A.C.',
-          schedules: [
-            { day: 'Lunes', startTime: '08:00', endTime: '22:00', closed: false },
-            { day: 'Martes', startTime: '08:00', endTime: '22:00', closed: false },
-            { day: 'Miércoles', startTime: '08:00', endTime: '22:00', closed: false },
-            { day: 'Jueves', startTime: '08:00', endTime: '22:00', closed: false },
-            { day: 'Viernes', startTime: '08:00', endTime: '22:00', closed: false },
-            { day: 'Sábado', startTime: '09:00', endTime: '23:00', closed: false },
-            { day: 'Domingo', startTime: '09:00', endTime: '22:00', closed: false },
-          ],
         })
         .where(eq(s.tenantConfigs.id, existing.id));
       log('tenant_configs actualizado');
     } else {
       await db.insert(s.tenantConfigs).values({
-        phone: '987654321',
-        whatsapp: '987654321',
         email: 'contacto@restaurante.com',
         category: 'Restaurante',
-        hasDineIn: true,
-        hasDelivery: true,
-        hasPickup: true,
-        fiscalId: '20123456789',
-        fiscalName: 'RESTAURANTE DEMO S.A.C.',
       });
       log('tenant_configs creado');
     }
@@ -104,11 +117,12 @@ async function main() {
       { name: 'Tarjeta' },
       { name: 'Transferencia' },
     ]).onConflictDoNothing();
-    log('4 métodos de pago');
+    log('4 métodos de pago (globales)');
 
     // ── tables ──────────────────────────────────────────────────────────────
     section('restaurant_tables');
     const tableData = Array.from({ length: 8 }, (_, i) => ({
+      branchId,
       name: `Mesa ${i + 1}`,
       slug: `M${String(i + 1).padStart(3, '0')}${Math.random().toString(36).slice(2, 5).toUpperCase()}`,
     }));
@@ -117,10 +131,10 @@ async function main() {
 
     // ── categories ──────────────────────────────────────────────────────────
     section('categories');
-    const [cat1] = await db.insert(s.categories).values({ name: 'Entradas', order: 1 }).returning().onConflictDoNothing();
-    const [cat2] = await db.insert(s.categories).values({ name: 'Platos de Fondo', order: 2 }).returning().onConflictDoNothing();
-    const [cat3] = await db.insert(s.categories).values({ name: 'Bebidas', order: 3 }).returning().onConflictDoNothing();
-    const [cat4] = await db.insert(s.categories).values({ name: 'Postres', order: 4 }).returning().onConflictDoNothing();
+    await db.insert(s.categories).values({ name: 'Entradas', order: 1 }).returning().onConflictDoNothing();
+    await db.insert(s.categories).values({ name: 'Platos de Fondo', order: 2 }).returning().onConflictDoNothing();
+    await db.insert(s.categories).values({ name: 'Bebidas', order: 3 }).returning().onConflictDoNothing();
+    await db.insert(s.categories).values({ name: 'Postres', order: 4 }).returning().onConflictDoNothing();
 
     const cats = await db.select().from(s.categories);
     const catMap: Record<string, number> = {};
@@ -153,11 +167,11 @@ async function main() {
       { platform: 'facebook', url: 'https://facebook.com/restaurantedemo', order: 1 },
       { platform: 'whatsapp', url: 'https://wa.me/51987654321', order: 2 },
     ]).onConflictDoNothing();
-    log('3 redes sociales');
+    log('3 redes sociales (globales)');
 
     // ── item_families ───────────────────────────────────────────────────────
     section('item_families');
-    const familyRows = await db.insert(s.itemFamilies).values([
+    await db.insert(s.itemFamilies).values([
       { name: 'Carnes y Aves' },
       { name: 'Verduras y Frutas' },
       { name: 'Abarrotes' },
@@ -165,19 +179,34 @@ async function main() {
       { name: 'Bebidas e Insumos' },
       { name: 'Condimentos y Especias' },
     ]).returning().onConflictDoNothing();
-    // Si ya existían, buscarlos
     const allFamilies = await db.select().from(s.itemFamilies);
     const fMap: Record<string, number> = {};
     allFamilies.forEach((f) => { fMap[f.name] = f.id; });
     log(`${allFamilies.length} familias`);
 
+    // ── warehouses ──────────────────────────────────────────────────────────
+    section('warehouses');
+    const [warehouse] = await db.insert(s.warehouses).values({
+      branchId,
+      name: 'Almacén Principal',
+      code: 'ALM-MAIN',
+      isCentral: false,
+      description: 'Almacén de la sede principal',
+      isActive: true,
+    }).returning().onConflictDoNothing();
+    const allWarehouses = await db.select().from(s.warehouses);
+    const mainWarehouse = warehouse ?? allWarehouses[0];
+    if (!mainWarehouse) { console.error('❌ No se pudo crear el almacén'); process.exit(1); }
+    log(`Almacén: ${mainWarehouse.name} (ID: ${mainWarehouse.id})`);
+    const warehouseId = mainWarehouse.id;
+
     // ── storage_areas ───────────────────────────────────────────────────────
     section('storage_areas');
     await db.insert(s.storageAreas).values([
-      { name: 'Almacén Central', type: 'ambient', isCentral: true, description: 'Área central de recepción y control de stock' },
-      { name: 'Cocina', type: 'ambient', isCentral: false, description: 'Área de producción y elaboración' },
-      { name: 'Refrigeración', type: 'cold', isCentral: false, description: 'Cámara fría para carnes y lácteos' },
-      { name: 'Bar', type: 'ambient', isCentral: false, description: 'Área de bebidas y postres' },
+      { warehouseId, name: 'Almacén Central', type: 'ambient', description: 'Área central de recepción y control de stock' },
+      { warehouseId, name: 'Cocina', type: 'ambient', description: 'Área de producción y elaboración' },
+      { warehouseId, name: 'Refrigeración', type: 'cold', description: 'Cámara fría para carnes y lácteos' },
+      { warehouseId, name: 'Bar', type: 'ambient', description: 'Área de bebidas y postres' },
     ]).onConflictDoNothing();
     const allAreas = await db.select().from(s.storageAreas);
     const areaMap: Record<string, number> = {};
@@ -353,12 +382,20 @@ async function main() {
         name: def.recipeName,
         servings: def.servings,
         yieldPct: '100',
-        productionAreaId: kitchenAreaId ?? null,
         isActive: true,
       }).returning().onConflictDoNothing();
 
       if (!recipe) continue; // ya existía
       recipesCreated++;
+
+      // branch_recipe_areas: mapear producto → área de cocina de la sucursal principal
+      if (kitchenAreaId) {
+        await db.insert(s.branchRecipeAreas).values({
+          branchId,
+          productId,
+          areaId: kitchenAreaId,
+        }).onConflictDoNothing();
+      }
 
       await db.insert(s.recipeLines).values(
         validLines.map((l) => ({
@@ -379,6 +416,7 @@ async function main() {
     section('billing_series');
     await db.insert(s.billingSeries).values([
       {
+        branchId,
         documentType: 'factura',
         series: 'F001',
         priceInclTax: false,
@@ -386,6 +424,7 @@ async function main() {
         description: 'Factura estándar',
       },
       {
+        branchId,
         documentType: 'boleta',
         series: 'B001',
         priceInclTax: true,
@@ -393,6 +432,7 @@ async function main() {
         description: 'Boleta de venta',
       },
       {
+        branchId,
         documentType: 'nota_de_venta',
         series: 'NV01',
         priceInclTax: true,
@@ -407,12 +447,20 @@ async function main() {
     const adminPassword = await Bun.password.hash('admin123', { algorithm: 'bcrypt', cost: 10 });
     const waiterPassword = await Bun.password.hash('mozo123', { algorithm: 'bcrypt', cost: 10 });
     const kitchenPassword = await Bun.password.hash('cocina123', { algorithm: 'bcrypt', cost: 10 });
-    await db.insert(s.users).values([
+    const insertedUsers = await db.insert(s.users).values([
       { username: 'admin', password: adminPassword, name: 'Administrador', role: 'admin' },
       { username: 'mozo1', password: waiterPassword, name: 'Mozo Demo', role: 'waiter' },
       { username: 'cocina', password: kitchenPassword, name: 'Cocinero Demo', role: 'kitchen' },
-    ]).onConflictDoNothing();
-    log('3 usuarios (admin / mozo1 / cocina)');
+    ]).returning().onConflictDoNothing();
+
+    // user_branches: asignar todos los usuarios a la sucursal principal
+    const allUsers = await db.select().from(s.users);
+    if (allUsers.length) {
+      await db.insert(s.userBranches).values(
+        allUsers.map((u) => ({ userId: u.id, branchId, isDefault: true }))
+      ).onConflictDoNothing();
+    }
+    log('3 usuarios (admin / mozo1 / cocina) asignados a sede principal');
 
     // ── Done ─────────────────────────────────────────────────────────────────
     console.log('\n✅ Seed completado exitosamente!\n');
@@ -434,4 +482,3 @@ main().catch((err) => {
   console.error('\n❌ Error durante el seed:', err.message || err);
   process.exit(1);
 });
-

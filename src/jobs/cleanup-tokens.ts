@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { refreshTokens } from '../db/schema';
+import { getTenantDb } from '../utils/tenant-context';
+import { refreshTokens } from '../db/tenant/schema';
 import { or, eq, lt } from 'drizzle-orm';
 
 /**
@@ -10,7 +10,8 @@ export const cleanupRefreshTokens = async () => {
   console.log(`[${now.toISOString()}] [Cleanup Job] Iniciando limpieza de tokens...`);
   
   try {
-    const result = await db.delete(refreshTokens)
+    const db = getTenantDb();
+    await db.delete(refreshTokens)
       .where(
         or(
           eq(refreshTokens.isRevoked, true),

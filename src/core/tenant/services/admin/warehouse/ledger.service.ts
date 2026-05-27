@@ -1,5 +1,5 @@
 import { eq, and, desc, gte, lte } from 'drizzle-orm';
-import { mainLedger, areaLedger, stockSnapshot, wasteLog, items, storageAreas } from '@/db/tenant/schema';
+import { mainLedger, areaLedger, stockSnapshot, wasteLog, items, storageAreas, warehouses } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 
 export async function getMainLedger(filters: {
@@ -48,7 +48,8 @@ export async function getKardexByArea(areaId: number, itemId?: number, limit = 1
   const [area] = await db.select().from(storageAreas).where(eq(storageAreas.id, areaId));
   if (!area) throw new Error('Área no encontrada');
 
-  if (area.isCentral) {
+  const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
+  if (wh?.isCentral) {
     return getMainLedger({ areaId, itemId, limit });
   }
   return getAreaLedger({ areaId, itemId, limit });

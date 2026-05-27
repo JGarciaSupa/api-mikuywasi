@@ -37,6 +37,8 @@ export async function createStockTransfer(
   header: {
     sourceAreaId: number;
     targetAreaId: number;
+    sourceBranchId: number;
+    targetBranchId: number;
     requisitionId?: number;
     reference?: string;
     createdBy?: string;
@@ -145,6 +147,7 @@ export async function processStockTransfer(id: number, actor?: AuditActor) {
 
       await applyStockExit(
         {
+          branchId: tr.sourceBranchId,
           itemId: line.itemId,
           areaId: tr.sourceAreaId,
           qty,
@@ -158,6 +161,7 @@ export async function processStockTransfer(id: number, actor?: AuditActor) {
 
       await applyStockEntry(
         {
+          branchId: tr.targetBranchId,
           itemId: line.itemId,
           areaId: tr.targetAreaId,
           qty,

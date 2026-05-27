@@ -201,7 +201,7 @@ export async function syncBaseRolesToTenant(
 
     const catalogMap = new Map(catalog.map((c) => [c.masterSubActionId, c.id]));
 
-    for (const roleGroup of roleMap.values()) {
+    for (const roleGroup of Array.from(roleMap.values())) {
       // Upsert del rol (por code único)
       const [localRole] = await db.insert(tenantSchema.roles)
         .values({

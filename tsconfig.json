@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "strict": true,
+    "skipLibCheck": true,
+    "downlevelIteration": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "baseUrl": ".",
@@ -8,6 +10,6 @@
       "@/*": [
         "./src/*"
       ]
-    },
+    }
   }
-}
+}

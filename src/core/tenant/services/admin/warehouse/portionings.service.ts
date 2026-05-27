@@ -35,6 +35,7 @@ export async function getPortioningById(id: number) {
 
 export async function createPortioning(
   header: {
+    branchId: number;
     areaId: number;
     sourceItemId: number;
     inputQty: number;
@@ -58,6 +59,7 @@ export async function createPortioning(
     const [doc] = await tx
       .insert(portionings)
       .values({
+        branchId: header.branchId,
         areaId: header.areaId,
         sourceItemId: header.sourceItemId,
         inputQty: String(header.inputQty),
@@ -129,6 +131,7 @@ export async function processPortioning(id: number, actor?: AuditActor) {
 
     await applyStockExit(
       {
+        branchId: doc.branchId,
         itemId: doc.sourceItemId,
         areaId: doc.areaId,
         qty: inputQty,
@@ -146,6 +149,7 @@ export async function processPortioning(id: number, actor?: AuditActor) {
 
       await applyStockEntry(
         {
+          branchId: doc.branchId,
           itemId: line.targetItemId,
           areaId: doc.areaId,
           qty,
@@ -170,10 +174,11 @@ export async function processPortioning(id: number, actor?: AuditActor) {
     const waste = toNum(doc.waste);
     if (waste > 0 && source) {
       await tx.insert(wasteLog).values({
+        branchId: doc.branchId,
         portioningId: id,
         itemId: doc.sourceItemId,
         areaId: doc.areaId,
-        familyId: source.familyId,
+        familyId: source.familyId!,
         date: new Date().toISOString().slice(0, 10),
         usedQty: String(inputQty),
         waste: String(waste),

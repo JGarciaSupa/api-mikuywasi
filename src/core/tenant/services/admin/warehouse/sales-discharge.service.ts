@@ -6,6 +6,7 @@ import {
   orderItems,
   recipes,
   recipeLines,
+  branchRecipeAreas,
   items,
   products,
   storageAreas,
@@ -57,7 +58,21 @@ export async function buildDischargeFromOrder(orderId: string) {
       .where(and(eq(recipes.productId, oi.productId), eq(recipes.isActive, true)))
       .limit(1);
 
-    if (!recipe?.productionAreaId) continue;
+    if (!recipe) continue;
+
+    // Obtener el área de producción para esta sucursal y producto
+    const [bra] = await db
+      .select()
+      .from(branchRecipeAreas)
+      .where(
+        and(
+          eq(branchRecipeAreas.productId, oi.productId),
+          eq(branchRecipeAreas.branchId, order.branchId)
+        )
+      )
+      .limit(1);
+
+    if (!bra?.areaId) continue;
 
     const lines = await db
       .select()
@@ -91,7 +106,7 @@ export async function buildDischargeFromOrder(orderId: string) {
         unit: rl.unit,
         avgPrice,
         lineCost,
-        productionAreaId: recipe.productionAreaId,
+        productionAreaId: bra.areaId,
       });
     }
   }
@@ -114,6 +129,7 @@ export async function createSalesDischargeFromOrder(orderId: string, areaId: num
       .insert(salesDischarge)
       .values({
         orderId,
+        branchId: order.branchId,
         areaId,
         status: 'draft',
         totalCost: String(totalCost),
@@ -152,6 +168,7 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
 
       await applyStockExit(
         {
+          branchId: doc.branchId,
           itemId: line.itemId,
           areaId: doc.areaId,
           qty,
@@ -216,6 +233,7 @@ export async function reverseDischargeForOrder(orderId: string, actor?: AuditAct
       if (qty <= 0) continue;
       await applyStockEntry(
         {
+          branchId: discharge.branchId,
           itemId: line.itemId,
           areaId: discharge.areaId,
           qty,

@@ -3,6 +3,7 @@ import {
   requisitions,
   requisitionLines,
   storageAreas,
+  warehouses,
   items,
   itemAreaAssignments,
 } from '../../../../../db/tenant/schema';
@@ -44,13 +45,20 @@ export async function getRequisitionById(id: number) {
 }
 
 export async function createRequisition(
-  header: { areaId: number; areaManager?: string; reference?: string; createdBy?: string },
+  header: { branchId: number; areaId: number; areaManager?: string; reference?: string; createdBy?: string },
   lines: { itemId: number; requestedQty: number; servedQty?: number }[],
   actor?: AuditActor
 ) {
   const db = getTenantDb();
 
-  const [central] = await db.select().from(storageAreas).where(eq(storageAreas.isCentral, true)).limit(1);
+  // El almacén central es aquel cuyo warehouse tiene isCentral=true
+  const centralArea = await db
+    .select({ id: storageAreas.id })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(warehouses.isCentral, true))
+    .limit(1);
+  const central = centralArea[0];
   if (!central) throw new Error('No hay almacén central configurado');
 
   return db.transaction(async (tx) => {
@@ -126,7 +134,14 @@ export async function processRequisition(id: number, actor?: AuditActor) {
   if (!req) throw new Error('Requerimiento no encontrado');
   if (req.status !== 'draft') throw new Error('El requerimiento ya fue procesado');
 
-  const [central] = await db.select().from(storageAreas).where(eq(storageAreas.isCentral, true)).limit(1);
+  // El almacén central es aquel cuyo warehouse tiene isCentral=true
+  const centralArea = await db
+    .select({ id: storageAreas.id })
+    .from(storageAreas)
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(warehouses.isCentral, true))
+    .limit(1);
+  const central = centralArea[0];
   if (!central) throw new Error('No hay almacén central configurado');
 
   const docNumber = `RQ-${id}`;
@@ -155,6 +170,7 @@ export async function processRequisition(id: number, actor?: AuditActor) {
 
       await applyStockExit(
         {
+          branchId: req.branchId,
           itemId: line.itemId,
           areaId: central.id,
           qty: served,
@@ -168,6 +184,7 @@ export async function processRequisition(id: number, actor?: AuditActor) {
 
       await applyStockEntry(
         {
+          branchId: req.branchId,
           itemId: line.itemId,
           areaId: req.areaId,
           qty: served,

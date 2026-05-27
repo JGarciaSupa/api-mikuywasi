@@ -1,50 +1,36 @@
 import type { Context, Next } from 'hono';
-import { masterDb } from '../../../db';
-import { tenants } from '../../../db/master/schema';
-import { eq, or } from 'drizzle-orm';
 import { getTenantDb } from '../../../db';
 import { runWithTenantContext } from '../../../utils/tenant-context';
+import redisApi from '../../../redis/index';
 
 export async function tenantContextMiddleware(c: Context, next: Next) {
   try {
-    // Try to get tenantId from query param or header
-    const tenantIdParam = c.req.query('tenantId') || c.req.header('X-Tenant-ID');
-    // Try to get tenantSlug from path param or query
-    const tenantSlug = c.req.param('slug') || c.req.query('slug');
+    // Intentar obtener el tenant slug desde cabeceras, parámetros de ruta o query params
+    const tenantIdHeader = c.req.header('X-Tenant-ID');
+    const tenantSlugHeader = c.req.header('X-Tenant-Slug') || c.req.header('x-tenant-slug');
+    const fallbackSlugFromIdHeader = tenantIdHeader && !/^\d+$/.test(tenantIdHeader) ? tenantIdHeader : undefined;
+    
+    const tenantSlug = tenantSlugHeader || fallbackSlugFromIdHeader || c.req.param('slug') || c.req.query('slug') || c.req.query('tenantSlug');
 
-    let tenant;
-
-    if (tenantIdParam) {
-      const tenantId = parseInt(tenantIdParam);
-      if (isNaN(tenantId)) {
-        return c.json({ success: false, message: 'Tenant ID inválido' }, 400);
-      }
-      tenant = await masterDb.query.tenants.findFirst({
-        where: eq(tenants.id, tenantId),
-        with: { server: true }
-      });
-    } else if (tenantSlug) {
-      tenant = await masterDb.query.tenants.findFirst({
-        where: eq(tenants.slug, tenantSlug),
-        with: { server: true }
-      });
-    } else {
-      return c.json({ success: false, message: 'Tenant ID o slug requerido' }, 400);
+    if (!tenantSlug) {
+      return c.json({ success: false, message: 'Tenant slug requerido' }, 400);
     }
+
+    // Obtener tenant desde Redis (con fallback automático a Master DB si no está en caché)
+    const tenant = await redisApi.getTenantBySlug(tenantSlug).catch(() => null);
 
     if (!tenant) {
       return c.json({ success: false, message: 'Tenant no encontrado' }, 404);
     }
 
-    if (!tenant.server) {
-      return c.json({ success: false, message: 'Servidor de base de datos no configurado' }, 500);
+    if (tenant.status === 'inactive') {
+      return c.json({ success: false, message: 'Tenant inactivo' }, 403);
     }
 
-    const dbHost = process.env.DB_HOST_OVERRIDE || tenant.server.dbHost;
-    const connectionString = `postgres://${encodeURIComponent(tenant.server.dbUser)}:${encodeURIComponent(tenant.server.dbPassword)}@${dbHost}:${tenant.server.dbPort}/${tenant.dbName}`;
+    // Obtener la instancia de Drizzle para el tenant usando el dbUrl del caché
+    const tenantDb = await getTenantDb(tenant.dbUrl);
 
-    const tenantDb = await getTenantDb(connectionString);
-
+    // Correr dentro del contexto de AsyncLocalStorage para que los controladores y servicios accedan a este tenantDb
     await runWithTenantContext({ tenantId: tenant.id, tenantDb }, () => next());
   } catch (error: any) {
     return c.json({
@@ -53,3 +39,4 @@ export async function tenantContextMiddleware(c: Context, next: Next) {
     }, 500);
   }
 }
+

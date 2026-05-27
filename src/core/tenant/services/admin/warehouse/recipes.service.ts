@@ -88,9 +88,8 @@ export async function createRecipe(
   header: {
     productId: number;
     name: string;
-    servings?: number;
-    yieldPct?: number;
-    productionAreaId?: number;
+    servings?: string;
+    yieldPct?: string;
     isActive?: boolean;
   },
   lines: {

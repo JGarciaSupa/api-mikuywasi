@@ -182,6 +182,7 @@ export async function processPurchaseDocument(id: number, actor?: AuditActor) {
 
       await applyStockEntry(
         {
+          branchId: doc.branchId,
           itemId: line.itemId,
           areaId: doc.areaId,
           qty,
@@ -202,6 +203,7 @@ export async function processPurchaseDocument(id: number, actor?: AuditActor) {
       });
 
       await recordPurchasePriceHistory(tx, {
+        branchId: doc.branchId,
         itemId: line.itemId,
         supplierId: doc.supplierId,
         documentId: id,

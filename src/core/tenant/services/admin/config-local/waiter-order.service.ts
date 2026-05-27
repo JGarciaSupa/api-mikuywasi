@@ -7,6 +7,7 @@ import {
   salesDischargeLines,
   recipes,
   recipeLines,
+  branchRecipeAreas,
   items,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
@@ -41,7 +42,8 @@ interface IngredientLine {
 async function calcIngredientsForProduct(
   db: ReturnType<typeof getTenantDb>,
   productId: number,
-  quantity: number
+  quantity: number,
+  branchId: number
 ): Promise<IngredientLine[]> {
   const [recipe] = await db
     .select()
@@ -49,7 +51,21 @@ async function calcIngredientsForProduct(
     .where(and(eq(recipes.productId, productId), eq(recipes.isActive, true)))
     .limit(1);
 
-  if (!recipe?.productionAreaId) return [];
+  if (!recipe) return [];
+
+  // Obtener el área de producción según la sucursal y producto
+  const [bra] = await db
+    .select()
+    .from(branchRecipeAreas)
+    .where(
+      and(
+        eq(branchRecipeAreas.productId, productId),
+        eq(branchRecipeAreas.branchId, branchId)
+      )
+    )
+    .limit(1);
+
+  if (!bra?.areaId) return [];
 
   const lines = await db.select().from(recipeLines).where(eq(recipeLines.recipeId, recipe.id));
   const result: IngredientLine[] = [];
@@ -76,7 +92,7 @@ async function calcIngredientsForProduct(
       unit: rl.unit,
       avgPrice,
       lineCost: roundMoney(qty * avgPrice),
-      productionAreaId: recipe.productionAreaId,
+      productionAreaId: bra.areaId,
     });
   }
 
@@ -157,7 +173,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
       await recalcOrderTotals(db, orderId);
 
-      const ingredients = await calcIngredientsForProduct(db, product.id, input.quantity);
+      const ingredients = await calcIngredientsForProduct(db, product.id, input.quantity, order.branchId);
       if (ingredients.length) {
         const dischargeId = existingDischarge?.id;
         if (dischargeId && existingDischarge?.status === 'processed') {
@@ -185,6 +201,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
           for (const l of ingredients) {
             await applyStockExit({
+              branchId: existingDischarge.branchId,
               itemId: l.itemId,
               areaId: existingDischarge.areaId,
               qty: l.qty,
@@ -219,9 +236,10 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
             )
           );
 
-        const ingredients = await calcIngredientsForProduct(db, oi.productId, oi.quantity);
+        const ingredients = await calcIngredientsForProduct(db, oi.productId, oi.quantity, order.branchId);
         for (const l of ingredients) {
           await applyStockEntry({
+            branchId: existingDischarge.branchId,
             itemId: l.itemId,
             areaId: existingDischarge.areaId,
             qty: l.qty,
@@ -270,11 +288,12 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
       if (oi.productId && existingDischarge?.status === 'processed' && delta !== 0) {
         const absDelta = Math.abs(delta);
-        const ingredients = await calcIngredientsForProduct(db, oi.productId, absDelta);
+        const ingredients = await calcIngredientsForProduct(db, oi.productId, absDelta, order.branchId);
 
         for (const l of ingredients) {
           if (delta > 0) {
             await applyStockExit({
+              branchId: existingDischarge.branchId,
               itemId: l.itemId,
               areaId: existingDischarge.areaId,
               qty: l.qty,
@@ -285,6 +304,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
             });
           } else {
             await applyStockEntry({
+              branchId: existingDischarge.branchId,
               itemId: l.itemId,
               areaId: existingDischarge.areaId,
               qty: l.qty,
