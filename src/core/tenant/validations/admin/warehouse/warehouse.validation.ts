@@ -14,6 +14,7 @@ const documentLineSchema = z.object({
 });
 
 export const createPurchaseDocumentSchema = z.object({
+  branchId: z.number().int().optional(),
   documentType: z.enum(['invoice', 'receipt', 'delivery_note']),
   series: z.string().min(1),
   sequential: z.string().min(1),
