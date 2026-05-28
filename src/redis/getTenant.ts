@@ -29,7 +29,7 @@ const getTenantBySlug = async (slug: string): Promise<CachedTenant> => {
     throw new Error('Tenant no encontrado');
   }
 
-  const dbHost = tenant.server.dbHost;
+  const dbHost = process.env.DB_HOST_OVERRIDE || tenant.server.dbHost;
   const optimizedTenant: CachedTenant = {
     id: tenant.id,
     status: tenant.status,
