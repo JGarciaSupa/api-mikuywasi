@@ -9,17 +9,17 @@ import { getConnInfo } from 'hono/bun';
 export const getClientIp = (c: Context): string => {
   // Cloudflare usa 'cf-connecting-ip' por defecto. 
   // Es el estándar de oro si usas su proxy.
-  const rawIp = 
-    c.req.header('cf-connecting-ip') || 
-    c.req.header('x-forwarded-for')?.split(',')[0] || 
-    getConnInfo(c).remote.address || 
+  const rawIp =
+    c.req.header('cf-connecting-ip') ||
+    c.req.header('x-forwarded-for')?.split(',')[0] ||
+    getConnInfo(c).remote.address ||
     '0.0.0.0';
 
-  const ipAddress = rawIp.includes('::ffff:') 
-    ? rawIp.split('::ffff:')[1] 
+  const ipAddress = rawIp.includes('::ffff:')
+    ? rawIp.split('::ffff:')[1]
     : rawIp;
 
-  console.log(`[IP DEBUG] Detectado: ${ipAddress} (Original: ${rawIp})`);
+  // console.log(`[IP DEBUG] Detectado: ${ipAddress} (Original: ${rawIp})`);
 
   return ipAddress;
 };

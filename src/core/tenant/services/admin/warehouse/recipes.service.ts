@@ -1,5 +1,5 @@
 import { eq, asc, and } from 'drizzle-orm';
-import { recipes, recipeLines, products, items } from '../../../../../db/tenant/schema';
+import { recipes, recipeLines, products, items, branchRecipeAreas } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from './shared/numbers';
 
@@ -7,6 +7,14 @@ async function getRecipeWithLines(id: number) {
   const db = getTenantDb();
   const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
   if (!recipe) return null;
+
+  const [bra] = await db.select().from(branchRecipeAreas).where(
+    and(
+      eq(branchRecipeAreas.branchId, 1),
+      eq(branchRecipeAreas.productId, recipe.productId)
+    )
+  ).limit(1);
+
   const lines = await db
     .select({
       line: recipeLines,
@@ -17,7 +25,7 @@ async function getRecipeWithLines(id: number) {
     .from(recipeLines)
     .innerJoin(items, eq(recipeLines.itemId, items.id))
     .where(eq(recipeLines.recipeId, id));
-  return { ...recipe, lines };
+  return { ...recipe, productionAreaId: bra?.areaId || null, lines };
 }
 
 export async function listRecipes(productId?: number) {
@@ -26,9 +34,14 @@ export async function listRecipes(productId?: number) {
     .select({
       recipe: recipes,
       productName: products.name,
+      productionAreaId: branchRecipeAreas.areaId,
     })
     .from(recipes)
     .leftJoin(products, eq(recipes.productId, products.id))
+    .leftJoin(branchRecipeAreas, and(
+      eq(branchRecipeAreas.productId, recipes.productId),
+      eq(branchRecipeAreas.branchId, 1)
+    ))
     .orderBy(asc(recipes.name))
     .$dynamic();
 
@@ -39,7 +52,8 @@ export async function listRecipes(productId?: number) {
   const results = await q;
   return results.map(row => ({
     ...row.recipe,
-    productName: row.productName
+    productName: row.productName,
+    productionAreaId: row.productionAreaId,
   }));
 }
 
@@ -91,6 +105,7 @@ export async function createRecipe(
     servings?: string;
     yieldPct?: string;
     isActive?: boolean;
+    productionAreaId?: number;
   },
   lines: {
     itemId: number;
@@ -104,7 +119,22 @@ export async function createRecipe(
   const db = getTenantDb();
 
   return db.transaction(async (tx) => {
-    const [recipe] = await tx.insert(recipes).values(header).returning();
+    const { productionAreaId, ...recipeData } = header;
+    const [recipe] = await tx.insert(recipes).values(recipeData).returning();
+
+    if (productionAreaId) {
+      await tx.delete(branchRecipeAreas).where(
+        and(
+          eq(branchRecipeAreas.branchId, 1),
+          eq(branchRecipeAreas.productId, recipeData.productId)
+        )
+      );
+      await tx.insert(branchRecipeAreas).values({
+        branchId: 1,
+        productId: recipeData.productId,
+        areaId: productionAreaId,
+      });
+    }
 
     if (lines.length) {
       await tx.insert(recipeLines).values(
@@ -126,7 +156,7 @@ export async function createRecipe(
 
 export async function updateRecipe(
   id: number,
-  header: Partial<typeof recipes.$inferInsert>,
+  header: Partial<typeof recipes.$inferInsert> & { productionAreaId?: number },
   lines?: {
     itemId: number;
     qty: number;
@@ -139,10 +169,29 @@ export async function updateRecipe(
   const db = getTenantDb();
 
   return db.transaction(async (tx) => {
+    const { productionAreaId, ...recipeData } = header;
+    
     await tx
       .update(recipes)
-      .set({ ...header, updatedAt: new Date() })
+      .set({ ...recipeData, updatedAt: new Date() })
       .where(eq(recipes.id, id));
+
+    if (productionAreaId) {
+      const [existing] = await tx.select().from(recipes).where(eq(recipes.id, id));
+      if (existing) {
+        await tx.delete(branchRecipeAreas).where(
+          and(
+            eq(branchRecipeAreas.branchId, 1),
+            eq(branchRecipeAreas.productId, existing.productId)
+          )
+        );
+        await tx.insert(branchRecipeAreas).values({
+          branchId: 1,
+          productId: existing.productId,
+          areaId: productionAreaId,
+        });
+      }
+    }
 
     if (lines) {
       await tx.delete(recipeLines).where(eq(recipeLines.recipeId, id));
