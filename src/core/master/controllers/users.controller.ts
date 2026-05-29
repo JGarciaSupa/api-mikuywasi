@@ -8,11 +8,11 @@ export const loginController = async (c: Context) => {
     const { accessToken, refreshToken, user } = await usersService.loginUser(data);
 
     // Establecer la cookie segura del refresh token
-    const isProd = process.env.NODE_ENV === 'production';
+    const isSecure = c.req.url.startsWith('https://');
     setCookie(c, 'refresh_token', refreshToken, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'None' : 'Lax',
+      secure: isSecure,
+      sameSite: isSecure ? 'None' : 'Lax',
       maxAge: 7 * 24 * 60 * 60, // 7 días
       path: '/api/master/users',
     });
@@ -41,11 +41,11 @@ export const refreshController = async (c: Context) => {
     const { accessToken, refreshToken: newRefreshToken, user } = await usersService.refreshSession(refreshToken);
 
     // Establecer la nueva cookie con rotación
-    const isProd = process.env.NODE_ENV === 'production';
+    const isSecure = c.req.url.startsWith('https://');
     setCookie(c, 'refresh_token', newRefreshToken, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'None' : 'Lax',
+      secure: isSecure,
+      sameSite: isSecure ? 'None' : 'Lax',
       maxAge: 7 * 24 * 60 * 60, // 7 días
       path: '/api/master/users',
     });
@@ -72,11 +72,11 @@ export const logoutController = async (c: Context) => {
     }
 
     // Limpiar la cookie del refresh token
-    const isProd = process.env.NODE_ENV === 'production';
+    const isSecure = c.req.url.startsWith('https://');
     deleteCookie(c, 'refresh_token', {
       path: '/api/master/users',
-      secure: isProd,
-      sameSite: isProd ? 'None' : 'Lax',
+      secure: isSecure,
+      sameSite: isSecure ? 'None' : 'Lax',
     });
 
     return c.json({

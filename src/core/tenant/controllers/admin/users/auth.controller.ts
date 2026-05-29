@@ -14,22 +14,22 @@ function getPlatform(c: Context): 'web' | 'mobile' {
 }
 
 function setRefreshTokenCookie(c: Context, refreshToken: string) {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isSecure = c.req.url.startsWith('https://');
   setCookie(c, 'refreshToken', refreshToken, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'None' : 'Lax',
+    secure: isSecure,
+    sameSite: isSecure ? 'None' : 'Lax',
     path: '/',
     maxAge: 15 * 24 * 60 * 60 // 15 días
   });
 }
 
 function clearRefreshTokenCookie(c: Context) {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isSecure = c.req.url.startsWith('https://');
   deleteCookie(c, 'refreshToken', { 
     path: '/',
-    secure: isProd,
-    sameSite: isProd ? 'None' : 'Lax'
+    secure: isSecure,
+    sameSite: isSecure ? 'None' : 'Lax'
   });
 }
 
