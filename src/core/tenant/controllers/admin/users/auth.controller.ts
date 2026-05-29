@@ -14,7 +14,9 @@ function getPlatform(c: Context): 'web' | 'mobile' {
 }
 
 function setRefreshTokenCookie(c: Context, refreshToken: string) {
-  const isSecure = c.req.url.startsWith('https://');
+  const isSecure = c.req.url.startsWith('https://') || 
+                   c.req.header('x-forwarded-proto') === 'https' || 
+                   process.env.NODE_ENV === 'production';
   setCookie(c, 'refreshToken', refreshToken, {
     httpOnly: true,
     secure: isSecure,
@@ -25,7 +27,9 @@ function setRefreshTokenCookie(c: Context, refreshToken: string) {
 }
 
 function clearRefreshTokenCookie(c: Context) {
-  const isSecure = c.req.url.startsWith('https://');
+  const isSecure = c.req.url.startsWith('https://') || 
+                   c.req.header('x-forwarded-proto') === 'https' || 
+                   process.env.NODE_ENV === 'production';
   deleteCookie(c, 'refreshToken', { 
     path: '/',
     secure: isSecure,

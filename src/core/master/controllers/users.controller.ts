@@ -8,7 +8,9 @@ export const loginController = async (c: Context) => {
     const { accessToken, refreshToken, user } = await usersService.loginUser(data);
 
     // Establecer la cookie segura del refresh token
-    const isSecure = c.req.url.startsWith('https://');
+    const isSecure = c.req.url.startsWith('https://') || 
+                     c.req.header('x-forwarded-proto') === 'https' || 
+                     process.env.NODE_ENV === 'production';
     setCookie(c, 'refresh_token', refreshToken, {
       httpOnly: true,
       secure: isSecure,
@@ -41,7 +43,9 @@ export const refreshController = async (c: Context) => {
     const { accessToken, refreshToken: newRefreshToken, user } = await usersService.refreshSession(refreshToken);
 
     // Establecer la nueva cookie con rotación
-    const isSecure = c.req.url.startsWith('https://');
+    const isSecure = c.req.url.startsWith('https://') || 
+                     c.req.header('x-forwarded-proto') === 'https' || 
+                     process.env.NODE_ENV === 'production';
     setCookie(c, 'refresh_token', newRefreshToken, {
       httpOnly: true,
       secure: isSecure,
@@ -72,7 +76,9 @@ export const logoutController = async (c: Context) => {
     }
 
     // Limpiar la cookie del refresh token
-    const isSecure = c.req.url.startsWith('https://');
+    const isSecure = c.req.url.startsWith('https://') || 
+                     c.req.header('x-forwarded-proto') === 'https' || 
+                     process.env.NODE_ENV === 'production';
     deleteCookie(c, 'refresh_token', {
       path: '/api/master/users',
       secure: isSecure,
