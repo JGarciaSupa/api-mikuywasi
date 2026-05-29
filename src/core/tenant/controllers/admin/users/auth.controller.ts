@@ -14,23 +14,31 @@ function getPlatform(c: Context): 'web' | 'mobile' {
 }
 
 function setRefreshTokenCookie(c: Context, refreshToken: string) {
+  const isProd = process.env.NODE_ENV === 'production';
   setCookie(c, 'refreshToken', refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'Lax',
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax',
     path: '/',
     maxAge: 15 * 24 * 60 * 60 // 15 días
   });
 }
 
 function clearRefreshTokenCookie(c: Context) {
-  deleteCookie(c, 'refreshToken', { path: '/' });
+  const isProd = process.env.NODE_ENV === 'production';
+  deleteCookie(c, 'refreshToken', { 
+    path: '/',
+    secure: isProd,
+    sameSite: isProd ? 'None' : 'Lax'
+  });
 }
 
 // ────────────────────────────────────────────
 // LOGIN
 // ────────────────────────────────────────────
 export async function loginController(c: Context) {
+  console.log("Login Controller");
+
   try {
     const { username, password } = c.req.valid('json' as never);
 

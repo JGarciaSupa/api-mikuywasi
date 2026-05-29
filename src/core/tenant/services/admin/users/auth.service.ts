@@ -49,10 +49,15 @@ function hashToken(token: string): string {
 // LOGIN
 // ────────────────────────────────────────────
 export async function login(username: string, password: string, userAgent?: string, ipAddress?: string) {
+
+  console.log("Login Service");
+
   const db = getTenantDb();
   const user = await db.query.users.findFirst({
     where: eq(users.username, username.trim()),
   });
+
+  console.log("Users: ", user);
 
   if (!user) {
     throw new AuthError('Credenciales inválidas', 401);
