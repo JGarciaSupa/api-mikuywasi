@@ -51,10 +51,54 @@ async function seedTenantData(server: any, dbName: string) {
   const tempDb = drizzle(tempPool, { schema: tenantSchema });
 
   try {
+    // 1. tenant_configs (singleton)
     const [existing] = await tempDb.select().from(tenantSchema.tenantConfigs);
     if (!existing) {
       await tempDb.insert(tenantSchema.tenantConfigs).values({});
     }
+
+    // 2. Almacén principal
+    // Buscamos la primera branch disponible para asociarla; si no hay, se deja branchId nulo.
+    const [firstBranch] = await tempDb
+      .select({ id: tenantSchema.branches.id })
+      .from(tenantSchema.branches)
+      .limit(1);
+
+    const [existingWarehouse] = await tempDb
+      .select({ id: tenantSchema.warehouses.id })
+      .from(tenantSchema.warehouses)
+      .where(eq(tenantSchema.warehouses.code, 'AP'));
+
+    if (!existingWarehouse) {
+      await tempDb.insert(tenantSchema.warehouses).values({
+        branchId: firstBranch?.id ?? null,
+        name: 'Almacen principal',
+        code: 'AP',
+        isCentral: true,
+        description: '',
+        isActive: true,
+      });
+      console.log(`[Seed] Almacén principal creado en "${dbName}".`);
+    }
+
+    // 3. Unidades de medida por defecto
+    const defaultUnits = [
+      { code: 'KG', name: 'Kilogramo', dimension: 'mass', baseFactor: '1.000000' },
+      { code: 'LT', name: 'Litro',     dimension: 'volume', baseFactor: '1.000000' },
+    ];
+
+    for (const unit of defaultUnits) {
+      const [existingUnit] = await tempDb
+        .select({ id: tenantSchema.measurementUnits.id })
+        .from(tenantSchema.measurementUnits)
+        .where(eq(tenantSchema.measurementUnits.code, unit.code));
+
+      if (!existingUnit) {
+        await tempDb.insert(tenantSchema.measurementUnits).values(unit);
+      }
+    }
+    console.log(`[Seed] Unidades de medida por defecto creadas en "${dbName}".`);
+
     console.log(`[Seed] Datos iniciales insertados en "${dbName}".`);
   } catch (error) {
     console.error(`[Seed] Error al insertar datos iniciales en "${dbName}":`, error);
