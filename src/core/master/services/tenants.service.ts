@@ -57,34 +57,10 @@ async function seedTenantData(server: any, dbName: string) {
       await tempDb.insert(tenantSchema.tenantConfigs).values({});
     }
 
-    // 2. Almacén principal
-    // Buscamos la primera branch disponible para asociarla; si no hay, se deja branchId nulo.
-    const [firstBranch] = await tempDb
-      .select({ id: tenantSchema.branches.id })
-      .from(tenantSchema.branches)
-      .limit(1);
-
-    const [existingWarehouse] = await tempDb
-      .select({ id: tenantSchema.warehouses.id })
-      .from(tenantSchema.warehouses)
-      .where(eq(tenantSchema.warehouses.code, 'AP'));
-
-    if (!existingWarehouse) {
-      await tempDb.insert(tenantSchema.warehouses).values({
-        branchId: firstBranch?.id ?? null,
-        name: 'Almacen principal',
-        code: 'AP',
-        isCentral: true,
-        description: '',
-        isActive: true,
-      });
-      console.log(`[Seed] Almacén principal creado en "${dbName}".`);
-    }
-
-    // 3. Unidades de medida por defecto
+    // 2. Unidades de medida por defecto
     const defaultUnits = [
       { code: 'KG', name: 'Kilogramo', dimension: 'mass', baseFactor: '1.000000' },
-      { code: 'LT', name: 'Litro',     dimension: 'volume', baseFactor: '1.000000' },
+      { code: 'LT', name: 'Litro', dimension: 'volume', baseFactor: '1.000000' },
     ];
 
     for (const unit of defaultUnits) {
