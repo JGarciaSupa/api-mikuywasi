@@ -171,7 +171,7 @@ export const getPaymentMethods = async () => {
 /**
  * Crear un nuevo pedido (con NanoID y reintentos en colisión)
  */
-export const createOrder = async (orderData: any) => {
+export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
   const db = getTenantDb();
   const { items } = orderData;
   let attempts = 0;
@@ -199,7 +199,7 @@ export const createOrder = async (orderData: any) => {
           deliveryFee: (orderData.deliveryFee || 0).toString(),
           total: orderData.total.toString(),
           trackingCode,
-          status: 'pending',
+          status: initialStatus,
           paymentStatus: 'unpaid',
           createdAt: new Date(),
           updatedAt: new Date(),

@@ -35,7 +35,7 @@ export const createWaiterOrderController = async (c: Context) => {
   try {
     const body = await c.req.json();
     await tenantService.validateOrderStockBeforeCreate(body);
-    const result = await tenantService.createOrder(body);
+    const result = await tenantService.createOrder(body, 'confirmed');
 
     const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);
 
