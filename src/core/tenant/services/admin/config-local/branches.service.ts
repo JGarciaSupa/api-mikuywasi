@@ -76,28 +76,38 @@ export async function createBranch(data: CreateBranchInput) {
   // Si es la primera sucursal, hacerla principal automáticamente
   const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(branches);
   const isFirstBranch = Number(countResult?.count || 0) === 0;
+  const isMain = isFirstBranch ? true : (data.isMain ?? false);
 
-  const [newBranch] = await db.insert(branches).values({
-    name: data.name,
-    code: data.code,
-    isMain: isFirstBranch ? true : (data.isMain ?? false),
-    address: data.address ?? null,
-    phone: emptyToNull(data.phone),
-    whatsapp: emptyToNull(data.whatsapp),
-    email: emptyToNull(data.email),
-    hasDelivery: data.hasDelivery ?? false,
-    hasPickup: data.hasPickup ?? false,
-    hasDineIn: data.hasDineIn ?? false,
-    hasLiveTracking: data.hasLiveTracking ?? false,
-    minOrderAmount: emptyToNull(data.minOrderAmount) ?? '0.00',
-    defaultDeliveryFee: emptyToNull(data.defaultDeliveryFee) ?? '0.00',
-    freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
-    fiscalId: emptyToNull(data.fiscalId),
-    fiscalName: emptyToNull(data.fiscalName),
-    schedules: data.schedules ?? [],
-  }).returning();
+  return await db.transaction(async (tx) => {
+    // Si esta va a ser la principal, quitar el flag de principal a todas las demás
+    if (isMain) {
+      await tx.update(branches)
+        .set({ isMain: false, updatedAt: new Date() })
+        .where(eq(branches.isMain, true));
+    }
 
-  return newBranch;
+    const [newBranch] = await tx.insert(branches).values({
+      name: data.name,
+      code: data.code,
+      isMain: isMain,
+      address: data.address ?? null,
+      phone: emptyToNull(data.phone),
+      whatsapp: emptyToNull(data.whatsapp),
+      email: emptyToNull(data.email),
+      hasDelivery: data.hasDelivery ?? false,
+      hasPickup: data.hasPickup ?? false,
+      hasDineIn: data.hasDineIn ?? false,
+      hasLiveTracking: data.hasLiveTracking ?? false,
+      minOrderAmount: emptyToNull(data.minOrderAmount) ?? '0.00',
+      defaultDeliveryFee: emptyToNull(data.defaultDeliveryFee) ?? '0.00',
+      freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
+      fiscalId: emptyToNull(data.fiscalId),
+      fiscalName: emptyToNull(data.fiscalName),
+      schedules: data.schedules ?? [],
+    }).returning();
+
+    return newBranch;
+  });
 }
 
 // ────────────────────────────────────────────
@@ -139,12 +149,32 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
 
-  const [updated] = await db.update(branches)
-    .set(updateData)
-    .where(eq(branches.id, id))
-    .returning();
+  return await db.transaction(async (tx) => {
+    // Si estamos marcando esta sucursal como principal (isMain: true)
+    if (data.isMain === true) {
+      // Primero quitamos el flag de principal de cualquier otra sucursal
+      await tx.update(branches)
+        .set({ isMain: false, updatedAt: new Date() })
+        .where(and(eq(branches.isMain, true), sql`${branches.id} != ${id}`));
+    } else if (data.isMain === false) {
+      // Si intentan cambiar isMain de true a false, verificar si era la principal actual
+      const [currentBranch] = await tx
+        .select({ isMain: branches.isMain })
+        .from(branches)
+        .where(eq(branches.id, id));
 
-  return updated;
+      if (currentBranch && currentBranch.isMain) {
+        throw new Error('Debe haber al menos una sucursal principal. Para cambiar la sucursal principal, marque otra sucursal como principal.');
+      }
+    }
+
+    const [updated] = await tx.update(branches)
+      .set(updateData)
+      .where(eq(branches.id, id))
+      .returning();
+
+    return updated;
+  });
 }
 
 // ────────────────────────────────────────────

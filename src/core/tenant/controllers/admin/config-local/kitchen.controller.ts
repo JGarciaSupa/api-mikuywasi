@@ -3,7 +3,10 @@ import * as kitchenService from '../../../services/admin/config-local/kitchen.se
 
 export const getKitchenOrdersController = async (c: Context) => {
   try {
-    const orders = await kitchenService.getActiveKitchenOrders();
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+
+    const orders = await kitchenService.getActiveKitchenOrders(branchId);
 
     return c.json({
       success: true,

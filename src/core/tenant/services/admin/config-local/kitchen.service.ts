@@ -1,17 +1,23 @@
 import { orders, orderItems } from '@/db/tenant/schema';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, asc, inArray, and } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
  * Obtener órdenes activas para la cocina
  * Incluye estados: pending, confirmed, preparing
  */
-export const getActiveKitchenOrders = async () => {
+export const getActiveKitchenOrders = async (branchId?: number) => {
   const db = getTenantDb();
+  
+  const conditions = [inArray(orders.status, ['confirmed', 'preparing'])];
+  if (branchId) {
+    conditions.push(eq(orders.branchId, branchId));
+  }
+
   const activeOrders = await db
     .select()
     .from(orders)
-    .where(inArray(orders.status, ['confirmed', 'preparing']))
+    .where(and(...conditions))
     .orderBy(asc(orders.createdAt));
 
   if (activeOrders.length === 0) return [];

@@ -14,7 +14,21 @@ export const getOrdersController = async (c: Context) => {
     const startDate = c.req.query('startDate');
     const endDate = c.req.query('endDate');
     const branchIdQuery = c.req.query('branchId');
-    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+
+    if (!branchIdQuery) {
+      return c.json({
+        success: false,
+        message: 'El ID de la sucursal (branchId) es requerido'
+      }, 400);
+    }
+
+    const branchId = parseInt(branchIdQuery, 10);
+    if (isNaN(branchId)) {
+      return c.json({
+        success: false,
+        message: 'El ID de la sucursal (branchId) debe ser un número válido'
+      }, 400);
+    }
 
     const result = await orderService.getOrders({
       page,
