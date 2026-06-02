@@ -193,3 +193,15 @@ export const refreshBatches = async (c: Context) => {
     return jsonError(c, e, 'Error al actualizar estados de lotes');
   }
 };
+
+export const getItemMovements = async (c: Context) => {
+  try {
+    const itemId = parseInt(c.req.param('id') || '0', 10);
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 100;
+    const data = await ledger.getItemMovements(itemId, limit);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al obtener movimientos del insumo');
+  }
+};
+

@@ -83,3 +83,77 @@ export async function listWasteLog(filters?: { areaId?: number; from?: string; t
   if (conditions.length) q = q.where(and(...conditions)) as typeof q;
   return q;
 }
+
+export async function getItemMovements(itemId: number, limit = 100) {
+  const db = getTenantDb();
+
+  const mainMovements = await db
+    .select({
+      id: mainLedger.id,
+      itemId: mainLedger.itemId,
+      areaId: mainLedger.areaId,
+      recordedAt: mainLedger.recordedAt,
+      documentType: mainLedger.documentType,
+      documentNumber: mainLedger.documentNumber,
+      originDest: mainLedger.originDest,
+      entryQty: mainLedger.entryQty,
+      exitQty: mainLedger.exitQty,
+      entryPrice: mainLedger.entryPrice,
+      exitPrice: mainLedger.exitPrice,
+      entryValue: mainLedger.entryValue,
+      exitValue: mainLedger.exitValue,
+      currentStock: mainLedger.currentStock,
+      avgPrice: mainLedger.avgPrice,
+      areaName: storageAreas.name,
+      warehouseName: warehouses.name,
+    })
+    .from(mainLedger)
+    .innerJoin(storageAreas, eq(mainLedger.areaId, storageAreas.id))
+    .innerJoin(warehouses, eq(mainLedger.warehouseId, warehouses.id))
+    .where(eq(mainLedger.itemId, itemId));
+
+  const areaMovements = await db
+    .select({
+      id: areaLedger.id,
+      itemId: areaLedger.itemId,
+      areaId: areaLedger.areaId,
+      recordedAt: areaLedger.recordedAt,
+      documentType: areaLedger.documentType,
+      documentNumber: areaLedger.documentNumber,
+      originDest: areaLedger.originDest,
+      entryQty: areaLedger.entryQty,
+      exitQty: areaLedger.exitQty,
+      entryPrice: areaLedger.entryPrice,
+      entryValue: areaLedger.entryValue,
+      exitValue: areaLedger.exitValue,
+      currentStock: areaLedger.currentStock,
+      avgPrice: areaLedger.avgPrice,
+      areaName: storageAreas.name,
+      warehouseName: warehouses.name,
+    })
+    .from(areaLedger)
+    .innerJoin(storageAreas, eq(areaLedger.areaId, storageAreas.id))
+    .innerJoin(warehouses, eq(storageAreas.warehouseId, warehouses.id))
+    .where(eq(areaLedger.itemId, itemId));
+
+  const normalizedMain = mainMovements.map((m) => ({
+    ...m,
+    exitPrice: m.exitPrice || '0',
+    isCentral: true,
+  }));
+
+  const normalizedArea = areaMovements.map((m) => ({
+    ...m,
+    exitPrice: '0',
+    isCentral: false,
+  }));
+
+  const combined = [...normalizedMain, ...normalizedArea].sort((a, b) => {
+    const timeA = a.recordedAt ? new Date(a.recordedAt).getTime() : 0;
+    const timeB = b.recordedAt ? new Date(b.recordedAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  return combined.slice(0, limit);
+}
+

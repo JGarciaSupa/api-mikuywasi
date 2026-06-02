@@ -113,6 +113,8 @@ routes.post('/batches/refresh-statuses', recipesLedger.refreshBatches);
 routes.get('/kardex/area/:areaId', recipesLedger.getKardex);
 routes.get('/stock-snapshot', recipesLedger.getStockSnapshot);
 routes.get('/waste-log', recipesLedger.listWaste);
+routes.get('/items/:id/movements', recipesLedger.getItemMovements);
+
 
 // ── Configuración del almacén ────────────────────────────────────────────────
 routes.get('/settings', recipesLedger.listSettings);
