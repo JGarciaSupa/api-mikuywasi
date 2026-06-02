@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import * as tenantService from '../../../services/client/tenant.service';
 import * as waiterOrderService from '../../../services/admin/config-local/waiter-order.service';
+import * as orderService from '../../../services/admin/documents/order.service';
 
 /**
  * GET /api/admin/waiter/menu
@@ -120,5 +121,73 @@ export const cancelOrderController = async (c: Context) => {
       : error.message?.includes('No se puede') ? 422
         : 500;
     return c.json({ success: false, message: error.message || 'Error al cancelar el pedido' }, status as any);
+  }
+};
+
+/**
+ * GET /api/admin/waiter/orders/:id
+ * Detalle completo de un pedido (con items) para la vista de mesa ocupada.
+ */
+export const getWaiterOrderController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const order = await orderService.getOrderById(orderId);
+    if (!order) {
+      return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
+    }
+    return c.json({ success: true, data: order });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al obtener el pedido' }, 500);
+  }
+};
+
+/**
+ * PATCH /api/admin/waiter/orders/:id/status
+ * Actualizar estado del pedido desde la vista de mesero.
+ */
+export const updateWaiterOrderStatusController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const { status } = await c.req.json();
+    if (!status) {
+      return c.json({ success: false, message: 'El campo status es requerido' }, 400);
+    }
+    const updated = await orderService.updateOrderStatus(orderId, status);
+    if (!updated) {
+      return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
+    }
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al actualizar estado' }, 500);
+  }
+};
+
+/**
+ * PATCH /api/admin/waiter/orders/:id/payment-status
+ * Actualizar estado de pago desde la vista de mesero.
+ */
+export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const { paymentStatus } = await c.req.json();
+    if (!paymentStatus) {
+      return c.json({ success: false, message: 'El campo paymentStatus es requerido' }, 400);
+    }
+    const updated = await orderService.updateOrderPaymentStatus(orderId, paymentStatus);
+    if (!updated) {
+      return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
+    }
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al actualizar estado de pago' }, 500);
   }
 };

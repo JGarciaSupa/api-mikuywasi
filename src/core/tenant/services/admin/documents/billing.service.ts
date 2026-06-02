@@ -8,6 +8,8 @@ import {
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
+import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
+import { emitirComprobante, obtenerPdfBuffer } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -184,8 +186,40 @@ export async function createDocument(input: CreateDocumentInput) {
     if (!input.buyerName) throw new Error('La factura requiere razón social del comprador');
   }
 
-  return db.transaction(async (tx) => {
-    // Lock the series row for sequential number assignment
+  // Calcular líneas antes de la transacción para reutilizarlas después
+  const ois = await db.select().from(orderItems).where(eq(orderItems.orderId, input.orderId));
+
+  // series.priceInclTax y taxRate los necesitamos antes; los leemos sin lock
+  const [seriesPreview] = await db
+    .select({ priceInclTax: billingSeries.priceInclTax, taxRate: billingSeries.taxRate })
+    .from(billingSeries)
+    .where(eq(billingSeries.id, input.seriesId));
+
+  if (!seriesPreview) throw new Error('Serie no encontrada o inactiva');
+
+  const priceInclTax = seriesPreview.priceInclTax;
+  const taxRate = toNum(seriesPreview.taxRate);
+
+  const lineCalcs = ois.map((oi) =>
+    calcLine(
+      oi.productId ?? null,
+      oi.productName,
+      oi.quantity,
+      toNum(oi.unitPrice),
+      (oi.selectedAlternatives as { name: string; extraPrice: number }[]) ?? [],
+      toNum(oi.packagingFee),
+      oi.notes ?? null,
+      priceInclTax,
+      taxRate
+    )
+  );
+
+  const totalSubtotal = roundMoney(lineCalcs.reduce((s, l) => s + l.subtotal, 0));
+  const totalTax = roundMoney(lineCalcs.reduce((s, l) => s + l.taxAmount, 0));
+  const total = roundMoney(lineCalcs.reduce((s, l) => s + l.lineTotal, 0));
+
+  // Transacción: reservar correlativo + insertar documento + líneas
+  const { docId } = await db.transaction(async (tx) => {
     const [series] = await tx
       .select()
       .from(billingSeries)
@@ -206,28 +240,6 @@ export async function createDocument(input: CreateDocumentInput) {
       .update(billingSeries)
       .set({ lastSequential: sequential, updatedAt: new Date() })
       .where(eq(billingSeries.id, series.id));
-
-    const ois = await tx.select().from(orderItems).where(eq(orderItems.orderId, input.orderId));
-    const priceInclTax = series.priceInclTax;
-    const taxRate = toNum(series.taxRate);
-
-    const lineCalcs = ois.map((oi) =>
-      calcLine(
-        oi.productId ?? null,
-        oi.productName,
-        oi.quantity,
-        toNum(oi.unitPrice),
-        (oi.selectedAlternatives as { name: string; extraPrice: number }[]) ?? [],
-        toNum(oi.packagingFee),
-        oi.notes ?? null,
-        priceInclTax,
-        taxRate
-      )
-    );
-
-    const totalSubtotal = roundMoney(lineCalcs.reduce((s, l) => s + l.subtotal, 0));
-    const totalTax = roundMoney(lineCalcs.reduce((s, l) => s + l.taxAmount, 0));
-    const total = roundMoney(lineCalcs.reduce((s, l) => s + l.lineTotal, 0));
 
     const [doc] = await tx
       .insert(billingDocuments)
@@ -269,10 +281,134 @@ export async function createDocument(input: CreateDocumentInput) {
       notes: l.notes,
     }));
 
-    const lines = await tx.insert(billingDocumentLines).values(lineRows).returning();
+    await tx.insert(billingDocumentLines).values(lineRows);
 
-    return { document: doc, lines };
+    return { docId: doc.id };
   });
+
+  // Emisión electrónica SUNAT (fuera de la transacción — el correlativo ya está consumido)
+  if (input.documentType === 'factura' || input.documentType === 'boleta') {
+    const [savedDoc] = await db
+      .select()
+      .from(billingDocuments)
+      .where(eq(billingDocuments.id, docId));
+
+    if (savedDoc) {
+      await emitirYActualizarDoc(db, savedDoc, lineCalcs, taxRate);
+    }
+  }
+
+  // Retornar el documento con campos SUNAT ya actualizados
+  const [finalDoc] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, docId));
+
+  const finalLines = await db
+    .select()
+    .from(billingDocumentLines)
+    .where(eq(billingDocumentLines.documentId, docId));
+
+  return { document: finalDoc, lines: finalLines };
+}
+
+// ── SUNAT emission helper ──────────────────────────────────────────────────────
+
+type TenantDb = ReturnType<typeof getTenantDb>;
+
+async function emitirYActualizarDoc(
+  db: TenantDb,
+  doc: typeof billingDocuments.$inferSelect,
+  lineCalcs: LineCalc[],
+  taxRate: number,
+): Promise<void> {
+  let sunatUpdate: Record<string, unknown>;
+
+  try {
+    const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+
+    const tipoDoc = doc.documentType === 'factura' ? '01' : '03';
+    const buyerTipoDoc = doc.buyerDocType === 'RUC' ? '6' : doc.buyerDocType === 'DNI' ? '1' : '0';
+
+    const payload = {
+      emisor: { ruc },
+      cliente: {
+        tipo_documento: buyerTipoDoc,
+        numero_documento: doc.buyerDocNumber ?? '00000000',
+        razon_social: doc.buyerName ?? 'CLIENTE FINAL',
+        ...(doc.buyerAddress ? { direccion: doc.buyerAddress } : {}),
+      },
+      comprobante: {
+        tipo_doc: tipoDoc as '01' | '03',
+        serie: doc.series,
+        correlativo: String(doc.sequential).padStart(8, '0'),
+        fecha_emision: new Date(doc.issuedAt!).toISOString().replace('Z', '-05:00'),
+        moneda: doc.currency,
+      },
+      totales: {
+        gravadas: toNum(doc.subtotal),
+        igv: toNum(doc.taxAmount),
+        total_impuestos: toNum(doc.taxAmount),
+        valor_venta: toNum(doc.subtotal),
+        subtotal: toNum(doc.total),
+        total: toNum(doc.total),
+      },
+      detalles: lineCalcs.map((l, i) => {
+        // l.subtotal = total de línea SIN IGV (correcto para ambos priceInclTax)
+        // l.lineTotal = total de línea CON IGV
+        // Derivamos precios unitarios desde los totales para evitar errores con priceInclTax
+        const valorUnitario = roundMoney(l.subtotal / l.quantity);
+        const precioUnitario = roundMoney(l.lineTotal / l.quantity);
+        return {
+          codigo: String(l.productId ?? i + 1),
+          unidad_medida: 'NIU',
+          descripcion: l.alternativesDesc
+            ? `${l.productName} (${l.alternativesDesc})`
+            : l.productName,
+          cantidad: l.quantity,
+          valor_unitario: valorUnitario,
+          valor_venta: l.subtotal,
+          base_igv: l.subtotal,
+          porcentaje_igv: taxRate,
+          igv: l.taxAmount,
+          tipo_afectacion: '10',
+          total_impuestos: l.taxAmount,
+          precio_unitario: precioUnitario,
+        };
+      }),
+    };
+
+    const res = await emitirComprobante(payload);
+
+    sunatUpdate = {
+      sunat_status: res.success ? 'ACEPTADO' : 'RECHAZADO',
+      sunat_code: res.data.responseCode ?? null,
+      sunat_message: res.data.responseMessage ?? null,
+      xml_hash: res.data.hash ?? null,
+      xml_filename: res.data.xmlFilename ?? null,
+      facturador_comprobante_id: res.data.id ?? null,
+      updated_at: new Date(),
+    };
+  } catch (err: any) {
+    sunatUpdate = {
+      sunat_status: 'ERROR',
+      sunat_message: err?.message ?? 'Error desconocido al conectar con el facturador',
+      updated_at: new Date(),
+    };
+  }
+
+  await db
+    .update(billingDocuments)
+    .set({
+      sunatStatus: sunatUpdate['sunat_status'] as string,
+      sunatCode: sunatUpdate['sunat_code'] as string | null,
+      sunatMessage: sunatUpdate['sunat_message'] as string | null,
+      xmlHash: sunatUpdate['xml_hash'] as string | null,
+      xmlFilename: sunatUpdate['xml_filename'] as string | null,
+      facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
+      updatedAt: sunatUpdate['updated_at'] as Date,
+    })
+    .where(eq(billingDocuments.id, doc.id));
 }
 
 // ── List documents ─────────────────────────────────────────────────────────────
@@ -333,6 +469,68 @@ export async function getDocumentById(id: number) {
     .from(billingDocumentLines)
     .where(eq(billingDocumentLines.documentId, id));
   return { ...doc, lines };
+}
+
+// ── Retry SUNAT emission ───────────────────────────────────────────────────────
+
+export async function retryDocument(id: number) {
+  const db = getTenantDb();
+
+  const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  if (!doc) throw new Error('Documento no encontrado');
+  if (doc.status === 'voided') throw new Error('No se puede reintentar un documento anulado');
+  if (doc.documentType === 'nota_de_venta') {
+    throw new Error('Las notas de venta no se envían a SUNAT');
+  }
+  if (doc.sunatStatus === 'ACEPTADO') {
+    throw new Error('El documento ya fue aceptado por SUNAT');
+  }
+
+  const lines = await db
+    .select()
+    .from(billingDocumentLines)
+    .where(eq(billingDocumentLines.documentId, id));
+
+  const taxRate = toNum(doc.taxRate);
+
+  const lineCalcs: LineCalc[] = lines.map((l) => ({
+    productId: l.productId ?? null,
+    productName: l.productName,
+    quantity: l.quantity,
+    unitPrice: toNum(l.unitPrice),
+    alternativesExtra: 0,
+    packagingFee: toNum(l.packagingFee),
+    subtotal: toNum(l.subtotal),
+    taxAmount: toNum(l.taxAmount),
+    lineTotal: toNum(l.lineTotal),
+    alternativesDesc: l.alternativesDesc ?? null,
+    notes: l.notes ?? null,
+    priceInclTax: true,
+    taxRate,
+  }));
+
+  await emitirYActualizarDoc(db, doc, lineCalcs, taxRate);
+
+  const [updated] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  return { document: updated, lines };
+}
+
+// ── PDF proxy ──────────────────────────────────────────────────────────────────
+
+export async function getDocumentPdf(id: number): Promise<Buffer> {
+  const db = getTenantDb();
+
+  const [doc] = await db
+    .select({ facturadorComprobanteId: billingDocuments.facturadorComprobanteId })
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, id));
+
+  if (!doc) throw new Error('Documento no encontrado');
+  if (!doc.facturadorComprobanteId) {
+    throw new Error('El documento aún no tiene un comprobante electrónico generado');
+  }
+
+  return obtenerPdfBuffer(doc.facturadorComprobanteId);
 }
 
 // ── Void document ──────────────────────────────────────────────────────────────

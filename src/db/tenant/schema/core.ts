@@ -56,6 +56,10 @@ export const branches = pgTable('branches', {
 	fiscalId: varchar('fiscal_id', { length: 30 }),
 	fiscalName: varchar('fiscal_name', { length: 200 }),
 
+	// Facturación electrónica: empresa propia en el facturador (Caso B).
+	// NULL → hereda la empresa del tenantConfigs (Caso A).
+	facturadorEmpresaId: integer('facturador_empresa_id'),
+
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -75,7 +79,13 @@ export const tenantConfigs = pgTable('tenant_configs', {
 	logo: varchar('logo', { length: 255 }),
 	primaryColor: varchar('primary_color', { length: 255 }).default("#000000"),
 	email: varchar('email', { length: 255 }),
-	category: varchar('category', { length: 255 }), // Ej: 'Pollería', 'Chifa'
+	category: varchar('category', { length: 255 }),
+
+	// Facturación electrónica: empresa por defecto del tenant (Caso A / fallback mixto).
+	// Todas las sucursales sin facturadorEmpresaId propio heredan este valor.
+	facturadorEmpresaId: integer('facturador_empresa_id'),
+	facturadorRuc: varchar('facturador_ruc', { length: 20 }),
+
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 

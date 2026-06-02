@@ -49,6 +49,15 @@ export const billingDocuments = pgTable('billing_documents', {
 	status: varchar('status', { length: 20,
 		enum: ['draft', 'issued', 'voided'] as const }).notNull().default('issued'),
 	notes: text('notes'),
+
+	// Campos SUNAT — poblados tras llamar al facturador-restaurante
+	sunatStatus: varchar('sunat_status', { length: 20 }),    // ACEPTADO | RECHAZADO | ERROR
+	sunatCode: varchar('sunat_code', { length: 10 }),
+	sunatMessage: text('sunat_message'),
+	xmlHash: varchar('xml_hash', { length: 100 }),
+	xmlFilename: varchar('xml_filename', { length: 60 }),
+	facturadorComprobanteId: integer('facturador_comprobante_id'),
+
 	issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow(),
 	voidedAt: timestamp('voided_at', { withTimezone: true }),
 	voidedReason: text('voided_reason'),

@@ -4,7 +4,6 @@ import {
   validateCreateBranch,
   validateUpdateBranch,
 } from '../../../../validations/admin/config-local/branches.validation';
-
 import {
   getAllBranchesController,
   getBranchByIdController,
@@ -13,6 +12,11 @@ import {
   deleteBranchController,
   getMyBranchesController,
 } from '../../../../controllers/admin/config-local/branches.controller';
+import {
+  getBranchEmpresaController,
+  upsertBranchEmpresaController,
+  deleteBranchEmpresaController,
+} from '../../../../controllers/admin/facturacion/empresa.controller';
 
 const routes = new Hono();
 
@@ -25,5 +29,10 @@ routes.get('/:id', getBranchByIdController);
 routes.post('/', validateCreateBranch, createBranchController);
 routes.patch('/:id', validateUpdateBranch, updateBranchController);
 routes.delete('/:id', deleteBranchController);
+
+// Facturación electrónica — empresa propia por sucursal (Caso B)
+routes.get('/:id/facturacion', getBranchEmpresaController);
+routes.post('/:id/facturacion', upsertBranchEmpresaController);
+routes.delete('/:id/facturacion', deleteBranchEmpresaController);
 
 export default routes;

@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import * as billingService from '../../../services/admin/documents/billing.service';
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
+import { obtenerPdfBuffer, convertirCertificado } from '../../../../../utils/facturador-client';
 
 // ── Series ────────────────────────────────────────────────────────────────────
 
@@ -117,5 +118,53 @@ export const voidDocumentController = async (c: Context) => {
           error.message?.includes('motivo') ? 400 :
             500;
     return c.json({ success: false, message: error.message || 'Error al anular documento' }, status as any);
+  }
+};
+
+export const retryDocumentController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const result = await billingService.retryDocument(id);
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('anulado') || error.message?.includes('aceptado') || error.message?.includes('notas de venta') ? 422 :
+          500;
+    return c.json({ success: false, message: error.message || 'Error al reintentar envío' }, status as any);
+  }
+};
+
+export const convertCertificateController = async (c: Context) => {
+  try {
+    const { p12Base64, password } = await c.req.json();
+    if (!p12Base64 || !password) {
+      return c.json({ success: false, message: 'Se requieren p12Base64 y password' }, 400);
+    }
+    const result = await convertirCertificado(p12Base64, password);
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message?.includes('contraseña') || error.message?.includes('P12')
+        ? 'No se pudo leer el certificado. Verifica que el archivo y la contraseña sean correctos.'
+        : error.message || 'Error al convertir el certificado',
+    }, 422);
+  }
+};
+
+export const getDocumentPdfController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const pdfBuffer = await billingService.getDocumentPdf(id);
+    c.res.headers.set('Content-Type', 'application/pdf');
+    c.res.headers.set('Content-Disposition', `attachment; filename="comprobante-${id}.pdf"`);
+    return c.body(pdfBuffer as any);
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('no tiene') ? 422 :
+          500;
+    return c.json({ success: false, message: error.message || 'Error al obtener PDF' }, status as any);
   }
 };

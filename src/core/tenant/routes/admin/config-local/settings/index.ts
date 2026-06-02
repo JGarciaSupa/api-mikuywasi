@@ -15,6 +15,10 @@ import {
   validateUpdateLocation,
   validateUpdateAdmin
 } from "../../../../validations/admin/config-local/settings.validation";
+import {
+  getTenantEmpresaController,
+  upsertTenantEmpresaController,
+} from "../../../../controllers/admin/facturacion/empresa.controller";
 
 const routes = new Hono();
 
@@ -28,5 +32,9 @@ routes.patch('/location', validateUpdateLocation, updateLocationController);
 routes.patch('/admin', validateUpdateAdmin, updateAdminController);
 routes.post('/logo', updateLogoController);
 routes.delete('/logo', deleteLogoController);
+
+// Facturación electrónica — empresa a nivel tenant (Caso A)
+routes.get('/facturacion', getTenantEmpresaController);
+routes.post('/facturacion', upsertTenantEmpresaController);
 
 export default routes;
