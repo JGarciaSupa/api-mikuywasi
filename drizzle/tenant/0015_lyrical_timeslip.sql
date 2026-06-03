@@ -1,0 +1,2 @@
+ALTER TABLE "branches" ADD COLUMN "allow_sell_without_stock" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "products" ADD COLUMN "allow_sell_without_stock" boolean DEFAULT false NOT NULL;

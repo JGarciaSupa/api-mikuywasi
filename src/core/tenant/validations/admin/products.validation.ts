@@ -23,6 +23,7 @@ export const productSchema = z.object({
     extraPrice: z.number()
   }))).optional().default([]),
   isActive: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional().default(true),
+  allowSellWithoutStock: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional().default(false),
 });
 
 export const updateProductSchema = productSchema.partial();
