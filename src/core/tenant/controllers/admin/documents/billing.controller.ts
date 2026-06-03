@@ -153,6 +153,17 @@ export const convertCertificateController = async (c: Context) => {
   }
 };
 
+export const getDocumentReceiptController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const data = await billingService.getDocumentReceipt(id);
+    if (!data) return c.json({ success: false, message: 'Documento no encontrado' }, 404);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al obtener datos del comprobante' }, 500);
+  }
+};
+
 export const getDocumentPdfController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));

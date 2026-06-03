@@ -16,6 +16,7 @@ import {
   getBranchEmpresaController,
   upsertBranchEmpresaController,
   deleteBranchEmpresaController,
+  reuseBranchEmpresaController,
 } from '../../../../controllers/admin/facturacion/empresa.controller';
 
 const routes = new Hono();
@@ -33,6 +34,7 @@ routes.delete('/:id', deleteBranchController);
 // Facturación electrónica — empresa propia por sucursal (Caso B)
 routes.get('/:id/facturacion', getBranchEmpresaController);
 routes.post('/:id/facturacion', upsertBranchEmpresaController);
+routes.post('/:id/facturacion/reuse', reuseBranchEmpresaController);
 routes.delete('/:id/facturacion', deleteBranchEmpresaController);
 
 export default routes;

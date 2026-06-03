@@ -50,6 +50,20 @@ export const upsertBranchEmpresaController = async (c: Context) => {
   }
 };
 
+export const reuseBranchEmpresaController = async (c: Context) => {
+  try {
+    const branchId = Number(c.req.param('id'));
+    const { sourceBranchId } = await c.req.json();
+    if (!sourceBranchId) return c.json({ success: false, message: 'sourceBranchId requerido' }, 400);
+    await empresaService.reuseBranchEmpresa(branchId, Number(sourceBranchId));
+    return c.json({ success: true, message: 'Empresa reutilizada correctamente' });
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrada') ? 404
+      : error.message?.includes('no tiene') || error.message?.includes('misma') ? 422 : 500;
+    return c.json({ success: false, message: error.message || 'Error al reutilizar empresa' }, status as any);
+  }
+};
+
 export const deleteBranchEmpresaController = async (c: Context) => {
   try {
     const branchId = Number(c.req.param('id'));

@@ -33,6 +33,14 @@ export const createBranchSchema = z.object({
   fiscalId: z.string().max(30).nullable().optional(),
   fiscalName: z.string().max(200).nullable().optional(),
   schedules: z.array(scheduleSchema).optional(),
+  deliveryZone: z.object({
+    type: z.literal('Polygon'),
+    coordinates: z.array(
+      z.array(
+        z.tuple([z.number(), z.number()])
+      ).min(4, 'El anillo necesita al menos 4 puntos (3 únicos + cierre)')
+    ).min(1, 'Se requiere al menos el anillo exterior'),
+  }).nullable().optional(),
 });
 
 export const updateBranchSchema = createBranchSchema.partial();

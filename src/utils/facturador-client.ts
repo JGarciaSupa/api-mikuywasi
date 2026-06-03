@@ -153,7 +153,6 @@ export async function obtenerEmpresa(id: number): Promise<FacturadorEmpresaRow> 
   const res = await request<{ success: boolean; data: FacturadorEmpresaRow }>(
     'GET', `/api/v1/empresas/${id}`,
   );
-  console.log(res.data);
   return res.data;
 }
 

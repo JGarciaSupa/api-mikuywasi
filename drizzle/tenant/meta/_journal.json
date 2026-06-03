@@ -85,6 +85,20 @@
       "when": 1780270393700,
       "tag": "0011_integration_sunat",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780450673126,
+      "tag": "0012_stiff_fallen_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780452618837,
+      "tag": "0013_delete_fields",
+      "breakpoints": true
     }
   ]
 }

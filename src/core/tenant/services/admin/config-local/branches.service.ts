@@ -53,6 +53,10 @@ export interface CreateBranchInput {
     endTime: string;
     closed: boolean;
   }[];
+  deliveryZone?: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  } | null;
 }
 
 // Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
@@ -104,6 +108,7 @@ export async function createBranch(data: CreateBranchInput) {
       fiscalId: emptyToNull(data.fiscalId),
       fiscalName: emptyToNull(data.fiscalName),
       schedules: data.schedules ?? [],
+      deliveryZone: data.deliveryZone ?? null,
     }).returning();
 
     return newBranch;
@@ -148,6 +153,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.fiscalId !== undefined) updateData.fiscalId = emptyToNull(data.fiscalId);
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
+  if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
 
   return await db.transaction(async (tx) => {
     // Si estamos marcando esta sucursal como principal (isMain: true)

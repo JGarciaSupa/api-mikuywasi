@@ -90,6 +90,33 @@ export async function upsertBranchEmpresa(branchId: number, data: FacturadorEmpr
   return obtenerEmpresa(empresaId);
 }
 
+/**
+ * Reutiliza la empresa de otra sucursal: establece el mismo facturadorEmpresaId
+ * en la sucursal destino. Ambas sucursales comparten las mismas credenciales SUNAT.
+ */
+export async function reuseBranchEmpresa(branchId: number, sourceBranchId: number) {
+  const db = getTenantDb();
+
+  if (branchId === sourceBranchId) {
+    throw new Error('La sucursal origen y destino no pueden ser la misma');
+  }
+
+  const [source] = await db
+    .select({ facturadorEmpresaId: branches.facturadorEmpresaId, name: branches.name })
+    .from(branches)
+    .where(eq(branches.id, sourceBranchId));
+
+  if (!source) throw new Error('Sucursal origen no encontrada');
+  if (!source.facturadorEmpresaId) {
+    throw new Error(`La sucursal "${source.name}" no tiene empresa de facturación configurada`);
+  }
+
+  await db
+    .update(branches)
+    .set({ facturadorEmpresaId: source.facturadorEmpresaId, updatedAt: new Date() })
+    .where(eq(branches.id, branchId));
+}
+
 export async function deleteBranchEmpresa(branchId: number) {
   const db = getTenantDb();
   const [branch] = await db

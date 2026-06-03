@@ -3,13 +3,15 @@ import {
   billingDocuments,
   billingDocumentLines,
   billingSeries,
+  branches,
+  tenantConfigs,
   orders,
   orderItems,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, obtenerPdfBuffer } from '../../../../../utils/facturador-client';
+import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -106,6 +108,37 @@ function calcLine(
     priceInclTax,
     taxRate,
   };
+}
+
+// ── Emisor resolver ────────────────────────────────────────────────────────────
+
+interface EmisorSnapshot {
+  ruc: string;
+  name: string;
+  address: string;
+  logoUrl: string | null;
+}
+
+async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: number): Promise<EmisorSnapshot> {
+  // Logo desde nuestra propia DB (tenantConfigs.logo)
+  const [config] = await db
+    .select({ logo: tenantConfigs.logo })
+    .from(tenantConfigs);
+
+  try {
+    // Empresa del facturador: Caso B (propia de la sucursal) o Caso A (tenant fallback)
+    const { empresaId } = await resolveFacturadorConfig(db, branchId);
+    const empresa = await obtenerEmpresa(empresaId);
+    return {
+      ruc: empresa.ruc,
+      name: empresa.legalName,
+      address: empresa.address ?? '',
+      logoUrl: config?.logo ?? null,
+    };
+  } catch {
+    // Si la empresa aún no está configurada o el facturador no responde, retornar vacío
+    return { ruc: '', name: '', address: '', logoUrl: config?.logo ?? null };
+  }
 }
 
 // ── Preview ────────────────────────────────────────────────────────────────────
@@ -531,6 +564,50 @@ export async function getDocumentPdf(id: number): Promise<Buffer> {
   }
 
   return obtenerPdfBuffer(doc.facturadorComprobanteId);
+}
+
+// ── Receipt (datos enriquecidos para generar PDF/ticket) ──────────────────────
+
+export async function getDocumentReceipt(id: number) {
+  const db = getTenantDb();
+
+  const [doc] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, id));
+
+  if (!doc) return null;
+
+  const lines = await db
+    .select()
+    .from(billingDocumentLines)
+    .where(eq(billingDocumentLines.documentId, id));
+
+  // Datos de la sucursal para el encabezado del comprobante
+  const [branch] = await db
+    .select({
+      name: branches.name,
+      phone: branches.phone,
+      email: branches.email,
+      address: branches.address,
+    })
+    .from(branches)
+    .where(eq(branches.id, doc.branchId));
+
+  // Emisor siempre desde el microservicio facturador (empresa SUNAT configurada)
+  const emisor = await resolveEmisor(db, doc.branchId);
+
+  return {
+    document: doc,
+    lines,
+    emisor,
+    branch: {
+      name: branch?.name ?? '',
+      phone: branch?.phone ?? null,
+      email: branch?.email ?? null,
+      address: branch?.address?.fullAddress ?? null,
+    },
+  };
 }
 
 // ── Void document ──────────────────────────────────────────────────────────────
