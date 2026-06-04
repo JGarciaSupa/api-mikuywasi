@@ -205,6 +205,47 @@ export async function emitirComprobante(
   throw new Error(`Facturador ${endpoint} → ${res.status}: ${errText}`);
 }
 
+/**
+ * Re-envía a SUNAT un comprobante ya registrado en el facturador.
+ * Usa el payload guardado para reconstruir el XML y actualiza el Voucher existente.
+ * Maneja 422 como rechazo SUNAT (igual que emitirComprobante).
+ */
+export async function reenviarComprobante(
+  comprobanteId: number,
+): Promise<{ success: boolean; data: ComprobanteResponse }> {
+  const endpoint = `/api/v1/comprobantes/${comprobanteId}/retry`;
+  const url = `${BASE_URL}${endpoint}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
+
+  log.req('POST', endpoint);
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err: any) {
+    log.err('POST', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (retry ${comprobanteId}): ${err?.message ?? err}`);
+  }
+
+  if (res.status === 422 || res.ok) {
+    const json = await res.json() as { success: boolean; data: ComprobanteResponse };
+    if (res.status === 422) {
+      log.err('POST', endpoint, 422, `SUNAT rechazó reintento: ${json.data?.responseCode} — ${json.data?.responseMessage}`);
+    } else {
+      log.ok('POST', endpoint, res.status);
+    }
+    return json;
+  }
+
+  const errText = await res.text().catch(() => res.statusText);
+  log.err('POST', endpoint, res.status, errText);
+  throw new Error(`Facturador retry ${comprobanteId} → ${res.status}: ${errText}`);
+}
+
 export async function obtenerPdfBuffer(comprobanteId: number): Promise<Buffer> {
   const path = `/api/v1/comprobantes/${comprobanteId}/pdf`;
   const url = `${BASE_URL}${path}`;

@@ -11,6 +11,7 @@ import {
   createDocumentController,
   voidDocumentController,
   retryDocumentController,
+  correctAndRetryController,
   getDocumentPdfController,
   convertCertificateController,
 } from '../../../../controllers/admin/documents/billing.controller';
@@ -32,6 +33,7 @@ routes.post('/certificate/convert', convertCertificateController);
 routes.get('/documents', listDocumentsController);
 routes.get('/documents/:id', getDocumentController);
 routes.get('/documents/:id/receipt', getDocumentReceiptController);
+routes.put('/documents/:id/correct', correctAndRetryController);
 routes.get('/documents/:id/pdf', getDocumentPdfController);
 routes.get('/preview/:orderId', previewDocumentController);
 routes.post('/documents', createDocumentController);

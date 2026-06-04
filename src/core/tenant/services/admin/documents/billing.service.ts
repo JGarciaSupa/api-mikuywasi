@@ -43,7 +43,7 @@ export interface ListDocumentsFilters {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function padSequential(n: number) {
-  return String(n).padStart(6, '0');
+  return String(n).padStart(8, '0');
 }
 
 interface LineCalc {
@@ -542,10 +542,80 @@ export async function retryDocument(id: number) {
     taxRate,
   }));
 
+  // send() en el facturador es idempotente: upsert por xml_filename.
+  // Si el comprobante ya existe, lo re-firma y re-envía a SUNAT actualizando el registro.
   await emitirYActualizarDoc(db, doc, lineCalcs, taxRate);
 
   const [updated] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return { document: updated, lines };
+}
+
+// ── Correct buyer data and retry ──────────────────────────────────────────────
+
+export interface BuyerCorrection {
+  buyerDocType?: 'RUC' | 'DNI' | 'CE' | null;
+  buyerDocNumber?: string | null;
+  buyerName?: string | null;
+  buyerAddress?: string | null;
+  buyerEmail?: string | null;
+  notes?: string | null;
+}
+
+export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection) {
+  const db = getTenantDb();
+
+  const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  if (!doc) throw new Error('Documento no encontrado');
+  if (doc.status === 'voided') throw new Error('No se puede corregir un documento anulado');
+  if (doc.documentType === 'nota_de_venta') throw new Error('Las notas de venta no se envían a SUNAT');
+  if (doc.sunatStatus === 'ACEPTADO') throw new Error('El documento ya fue aceptado por SUNAT');
+
+  if (doc.documentType === 'factura') {
+    const ruc = buyer.buyerDocNumber ?? doc.buyerDocNumber;
+    const tipo = buyer.buyerDocType ?? doc.buyerDocType;
+    if (tipo !== 'RUC' || !ruc || ruc.length !== 11) {
+      throw new Error('La factura requiere tipo RUC con 11 dígitos');
+    }
+  }
+
+  // Actualizar los campos del comprador en la BD
+  await db
+    .update(billingDocuments)
+    .set({
+      buyerDocType: buyer.buyerDocType !== undefined ? buyer.buyerDocType : doc.buyerDocType,
+      buyerDocNumber: buyer.buyerDocNumber !== undefined ? buyer.buyerDocNumber : doc.buyerDocNumber,
+      buyerName: buyer.buyerName !== undefined ? buyer.buyerName : doc.buyerName,
+      buyerAddress: buyer.buyerAddress !== undefined ? buyer.buyerAddress : doc.buyerAddress,
+      buyerEmail: buyer.buyerEmail !== undefined ? buyer.buyerEmail : doc.buyerEmail,
+      notes: buyer.notes !== undefined ? buyer.notes : doc.notes,
+      updatedAt: new Date(),
+    })
+    .where(eq(billingDocuments.id, id));
+
+  const [corrected] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  const lines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, id));
+
+  const taxRate = toNum(corrected.taxRate);
+  const lineCalcs: LineCalc[] = lines.map((l) => ({
+    productId: l.productId ?? null,
+    productName: l.productName,
+    quantity: l.quantity,
+    unitPrice: toNum(l.unitPrice),
+    alternativesExtra: 0,
+    packagingFee: toNum(l.packagingFee),
+    subtotal: toNum(l.subtotal),
+    taxAmount: toNum(l.taxAmount),
+    lineTotal: toNum(l.lineTotal),
+    alternativesDesc: l.alternativesDesc ?? null,
+    notes: l.notes ?? null,
+    priceInclTax: true,
+    taxRate,
+  }));
+
+  await emitirYActualizarDoc(db, corrected, lineCalcs, taxRate);
+
+  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  return { document: final, lines };
 }
 
 // ── PDF proxy ──────────────────────────────────────────────────────────────────

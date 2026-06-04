@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import * as billingService from '../../../services/admin/documents/billing.service';
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
-import { obtenerPdfBuffer, convertirCertificado } from '../../../../../utils/facturador-client';
+import { convertirCertificado } from '../../../../../utils/facturador-client';
 
 // ── Series ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +150,22 @@ export const convertCertificateController = async (c: Context) => {
         ? 'No se pudo leer el certificado. Verifica que el archivo y la contraseña sean correctos.'
         : error.message || 'Error al convertir el certificado',
     }, 422);
+  }
+};
+
+export const correctAndRetryController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const buyer = await c.req.json();
+    const result = await billingService.correctAndRetryDocument(id, buyer);
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('aceptado') || error.message?.includes('anulado') || error.message?.includes('notas') ? 422 :
+          error.message?.includes('requiere') ? 400 :
+            500;
+    return c.json({ success: false, message: error.message || 'Error al corregir el documento' }, status as any);
   }
 };
 
