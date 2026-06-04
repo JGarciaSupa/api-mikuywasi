@@ -61,6 +61,7 @@ export const branches = pgTable('branches', {
 	facturadorEmpresaId: integer('facturador_empresa_id'),
 
 	isActive: boolean('is_active').default(true).notNull(),
+	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -200,6 +201,7 @@ export const products = pgTable('products', {
 		extraPrice: number;
 	}[]>().default([]), // Ej: Cremas, término de carne, etc.
 	isActive: boolean('is_active').default(true).notNull(),
+	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

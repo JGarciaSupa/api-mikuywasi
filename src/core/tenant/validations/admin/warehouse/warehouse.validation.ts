@@ -109,11 +109,14 @@ export const updateAdjustmentLinesSchema = z.object({
 });
 
 export const createRecipeSchema = z.object({
-  productId: z.number().int(),
-  name: z.string().min(1),
+  productId: z.number().int().optional().nullable(),
+  producedItemId: z.number().int().optional().nullable(),
+  type: z.enum(['sales', 'production']).default('sales'),
+  name: z.string().optional().nullable(),
+  preparation: z.string().optional().nullable(),
   servings: z.union([z.string(), z.number()]).optional(),
   yieldPct: z.union([z.string(), z.number()]).optional(),
-  productionAreaId: z.number().int().optional(),
+  productionAreaId: z.number().int().optional().nullable(),
   isActive: z.boolean().optional(),
   lines: z.array(z.object({
     itemId: z.number().int(),

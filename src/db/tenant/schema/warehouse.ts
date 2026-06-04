@@ -475,8 +475,11 @@ export const wasteLog = pgTable('waste_log', {
 // El área de producción por sucursal se configura en branch_recipe_areas.
 export const recipes = pgTable('recipes', {
 	id: serial('id').primaryKey(),
-	productId: integer('product_id').notNull().references(() => products.id),
-	name: varchar('name', { length: 200 }).notNull(),
+	productId: integer('product_id').references(() => products.id),
+	producedItemId: integer('produced_item_id').references(() => items.id),
+	type: varchar('type', { length: 30 }).default('sales').notNull(),
+	name: varchar('name', { length: 200 }),
+	preparation: text('preparation'),
 	servings: decimal('servings', { precision: 8, scale: 3 }).notNull().default('1'),
 	yieldPct: decimal('yield_pct', { precision: 6, scale: 2 }).notNull().default('100'),
 	isActive: boolean('is_active').default(true).notNull(),
@@ -484,6 +487,7 @@ export const recipes = pgTable('recipes', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
 }, (table) => ({
 	productIdx: index('recipes_product_idx').on(table.productId),
+	producedItemIdx: index('recipes_produced_item_idx').on(table.producedItemId),
 }));
 
 export const recipeLines = pgTable('recipe_lines', {
@@ -744,6 +748,7 @@ export const inventoryAdjustmentsRelations = relations(inventoryAdjustments, ({ 
 
 export const recipesRelations = relations(recipes, ({ one, many }) => ({
 	product: one(products, { fields: [recipes.productId], references: [products.id] }),
+	producedItem: one(items, { fields: [recipes.producedItemId], references: [items.id] }),
 	lines: many(recipeLines),
 	branchAreas: many(branchRecipeAreas),
 }));

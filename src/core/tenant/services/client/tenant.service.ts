@@ -1,4 +1,4 @@
-import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, recipes, recipeLines, items } from '../../../../db/tenant/schema';
+import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, recipes, recipeLines, items, branches } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -237,11 +237,30 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
  */
 export const validateOrderStockBeforeCreate = async (orderData: any) => {
   const db = getTenantDb();
+  const branchId = orderData.branchId ?? 1;
+
+  // 1. Si la tienda/sucursal permite venta sin stock, saltar validación de inmediato
+  const [branch] = await db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
+  if (branch?.allowSellWithoutStock) {
+    return;
+  }
+
   const requiredByItem = new Map<number, number>();
   const orderItemsInput = orderData?.items ?? [];
 
   for (const oi of orderItemsInput) {
     if (!oi?.productId) continue;
+
+    // 2. Si el producto permite venta sin stock, omitir la validación de sus insumos
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, oi.productId))
+      .limit(1);
+
+    if (product?.allowSellWithoutStock) {
+      continue;
+    }
 
     const [recipe] = await db
       .select()
@@ -249,8 +268,9 @@ export const validateOrderStockBeforeCreate = async (orderData: any) => {
       .where(and(eq(recipes.productId, oi.productId), eq(recipes.isActive, true)))
       .limit(1);
 
+    // 3. Si no tiene receta activa, es un producto directo. Se puede vender libremente sin validar stock.
     if (!recipe) {
-      throw new Error(`El producto "${oi.productName}" no tiene receta activa para descargar stock.`);
+      continue;
     }
 
     const lines = await db

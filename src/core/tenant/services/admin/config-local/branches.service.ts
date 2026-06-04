@@ -57,6 +57,7 @@ export interface CreateBranchInput {
     type: 'Polygon';
     coordinates: number[][][];
   } | null;
+  allowSellWithoutStock?: boolean;
 }
 
 // Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
@@ -109,6 +110,7 @@ export async function createBranch(data: CreateBranchInput) {
       fiscalName: emptyToNull(data.fiscalName),
       schedules: data.schedules ?? [],
       deliveryZone: data.deliveryZone ?? null,
+      allowSellWithoutStock: data.allowSellWithoutStock ?? false,
     }).returning();
 
     return newBranch;
@@ -154,6 +156,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
   if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
+  if (data.allowSellWithoutStock !== undefined) updateData.allowSellWithoutStock = data.allowSellWithoutStock;
 
   return await db.transaction(async (tx) => {
     // Si estamos marcando esta sucursal como principal (isMain: true)

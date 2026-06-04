@@ -19,6 +19,7 @@ export const createBranchSchema = z.object({
   code: z.string().min(1, 'El código es requerido').max(20, 'El código no puede exceder los 20 caracteres'),
   isMain: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  allowSellWithoutStock: z.boolean().optional(),
   address: addressSchema,
   phone: z.string().max(30).nullable().optional(),
   whatsapp: z.string().max(30).nullable().optional(),
