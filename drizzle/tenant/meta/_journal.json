@@ -120,6 +120,13 @@
       "when": 1780615565048,
       "tag": "0016_add_table_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780634557691,
+      "tag": "0017_breezy_chameleon",
+      "breakpoints": true
     }
   ]
 }

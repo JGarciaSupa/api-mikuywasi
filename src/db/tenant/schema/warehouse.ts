@@ -590,8 +590,20 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 // 💵 CAJA — GESTIÓN DE SESIONES Y MOVIMIENTOS
 // ==========================================
 
+export const cashRegisters = pgTable('cash_registers', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	name: varchar('name', { length: 100 }).notNull(),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }),
+}, (table) => ({
+	branchIdx: index('cash_registers_branch_idx').on(table.branchId),
+}));
+
 export const cashSessions = pgTable('cash_sessions', {
 	id: serial('id').primaryKey(),
+	registerId: integer('register_id').references(() => cashRegisters.id),
 	branchId: integer('branch_id').notNull().references(() => branches.id),
 	code: varchar('code', { length: 30 }).notNull().unique(),
 	openedBy: varchar('opened_by', { length: 100 }).notNull(),
@@ -612,6 +624,7 @@ export const cashSessions = pgTable('cash_sessions', {
 	closedAt: timestamp('closed_at', { withTimezone: true }),
 }, (table) => ({
 	branchIdx: index('cash_sessions_branch_idx').on(table.branchId),
+	registerIdx: index('cash_sessions_register_idx').on(table.registerId),
 	statusIdx: index('cash_sessions_status_idx').on(table.status),
 	openedAtIdx: index('cash_sessions_opened_at_idx').on(table.openedAt),
 }));
@@ -799,7 +812,13 @@ export const salesDischargeLinesRelations = relations(salesDischargeLines, ({ on
 	recipe: one(recipes, { fields: [salesDischargeLines.recipeId], references: [recipes.id] }),
 }));
 
+export const cashRegistersRelations = relations(cashRegisters, ({ one, many }) => ({
+	branch: one(branches, { fields: [cashRegisters.branchId], references: [branches.id] }),
+	sessions: many(cashSessions),
+}));
+
 export const cashSessionsRelations = relations(cashSessions, ({ one, many }) => ({
+	register: one(cashRegisters, { fields: [cashSessions.registerId], references: [cashRegisters.id] }),
 	branch: one(branches, { fields: [cashSessions.branchId], references: [branches.id] }),
 	movements: many(cashMovements),
 }));

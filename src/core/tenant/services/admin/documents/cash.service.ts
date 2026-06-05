@@ -1,5 +1,5 @@
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -27,11 +27,78 @@ async function nextCode(): Promise<string> {
   return `${prefix}${seq}`;
 }
 
+// ─── registers crud ──────────────────────────────────────────────────────────
+
+export async function listCashRegisters(branchId?: number) {
+  const db = getTenantDb();
+  const conditions = [];
+  if (branchId) conditions.push(eq(cashRegisters.branchId, branchId));
+
+  const registers = await (conditions.length
+    ? db.select().from(cashRegisters).where(and(...conditions)).orderBy(cashRegisters.name)
+    : db.select().from(cashRegisters).orderBy(cashRegisters.name));
+
+  // If no registers exist and branchId is provided, seed a default one
+  if (registers.length === 0 && branchId) {
+    const defaultReg = await createCashRegister({
+      branchId,
+      name: 'Caja Principal',
+    });
+    registers.push(defaultReg);
+  }
+
+  // Get active session for each register
+  const result = [];
+  for (const reg of registers) {
+    const [openSession] = await db
+      .select()
+      .from(cashSessions)
+      .where(and(
+        eq(cashSessions.registerId, reg.id),
+        eq(cashSessions.status, 'open')
+      ))
+      .limit(1);
+    result.push({
+      ...reg,
+      currentSession: openSession ?? null,
+    });
+  }
+
+  return result;
+}
+
+export async function createCashRegister(data: { branchId: number; name: string }) {
+  const db = getTenantDb();
+  const [reg] = await db
+    .insert(cashRegisters)
+    .values({
+      branchId: data.branchId,
+      name: data.name,
+      isActive: true,
+    })
+    .returning();
+  return reg;
+}
+
+export async function updateCashRegister(id: number, data: { name?: string; isActive?: boolean }) {
+  const db = getTenantDb();
+  const [reg] = await db
+    .update(cashRegisters)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(eq(cashRegisters.id, id))
+    .returning();
+  return reg;
+}
+
 // ─── queries ──────────────────────────────────────────────────────────────────
 
-export async function listCashSessions(filters?: { status?: string; from?: string; to?: string }) {
+export async function listCashSessions(filters?: { registerId?: number; status?: string; from?: string; to?: string }) {
   const db = getTenantDb();
-  const conditions: ReturnType<typeof eq>[] = [];
+  const conditions = [];
+  if (filters?.registerId) conditions.push(eq(cashSessions.registerId, filters.registerId));
   if (filters?.status) conditions.push(eq(cashSessions.status, filters.status as 'open' | 'closed'));
   if (filters?.from) conditions.push(gte(cashSessions.openedAt, new Date(filters.from)));
   if (filters?.to) conditions.push(lte(cashSessions.openedAt, new Date(filters.to + 'T23:59:59')));
@@ -40,12 +107,16 @@ export async function listCashSessions(filters?: { status?: string; from?: strin
   return conditions.length ? q.where(and(...conditions)) : q;
 }
 
-export async function getCurrentCashSession() {
+export async function getCurrentCashSession(registerId?: number) {
   const db = getTenantDb();
+  if (!registerId) return null;
   const [session] = await db
     .select()
     .from(cashSessions)
-    .where(eq(cashSessions.status, 'open'))
+    .where(and(
+      eq(cashSessions.registerId, registerId),
+      eq(cashSessions.status, 'open')
+    ))
     .orderBy(desc(cashSessions.openedAt))
     .limit(1);
   return session ?? null;
@@ -70,21 +141,27 @@ export async function getCashSessionById(id: number) {
 // ─── mutations ────────────────────────────────────────────────────────────────
 
 export async function openCashSession(
-  data: { branchId?: number; openingBalance: number; notes?: string },
+  data: { registerId: number; openingBalance: number; notes?: string },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
 
-  // Only one open session at a time
-  const existing = await getCurrentCashSession();
-  if (existing) throw new Error(`Ya hay una sesión abierta: ${existing.code}`);
+  // Validate register exists and is active
+  const [reg] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, data.registerId)).limit(1);
+  if (!reg) throw new Error('Caja no encontrada');
+  if (!reg.isActive) throw new Error('La caja está inactiva');
+
+  // Only one open session at a time per register
+  const existing = await getCurrentCashSession(data.registerId);
+  if (existing) throw new Error(`La caja "${reg.name}" ya tiene una sesión abierta: ${existing.code}`);
 
   const code = await nextCode();
   const [session] = await db
     .insert(cashSessions)
     .values({
       code,
-      branchId: data.branchId ?? 1,
+      registerId: data.registerId,
+      branchId: reg.branchId,
       openedBy: actor?.userName ?? 'sistema',
       openingBalance: round2(data.openingBalance),
       expectedBalance: round2(data.openingBalance),
@@ -101,7 +178,7 @@ export async function openCashSession(
     userId: actor?.userId,
     userName: actor?.userName,
     module: 'caja',
-    description: `Sesión de caja abierta: ${code} con saldo inicial S/ ${round2(data.openingBalance)}`,
+    description: `Sesión de caja abierta en caja "${reg.name}": ${code} con saldo inicial S/ ${round2(data.openingBalance)}`,
   });
 
   return session;

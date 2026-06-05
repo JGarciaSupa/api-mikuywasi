@@ -7,6 +7,10 @@ const routes = new Hono();
 routes.use('*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
+routes.get('/registers', cash.listCashRegisters);
+routes.post('/registers', cash.createCashRegister);
+routes.patch('/registers/:id', cash.updateCashRegister);
+
 routes.get('/sessions', cash.listCashSessions);
 routes.get('/sessions/current', cash.getCurrentSession);
 routes.post('/sessions/open', cash.openCashSession);
