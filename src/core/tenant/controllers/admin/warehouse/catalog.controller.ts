@@ -2,22 +2,43 @@ import type { Context } from 'hono';
 import * as catalog from '../../../services/admin/warehouse/catalog.service';
 import { jsonError } from '@/utils/helpers';
 
-export const listFamilies = async (c: Context) => {
+export const listCategories = async (c: Context) => {
   try {
-    const data = await catalog.listFamilies();
+    const data = await catalog.listCategories();
     return c.json({ success: true, data });
   } catch (e) {
-    return jsonError(c, e, 'Error al listar familias');
+    return jsonError(c, e, 'Error al listar categorías');
   }
 };
 
-export const createFamily = async (c: Context) => {
+export const createCategory = async (c: Context) => {
   try {
     const body = await c.req.json();
-    const data = await catalog.createFamily(body);
+    const data = await catalog.createCategory(body);
     return c.json({ success: true, data }, 201);
   } catch (e) {
-    return jsonError(c, e, 'Error al crear familia');
+    return jsonError(c, e, 'Error al crear categoría');
+  }
+};
+
+export const listSubcategories = async (c: Context) => {
+  try {
+    const categoryIdQuery = c.req.query('categoryId');
+    const categoryId = categoryIdQuery ? parseInt(categoryIdQuery, 10) : undefined;
+    const data = await catalog.listSubcategories(categoryId);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al listar subcategorías');
+  }
+};
+
+export const createSubcategory = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    const data = await catalog.createSubcategory(body);
+    return c.json({ success: true, data }, 201);
+  } catch (e) {
+    return jsonError(c, e, 'Error al crear subcategoría');
   }
 };
 
@@ -65,7 +86,8 @@ export const listItems = async (c: Context) => {
   try {
     const data = await catalog.listItems({
       search: c.req.query('search'),
-      familyId: c.req.query('familyId') ? parseInt(c.req.query('familyId')!) : undefined,
+      subcategoryId: c.req.query('subcategoryId') ? parseInt(c.req.query('subcategoryId')!) : undefined,
+      categoryId: c.req.query('categoryId') ? parseInt(c.req.query('categoryId')!) : undefined,
       isActive: c.req.query('isActive') === 'true' ? true : c.req.query('isActive') === 'false' ? false : undefined,
     });
     return c.json({ success: true, data });
@@ -127,15 +149,27 @@ export const removeItemArea = async (c: Context) => {
   }
 };
 
-export const updateFamily = async (c: Context) => {
+export const updateCategory = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0', 10);
     const body = await c.req.json();
-    const data = await catalog.updateFamily(id, body);
-    if (!data) return c.json({ success: false, message: 'Familia no encontrada' }, 404);
+    const data = await catalog.updateCategory(id, body);
+    if (!data) return c.json({ success: false, message: 'Categoría no encontrada' }, 404);
     return c.json({ success: true, data });
   } catch (e) {
-    return jsonError(c, e, 'Error al actualizar familia');
+    return jsonError(c, e, 'Error al actualizar categoría');
+  }
+};
+
+export const updateSubcategory = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const body = await c.req.json();
+    const data = await catalog.updateSubcategory(id, body);
+    if (!data) return c.json({ success: false, message: 'Subcategoría no encontrada' }, 404);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al actualizar subcategoría');
   }
 };
 
@@ -234,6 +268,40 @@ export const deleteArea = async (c: Context) => {
       }, 400);
     }
     return jsonError(c, e, 'Error al eliminar área');
+  }
+};
+
+export const deleteCategory = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await catalog.deleteCategory(id);
+    return c.json({ success: true, message: 'Categoría eliminada' });
+  } catch (e: any) {
+    const errorMsg = e?.message || '';
+    if (errorMsg.includes('foreign key') || errorMsg.includes('violates foreign key constraint')) {
+      return c.json({
+        success: false,
+        message: 'No se puede eliminar esta categoría porque tiene subcategorías o insumos asociados. Le recomendamos desactivarla.'
+      }, 400);
+    }
+    return jsonError(c, e, 'Error al eliminar categoría');
+  }
+};
+
+export const deleteSubcategory = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await catalog.deleteSubcategory(id);
+    return c.json({ success: true, message: 'Subcategoría eliminada' });
+  } catch (e: any) {
+    const errorMsg = e?.message || '';
+    if (errorMsg.includes('foreign key') || errorMsg.includes('violates foreign key constraint')) {
+      return c.json({
+        success: false,
+        message: 'No se puede eliminar esta subcategoría porque tiene artículos asociados. Le recomendamos desactivarla.'
+      }, 400);
+    }
+    return jsonError(c, e, 'Error al eliminar subcategoría');
   }
 };
 

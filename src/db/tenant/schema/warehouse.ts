@@ -6,13 +6,24 @@ import { users, products, orders, branches } from './core';
 // 🏬 WAREHOUSE — CATALOGUE
 // ==========================================
 
-export const itemFamilies = pgTable('item_families', {
+export const itemCategories = pgTable('item_categories', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 100 }).notNull().unique(),
 	description: varchar('description', { length: 255 }),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
+
+export const itemSubcategories = pgTable('item_subcategories', {
+	id: serial('id').primaryKey(),
+	categoryId: integer('category_id').notNull().references(() => itemCategories.id),
+	name: varchar('name', { length: 100 }).notNull(),
+	description: varchar('description', { length: 255 }),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	categoryNameUnique: uniqueIndex('item_subcategories_category_name_idx').on(table.categoryId, table.name),
+}));
 
 // Almacenes físicos. Pueden ser centrales (isCentral=true, branchId=null)
 // o propios de una sucursal (branchId=X).
@@ -82,7 +93,7 @@ export const items = pgTable('items', {
 	id: serial('id').primaryKey(),
 	code: varchar('code', { length: 20 }).notNull().unique(),
 	shortDescription: varchar('short_description', { length: 100 }).notNull(),
-	familyId: integer('family_id').references(() => itemFamilies.id),
+	subcategoryId: integer('subcategory_id').references(() => itemSubcategories.id),
 	ledgerUnitId: integer('ledger_unit_id').references(() => measurementUnits.id),
 	costUnitId: integer('cost_unit_id').references(() => measurementUnits.id),
 	ledgerUnit: varchar('ledger_unit', { length: 30 }).notNull().default(''),
@@ -107,7 +118,7 @@ export const items = pgTable('items', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
 	updatedBy: varchar('updated_by', { length: 100 }),
 }, (table) => ({
-	familyIdx: index('items_family_idx').on(table.familyId),
+	subcategoryIdx: index('items_subcategory_idx').on(table.subcategoryId),
 	codeIdx: index('items_code_idx').on(table.code),
 	activeIdx: index('items_active_idx').on(table.isActive),
 }));
@@ -453,7 +464,7 @@ export const wasteLog = pgTable('waste_log', {
 	portioningId: integer('portioning_id').notNull().references(() => portionings.id),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	areaId: integer('area_id').notNull().references(() => storageAreas.id),
-	familyId: integer('family_id').notNull().references(() => itemFamilies.id),
+	subcategoryId: integer('subcategory_id').notNull().references(() => itemSubcategories.id),
 	date: date('date').notNull(),
 	usedQty: decimal('used_qty', { precision: 12, scale: 3 }).notNull(),
 	waste: decimal('waste', { precision: 12, scale: 3 }).notNull(),
@@ -665,7 +676,12 @@ export const measurementUnitsRelations = relations(measurementUnits, ({ many }) 
 	itemsAsCost: many(items, { relationName: 'costUnit' }),
 }));
 
-export const itemFamiliesRelations = relations(itemFamilies, ({ many }) => ({
+export const itemCategoriesRelations = relations(itemCategories, ({ many }) => ({
+	subcategories: many(itemSubcategories),
+}));
+
+export const itemSubcategoriesRelations = relations(itemSubcategories, ({ one, many }) => ({
+	category: one(itemCategories, { fields: [itemSubcategories.categoryId], references: [itemCategories.id] }),
 	items: many(items),
 }));
 
@@ -690,7 +706,7 @@ export const suppliersRelations = relations(suppliers, ({ many }) => ({
 }));
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
-	family: one(itemFamilies, { fields: [items.familyId], references: [itemFamilies.id] }),
+	subcategory: one(itemSubcategories, { fields: [items.subcategoryId], references: [itemSubcategories.id] }),
 	ledgerUnitRef: one(measurementUnits, { fields: [items.ledgerUnitId], references: [measurementUnits.id], relationName: 'ledgerUnit' }),
 	costUnitRef: one(measurementUnits, { fields: [items.costUnitId], references: [measurementUnits.id], relationName: 'costUnit' }),
 	areaAssignments: many(itemAreaAssignments),

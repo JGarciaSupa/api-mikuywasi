@@ -22,9 +22,15 @@ routes.use('*', authMiddleware);
 routes.use('/*', roleMiddleware(['admin']));
 
 // ── Catálogo / Maestros ──────────────────────────────────────────────────────
-routes.get('/families', catalog.listFamilies);
-routes.post('/families', catalog.createFamily);
-routes.put('/families/:id', catalog.updateFamily);
+routes.get('/categories', catalog.listCategories);
+routes.post('/categories', catalog.createCategory);
+routes.put('/categories/:id', catalog.updateCategory);
+routes.delete('/categories/:id', catalog.deleteCategory);
+
+routes.get('/subcategories', catalog.listSubcategories);
+routes.post('/subcategories', catalog.createSubcategory);
+routes.put('/subcategories/:id', catalog.updateSubcategory);
+routes.delete('/subcategories/:id', catalog.deleteSubcategory);
 
 routes.get('/areas', catalog.listAreas);
 routes.post('/areas', catalog.createArea);

@@ -179,7 +179,7 @@ export async function processPortioning(id: number, actor?: AuditActor) {
         portioningId: id,
         itemId: doc.sourceItemId,
         areaId: doc.areaId,
-        familyId: source.familyId!,
+        subcategoryId: source.subcategoryId!,
         date: new Date().toISOString().slice(0, 10),
         usedQty: String(inputQty),
         waste: String(waste),

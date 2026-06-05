@@ -1,6 +1,7 @@
-import { eq, asc, and, like, or, isNull } from 'drizzle-orm';
+import { eq, asc, and, like, or, isNull, inArray } from 'drizzle-orm';
 import {
-  itemFamilies,
+  itemCategories,
+  itemSubcategories,
   storageAreas,
   suppliers,
   items,
@@ -11,22 +12,60 @@ import {
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 
-// ─── Familias ───────────────────────────────────────────────
-export async function listFamilies() {
+// ─── Categorías ─────────────────────────────────────────────
+export async function listCategories() {
   const db = getTenantDb();
-  return db.select().from(itemFamilies).orderBy(asc(itemFamilies.name));
+  return db.select().from(itemCategories).orderBy(asc(itemCategories.name));
 }
 
-export async function createFamily(data: { name: string; description?: string; isActive?: boolean }) {
+export async function createCategory(data: { name: string; description?: string; isActive?: boolean }) {
   const db = getTenantDb();
-  const [row] = await db.insert(itemFamilies).values(data).returning();
+  const [row] = await db.insert(itemCategories).values(data).returning();
   return row;
 }
 
-export async function updateFamily(id: number, data: Partial<{ name: string; description: string; isActive: boolean }>) {
+export async function updateCategory(id: number, data: Partial<{ name: string; description: string; isActive: boolean }>) {
   const db = getTenantDb();
-  const [row] = await db.update(itemFamilies).set(data).where(eq(itemFamilies.id, id)).returning();
+  const [row] = await db.update(itemCategories).set(data).where(eq(itemCategories.id, id)).returning();
   return row;
+}
+
+// ─── Subcategorías ──────────────────────────────────────────
+export async function listSubcategories(categoryId?: number) {
+  const db = getTenantDb();
+  const conditions = [];
+  if (categoryId) {
+    conditions.push(eq(itemSubcategories.categoryId, categoryId));
+  }
+  const q = db.select().from(itemSubcategories);
+  if (conditions.length) {
+    return q.where(and(...conditions)).orderBy(asc(itemSubcategories.name));
+  }
+  return q.orderBy(asc(itemSubcategories.name));
+}
+
+export async function createSubcategory(data: { categoryId: number; name: string; description?: string; isActive?: boolean }) {
+  const db = getTenantDb();
+  const [row] = await db.insert(itemSubcategories).values(data).returning();
+  return row;
+}
+
+export async function updateSubcategory(id: number, data: Partial<{ categoryId: number; name: string; description: string; isActive: boolean }>) {
+  const db = getTenantDb();
+  const [row] = await db.update(itemSubcategories).set(data).where(eq(itemSubcategories.id, id)).returning();
+  return row;
+}
+
+export async function deleteCategory(id: number) {
+  const db = getTenantDb();
+  await db.delete(itemCategories).where(eq(itemCategories.id, id));
+  return true;
+}
+
+export async function deleteSubcategory(id: number) {
+  const db = getTenantDb();
+  await db.delete(itemSubcategories).where(eq(itemSubcategories.id, id));
+  return true;
 }
 
 // ─── Áreas de almacén ───────────────────────────────────────
@@ -380,10 +419,10 @@ export async function updateMeasurementUnit(id: number, data: Partial<{
 }
 
 // ─── Artículos (maestro) ────────────────────────────────────
-export async function listItems(filters?: { search?: string; familyId?: number; isActive?: boolean }) {
+export async function listItems(filters?: { search?: string; subcategoryId?: number; categoryId?: number; isActive?: boolean }) {
   const db = getTenantDb();
   const conditions = [];
-  if (filters?.familyId) conditions.push(eq(items.familyId, filters.familyId));
+  if (filters?.subcategoryId) conditions.push(eq(items.subcategoryId, filters.subcategoryId));
   if (filters?.isActive !== undefined) conditions.push(eq(items.isActive, filters.isActive));
   if (filters?.search) {
     conditions.push(
@@ -392,6 +431,18 @@ export async function listItems(filters?: { search?: string; familyId?: number; 
         like(items.shortDescription, `%${filters.search}%`)
       )!
     );
+  }
+
+  if (filters?.categoryId) {
+    const subcats = await db
+      .select({ id: itemSubcategories.id })
+      .from(itemSubcategories)
+      .where(eq(itemSubcategories.categoryId, filters.categoryId));
+    const subcatIds = subcats.map((s) => s.id);
+    if (subcatIds.length === 0) {
+      return [];
+    }
+    conditions.push(inArray(items.subcategoryId, subcatIds));
   }
 
   const q = db.select().from(items);
@@ -423,7 +474,7 @@ export async function getItemById(id: number) {
 export async function createItem(data: {
   code: string;
   shortDescription: string;
-  familyId: number;
+  subcategoryId: number;
   ledgerUnitId?: number;
   costUnitId?: number;
   ledgerUnit?: string;

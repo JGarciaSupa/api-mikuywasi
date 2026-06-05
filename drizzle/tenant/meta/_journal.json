@@ -113,6 +113,13 @@
       "when": 1780525051570,
       "tag": "0015_lyrical_timeslip",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780615565048,
+      "tag": "0016_add_table_categories",
+      "breakpoints": true
     }
   ]
 }
