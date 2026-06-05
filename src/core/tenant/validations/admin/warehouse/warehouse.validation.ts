@@ -37,6 +37,7 @@ export const createPurchaseDocumentSchema = z.object({
 });
 
 export const createRequisitionSchema = z.object({
+  branchId: z.number().int().optional(),
   areaId: z.number().int(),
   areaManager: z.string().optional(),
   reference: z.string().optional(),
@@ -49,8 +50,11 @@ export const createRequisitionSchema = z.object({
 });
 
 export const createStockTransferSchema = z.object({
+  branchId: z.number().int().optional(),
   sourceAreaId: z.number().int(),
   targetAreaId: z.number().int(),
+  sourceBranchId: z.number().int().optional(),
+  targetBranchId: z.number().int().optional(),
   requisitionId: z.number().int().optional(),
   reference: z.string().optional(),
   createdBy: z.string().optional(),
@@ -62,6 +66,7 @@ export const createStockTransferSchema = z.object({
 });
 
 export const createStockExitSchema = z.object({
+  branchId: z.number().int().optional(),
   areaId: z.number().int(),
   exitType: z.enum([
     'consumption', 'write_off', 'quality_control', 'kitchen_test',
@@ -83,6 +88,7 @@ export const createStockExitSchema = z.object({
 });
 
 export const createPortioningSchema = z.object({
+  branchId: z.number().int().optional(),
   areaId: z.number().int(),
   sourceItemId: z.number().int(),
   inputQty: z.number().positive(),
@@ -96,6 +102,7 @@ export const createPortioningSchema = z.object({
 });
 
 export const openAdjustmentSchema = z.object({
+  branchId: z.number().int(),
   areaId: z.number().int(),
   code: z.string().min(1),
   createdBy: z.string().optional(),

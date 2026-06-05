@@ -1,4 +1,4 @@
-import { eq, asc, and, like, or, isNull, inArray } from 'drizzle-orm';
+import { eq, asc, and, like, or, isNull, inArray, ne } from 'drizzle-orm';
 import {
   itemCategories,
   itemSubcategories,
@@ -351,6 +351,14 @@ export async function createSupplier(data: {
   isActive?: boolean;
 }) {
   const db = getTenantDb();
+
+  if (data.taxId) {
+    const [existing] = await db.select().from(suppliers).where(eq(suppliers.taxId, data.taxId));
+    if (existing) {
+      throw new Error(`El documento o RUC ${data.taxId} ya se encuentra registrado (inválido)`);
+    }
+  }
+
   const [row] = await db.insert(suppliers).values({
     phone: data.phone ?? '-',
     email: data.email ?? '-',
@@ -369,6 +377,14 @@ export async function updateSupplier(id: number, data: Partial<{
   isActive: boolean;
 }>) {
   const db = getTenantDb();
+
+  if (data.taxId) {
+    const [existing] = await db.select().from(suppliers).where(and(eq(suppliers.taxId, data.taxId), ne(suppliers.id, id)));
+    if (existing) {
+      throw new Error(`El documento o RUC ${data.taxId} ya se encuentra registrado (inválido)`);
+    }
+  }
+
   const [row] = await db
     .update(suppliers)
     .set({ ...data, updatedAt: new Date() })

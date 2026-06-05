@@ -15,8 +15,8 @@ import {
 } from './shared/stock-movement.service';
 import type { AuditActor } from './types';
 
-async function getAdjustmentWithLines(id: number) {
-  const db = getTenantDb();
+async function getAdjustmentWithLines(id: number, txClient?: any) {
+  const db = txClient || getTenantDb();
   const [adj] = await db.select().from(inventoryAdjustments).where(eq(inventoryAdjustments.id, id));
   if (!adj) return null;
   const lines = await db.select().from(adjustmentLines).where(eq(adjustmentLines.adjustmentId, id));
@@ -100,7 +100,7 @@ export async function openInventoryAdjustment(
       tx
     );
 
-    return getAdjustmentWithLines(adj.id);
+    return getAdjustmentWithLines(adj.id, tx);
   });
 }
 
@@ -114,7 +114,7 @@ export async function updateAdjustmentLines(
   if (adj.status !== 'open') throw new Error('El ajuste ya está cerrado');
 
   for (const line of lines) {
-    const existing = adj.lines.find((l) => l.id === line.id);
+    const existing = adj.lines.find((l: typeof adjustmentLines.$inferSelect) => l.id === line.id);
     if (!existing) continue;
     const closing = toNum(existing.closingStock);
     const adjustment = roundQty(line.finalStock - closing);
@@ -201,6 +201,6 @@ export async function closeInventoryAdjustment(id: number, actor?: AuditActor) {
       tx
     );
 
-    return getAdjustmentWithLines(id);
+    return getAdjustmentWithLines(id, tx);
   });
 }
