@@ -38,6 +38,15 @@ export async function createSeries(input: CreateSeriesInput) {
   const priceInclTax = input.priceInclTax ??
     (input.documentType === 'boleta' || input.documentType === 'nota_de_venta');
 
+  const [existing] = await db
+    .select()
+    .from(billingSeries)
+    .where(eq(billingSeries.series, series));
+
+  if (existing) {
+    throw new Error(`La serie ${series} ya está registrada. Cada serie debe ser única.`);
+  }
+
   const [row] = await db
     .insert(billingSeries)
     .values({

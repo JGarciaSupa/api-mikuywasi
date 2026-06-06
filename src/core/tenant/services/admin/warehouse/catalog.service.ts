@@ -502,38 +502,22 @@ export async function createItem(data: {
   recipeDischarge?: boolean;
   dailyControl?: boolean;
   useMarketPrice?: boolean;
-  centralAreaId?: number;
 }) {
   const db = getTenantDb();
-  const { centralAreaId, ...itemData } = data;
 
   return db.transaction(async (tx) => {
-    // Resolve legacy string unit codes from FK if provided
-    if (itemData.ledgerUnitId && !itemData.ledgerUnit) {
-      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, itemData.ledgerUnitId));
-      if (u) itemData.ledgerUnit = u.code;
+    if (data.ledgerUnitId && !data.ledgerUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, data.ledgerUnitId));
+      if (u) data.ledgerUnit = u.code;
     }
-    if (itemData.costUnitId && !itemData.costUnit) {
-      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, itemData.costUnitId));
-      if (u) itemData.costUnit = u.code;
+    if (data.costUnitId && !data.costUnit) {
+      const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, data.costUnitId));
+      if (u) data.costUnit = u.code;
     }
-    if (!itemData.ledgerUnit) itemData.ledgerUnit = '';
-    if (!itemData.costUnit) itemData.costUnit = itemData.ledgerUnit;
+    if (!data.ledgerUnit) data.ledgerUnit = '';
+    if (!data.costUnit) data.costUnit = data.ledgerUnit;
 
-    const [item] = await tx.insert(items).values(itemData).returning();
-
-    const [central] = centralAreaId
-      ? await tx.select().from(storageAreas).where(eq(storageAreas.id, centralAreaId))
-      : [];
-
-    if (central) {
-      await tx.insert(itemAreaAssignments).values({
-        itemId: item.id,
-        areaId: central.id,
-        isActive: true,
-      });
-    }
-
+    const [item] = await tx.insert(items).values(data).returning();
     return item;
   });
 }

@@ -7,6 +7,7 @@ import {
   mainLedger,
   areaLedger,
   batches,
+  itemAreaAssignments,
   purchasePriceHistory,
   purchaseDocuments,
   requisitions,
@@ -187,6 +188,11 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
   const finalSnapAvg = weightedAveragePrice(snapStock, snapAvg, qty, unitPrice);
 
   await upsertStockSnapshot(db, ctx.branchId, ctx.itemId, ctx.areaId, qty, finalSnapAvg);
+
+  await db
+    .insert(itemAreaAssignments)
+    .values({ itemId: ctx.itemId, areaId: ctx.areaId, isActive: true })
+    .onConflictDoNothing();
 
   return { qty, unitPrice, newAvg: isCentral ? newGlobalAvg : finalSnapAvg };
 }

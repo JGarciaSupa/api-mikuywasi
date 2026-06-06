@@ -3,7 +3,6 @@ import {
   stockTransfers,
   stockTransferLines,
   storageAreas,
-  itemAreaAssignments,
   items,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
@@ -97,19 +96,6 @@ export async function createStockTransfer(
   });
 }
 
-async function assertItemInBothAreas(tx: ReturnType<typeof getTenantDb>, itemId: number, sourceId: number, targetId: number) {
-  const [src] = await tx
-    .select()
-    .from(itemAreaAssignments)
-    .where(and(eq(itemAreaAssignments.itemId, itemId), eq(itemAreaAssignments.areaId, sourceId)));
-  const [tgt] = await tx
-    .select()
-    .from(itemAreaAssignments)
-    .where(and(eq(itemAreaAssignments.itemId, itemId), eq(itemAreaAssignments.areaId, targetId)));
-  if (!src || !tgt) {
-    throw new Error(`El artículo ${itemId} debe estar asignado al área origen y destino`);
-  }
-}
 
 export async function voidStockTransfer(id: number, actor?: AuditActor) {
   const db = getTenantDb();
@@ -152,8 +138,6 @@ export async function processStockTransfer(id: number, actor?: AuditActor) {
     for (const line of tr.lines) {
       const qty = toNum(line.ledgerQty);
       if (qty <= 0) continue;
-
-      await assertItemInBothAreas(tx, line.itemId, tr.sourceAreaId, tr.targetAreaId);
 
       const [item] = await tx.select().from(items).where(eq(items.id, line.itemId));
       const price = toNum(item?.avgPrice);
