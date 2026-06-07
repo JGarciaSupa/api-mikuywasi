@@ -1,4 +1,5 @@
 import { getS3Client } from "./s3";
+import { PhotonImage, resize, SamplingFilter } from "@cf-wasm/photon";
 
 const s3Client = getS3Client();
 const PUBLIC_URL = process.env.R2_PUBLIC_URL;
@@ -19,6 +20,10 @@ export function getImageUrl(key: string | null | undefined): string | null {
  * Si la imagen ya es menor al máximo, solo convierte a WebP sin agrandarla.
  */
 async function processImage(file: File, maxSize: number): Promise<Buffer> {
+  /*
+  // NOTA: Se comenta el uso de Bun.Image debido a que el VPS no cuenta con soporte AVX en su CPU
+  // y Bun.Image lanza un crash (Segmentation fault).
+  // Se mantiene esta implementación comentada como referencia para cuando el VPS sea actualizado o soporte AVX.
   const image = new Bun.Image(file);
   const metadata = await image.metadata();
 
@@ -35,6 +40,46 @@ async function processImage(file: File, maxSize: number): Promise<Buffer> {
   console.log(`[processImage] WebP conversion complete. Output size: ${output.length} bytes`);
 
   return output;
+  */
+
+  // Implementación alternativa usando @cf-wasm/photon (basado en WebAssembly, compatible con CPU sin AVX)
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+
+  const inputImage = PhotonImage.new_from_byteslice(bytes);
+  const width = inputImage.get_width();
+  const height = inputImage.get_height();
+
+  console.log(`[processImage] [WASM] Original dimensions: ${width}x${height}, maxSize: ${maxSize}`);
+
+  let outputImage = inputImage;
+
+  if (width > maxSize || height > maxSize) {
+    let newWidth = width;
+    let newHeight = height;
+
+    if (width > height) {
+      newWidth = maxSize;
+      newHeight = Math.round((height * maxSize) / width);
+    } else {
+      newHeight = maxSize;
+      newWidth = Math.round((width * maxSize) / height);
+    }
+
+    console.log(`[processImage] [WASM] Resizing to: ${newWidth}x${newHeight}`);
+    outputImage = resize(inputImage, newWidth, newHeight, SamplingFilter.Lanczos3);
+  }
+
+  const outputBytes = outputImage.get_bytes_webp();
+  console.log(`[processImage] [WASM] WebP conversion complete. Output size: ${outputBytes.length} bytes`);
+
+  // Liberar memoria WASM para evitar fugas de memoria (Memory Leaks)
+  if (outputImage !== inputImage) {
+    outputImage.free();
+  }
+  inputImage.free();
+
+  return Buffer.from(outputBytes);
 }
 
 /**

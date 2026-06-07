@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@aws-sdk/s3-request-presigner": "^3.1063.0",
+    "@cf-wasm/photon": "^0.3.6",
     "@hono/zod-validator": "^0.7.6",
     "@types/jsonwebtoken": "^9.0.10",
     "dotenv": "^17.3.1",
