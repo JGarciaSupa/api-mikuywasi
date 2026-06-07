@@ -107,7 +107,9 @@ export async function login(username: string, password: string, userAgent?: stri
     refreshToken: rawRefreshToken,
     user: {
       ...safeUser,
-      image: getImageUrl(safeUser.image)
+      image: getImageUrl(safeUser.image),
+      roleId,
+      permissions,
     },
     branches: userBranchesList,
     currentBranch: defaultBranch,
@@ -179,7 +181,9 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     refreshToken: newRawRefreshToken,
     user: {
       ...safeUser,
-      image: getImageUrl(safeUser.image)
+      image: getImageUrl(safeUser.image),
+      roleId,
+      permissions,
     },
     branches: userBranchesList,
     currentBranch: defaultBranch,
@@ -213,7 +217,10 @@ export async function getProfile(userId: number) {
     throw new AuthError('Usuario no encontrado', 404);
   }
 
-  const userBranchesList = await getUserBranches(user.id, user.role);
+  const [userBranchesList, { roleId, permissions }] = await Promise.all([
+    getUserBranches(user.id, user.role),
+    buildPermissionsForUser(user.id),
+  ]);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   const { password: _, ...safeUser } = user;
@@ -222,6 +229,8 @@ export async function getProfile(userId: number) {
     image: getImageUrl(safeUser.image),
     branches: userBranchesList,
     currentBranch: defaultBranch,
+    roleId,
+    permissions,
   };
 }
 
