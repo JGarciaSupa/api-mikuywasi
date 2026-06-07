@@ -1,5 +1,5 @@
 # Usamos la imagen base de Bun recomendada para tu VPS
-FROM oven/bun:1.3-slim
+FROM oven/bun:1.2-slim
 
 # Definimos el directorio de trabajo
 WORKDIR /app
