@@ -1,5 +1,5 @@
-import { orders, orderItems } from '../../../../../db/tenant/schema';
-import { eq, and, desc, asc, sql, count, like, or, gte, lte } from 'drizzle-orm';
+import { orders, orderItems, orderItemExtras, productExtras } from '../../../../../db/tenant/schema';
+import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 
 export interface GetOrdersFilters {
@@ -113,9 +113,33 @@ export const getOrderById = async (id: string) => {
     .from(orderItems)
     .where(eq(orderItems.orderId, id));
 
+  const itemIds = items.map((i) => i.id);
+  const extrasRows = itemIds.length
+    ? await db
+        .select({
+          id: orderItemExtras.id,
+          orderItemId: orderItemExtras.orderItemId,
+          extraId: orderItemExtras.extraId,
+          extraName: productExtras.name,
+          qty: orderItemExtras.qty,
+          unitPrice: orderItemExtras.unitPrice,
+          totalPrice: orderItemExtras.totalPrice,
+        })
+        .from(orderItemExtras)
+        .leftJoin(productExtras, eq(orderItemExtras.extraId, productExtras.id))
+        .where(inArray(orderItemExtras.orderItemId, itemIds))
+    : [];
+
+  const extrasByItem = new Map<number, typeof extrasRows>();
+  for (const row of extrasRows) {
+    const list = extrasByItem.get(row.orderItemId) ?? [];
+    list.push(row);
+    extrasByItem.set(row.orderItemId, list);
+  }
+
   return {
     ...order,
-    items
+    items: items.map((item) => ({ ...item, extras: extrasByItem.get(item.id) ?? [] })),
   };
 };
 

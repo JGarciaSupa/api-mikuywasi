@@ -1,4 +1,4 @@
-import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, recipes, recipeLines, items, branches } from '../../../../db/tenant/schema';
+import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -206,7 +206,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
         }).returning();
 
         if (items && items.length > 0) {
-          await tx.insert(orderItems).values(
+          const insertedItems = await tx.insert(orderItems).values(
             items.map((item: any) => ({
               orderId,
               productId: item.productId,
@@ -218,7 +218,40 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
               notes: item.notes,
               totalPrice: item.totalPrice.toString(),
             }))
-          );
+          ).returning();
+
+          // Guardar extras seleccionados por cada item
+          for (let i = 0; i < insertedItems.length; i++) {
+            const orderItem = insertedItems[i];
+            const srcItem = items[i];
+            if (!srcItem.extras?.length) continue;
+
+            const extraIds = srcItem.extras.map((e: any) => e.extraId);
+            const extrasData = await tx
+              .select()
+              .from(productExtras)
+              .where(inArray(productExtras.id, extraIds));
+
+            const extraRows = srcItem.extras
+              .map((sel: any) => {
+                const extra = extrasData.find((e) => e.id === sel.extraId);
+                if (!extra) return null;
+                const qty = sel.qty ?? 1;
+                const unitPrice = parseFloat(extra.price);
+                return {
+                  orderItemId: orderItem.id,
+                  extraId: sel.extraId,
+                  qty,
+                  unitPrice: unitPrice.toString(),
+                  totalPrice: (unitPrice * qty).toString(),
+                };
+              })
+              .filter(Boolean);
+
+            if (extraRows.length) {
+              await tx.insert(orderItemExtras).values(extraRows);
+            }
+          }
         }
 
         return { ...result, items };
@@ -296,13 +329,17 @@ export const validateOrderStockBeforeCreate = async (orderData: any) => {
     }
   }
 
+  // Agregar requerimientos de extras al mismo mapa antes de validar
+  const { calcExtrasStockRequired } = await import('../admin/warehouse/extras.service');
+  const extrasRequired = await calcExtrasStockRequired(orderItemsInput);
+  for (const [itemId, qty] of extrasRequired) {
+    requiredByItem.set(itemId, (requiredByItem.get(itemId) ?? 0) + qty);
+  }
+
   if (requiredByItem.size === 0) return;
 
   const missing: string[] = [];
-  const requiredEntries = Array.from(requiredByItem.entries());
-  for (const entry of requiredEntries) {
-    const itemId = entry[0];
-    const requiredQty = entry[1];
+  for (const [itemId, requiredQty] of requiredByItem) {
     const [stockItem] = await db.select().from(items).where(eq(items.id, itemId));
     if (!stockItem) continue;
     const current = toNum(stockItem.currentStock);

@@ -11,6 +11,7 @@ import {
   products,
   storageAreas,
 } from '../../../../../db/tenant/schema';
+import { buildExtrasDischargeLines } from './extras.service';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './shared/numbers';
 import { writeAuditLog } from './shared/audit.service';
@@ -46,7 +47,7 @@ export async function buildDischargeFromOrder(orderId: string) {
   console.log(`[buildDischargeFromOrder] Encontrados ${oItems.length} items en el pedido`);
   const calculated: {
     itemId: number;
-    recipeId: number;
+    recipeId: number | null;
     qty: number;
     unit: string;
     avgPrice: number;
@@ -121,9 +122,15 @@ export async function buildDischargeFromOrder(orderId: string) {
         productionAreaId: bra.areaId,
       });
     }
+
+    // Descargar extras seleccionados para este order_item usando el mismo área de producción
+    const extraLines = await buildExtrasDischargeLines(db, oi.id, bra.areaId);
+    for (const el of extraLines) {
+      calculated.push({ ...el, recipeId: null, productionAreaId: bra.areaId });
+    }
   }
 
-  console.log(`[buildDischargeFromOrder] Líneas calculadas a descargar: ${calculated.length}`);
+  console.log(`[buildDischargeFromOrder] Líneas calculadas a descargar (incl. extras): ${calculated.length}`);
   return { order, lines: calculated };
 }
 

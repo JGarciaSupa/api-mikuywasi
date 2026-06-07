@@ -576,7 +576,7 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 	id: serial('id').primaryKey(),
 	dischargeId: integer('discharge_id').notNull().references(() => salesDischarge.id, { onDelete: 'cascade' }),
 	itemId: integer('item_id').notNull().references(() => items.id),
-	recipeId: integer('recipe_id').notNull().references(() => recipes.id),
+	recipeId: integer('recipe_id').references(() => recipes.id), // nullable: null cuando la descarga proviene de extra directo (item)
 	qty: decimal('qty', { precision: 12, scale: 4 }).notNull(),
 	unit: varchar('unit', { length: 30 }),
 	avgPrice: decimal('avg_price', { precision: 12, scale: 4 }).notNull().default('0'),
