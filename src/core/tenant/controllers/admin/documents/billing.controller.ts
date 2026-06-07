@@ -37,6 +37,20 @@ export const updateSeriesController = async (c: Context) => {
   }
 };
 
+export const deleteSeriesController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    await billingSeriesService.deleteSeries(id);
+    return c.json({ success: true });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrada') ? 404 :
+        error.message?.includes('documentos activos') ? 409 :
+          500;
+    return c.json({ success: false, message: error.message || 'Error al eliminar serie' }, status as any);
+  }
+};
+
 // ── Documents ─────────────────────────────────────────────────────────────────
 
 export const listDocumentsController = async (c: Context) => {

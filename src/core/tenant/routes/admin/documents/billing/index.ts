@@ -4,6 +4,7 @@ import {
   listSeriesController,
   createSeriesController,
   updateSeriesController,
+  deleteSeriesController,
   listDocumentsController,
   getDocumentController,
   getDocumentReceiptController,
@@ -25,6 +26,7 @@ routes.use('*', roleMiddleware(['admin']));
 routes.get('/series', listSeriesController);
 routes.post('/series', createSeriesController);
 routes.put('/series/:id', updateSeriesController);
+routes.delete('/series/:id', deleteSeriesController);
 
 // Certificate conversion proxy
 routes.post('/certificate/convert', convertCertificateController);
