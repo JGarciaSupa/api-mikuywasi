@@ -109,9 +109,37 @@ export const getItem = async (c: Context) => {
 
 export const createItem = async (c: Context) => {
   try {
-    const body = await c.req.json();
-    const data = await catalog.createItem(body);
-    return c.json({ success: true, data }, 201);
+    const body = await c.req.parseBody();
+    const imageFile = body['image'] as File | undefined;
+
+    const subcategoryId = body['subcategoryId'] ? parseInt(body['subcategoryId'] as string, 10) : undefined;
+    if (!subcategoryId) {
+      return c.json({ success: false, message: 'La subcategoría es requerida' }, 400);
+    }
+
+    const data = {
+      code: body['code'] as string,
+      shortDescription: body['shortDescription'] as string,
+      subcategoryId,
+      ledgerUnit: body['ledgerUnit'] as string | undefined,
+      costUnit: body['costUnit'] as string | undefined,
+      ledgerUnitId: body['ledgerUnitId'] ? parseInt(body['ledgerUnitId'] as string, 10) : undefined,
+      costUnitId: body['costUnitId'] ? parseInt(body['costUnitId'] as string, 10) : undefined,
+      conversionFactor: body['conversionFactor'] as string | undefined,
+      minStock: body['minStock'] as string | undefined,
+      expiryDays: body['expiryDays'] ? parseInt(body['expiryDays'] as string, 10) : undefined,
+      portionable: body['portionable'] === 'true',
+      recipeDischarge: body['recipeDischarge'] === 'true',
+      dailyControl: body['dailyControl'] === 'true',
+      useMarketPrice: body['useMarketPrice'] === 'true',
+      isActive: body['isActive'] === 'true',
+    };
+
+    const centralAreaId = body['centralAreaId'] ? parseInt(body['centralAreaId'] as string, 10) : undefined;
+    const tenantSlug = c.req.header('X-Tenant-Slug') || c.req.header('x-tenant-slug') || c.req.param('slug') || c.req.query('slug') || c.req.query('tenantSlug') || 'general';
+
+    const dataResult = await catalog.createItem(data, imageFile, centralAreaId, tenantSlug);
+    return c.json({ success: true, data: dataResult }, 201);
   } catch (e) {
     return jsonError(c, e, 'Error al crear artículo');
   }
@@ -211,8 +239,31 @@ export const updateSupplier = async (c: Context) => {
 export const updateItem = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0', 10);
-    const body = await c.req.json();
-    const data = await catalog.updateItem(id, body);
+    const body = await c.req.parseBody();
+    const imageFile = body['image'] as File | undefined;
+
+    const payload: Record<string, any> = {};
+
+    if (body['code'] !== undefined) payload.code = body['code'] as string;
+    if (body['shortDescription'] !== undefined) payload.shortDescription = body['shortDescription'] as string;
+    if (body['subcategoryId'] !== undefined) payload.subcategoryId = parseInt(body['subcategoryId'] as string, 10);
+    if (body['ledgerUnit'] !== undefined) payload.ledgerUnit = body['ledgerUnit'] as string;
+    if (body['costUnit'] !== undefined) payload.costUnit = body['costUnit'] as string;
+    if (body['ledgerUnitId'] !== undefined) payload.ledgerUnitId = body['ledgerUnitId'] ? parseInt(body['ledgerUnitId'] as string, 10) : null;
+    if (body['costUnitId'] !== undefined) payload.costUnitId = body['costUnitId'] ? parseInt(body['costUnitId'] as string, 10) : null;
+    if (body['conversionFactor'] !== undefined) payload.conversionFactor = body['conversionFactor'] as string;
+    if (body['minStock'] !== undefined) payload.minStock = body['minStock'] as string;
+    if (body['expiryDays'] !== undefined) payload.expiryDays = parseInt(body['expiryDays'] as string, 10);
+    if (body['portionable'] !== undefined) payload.portionable = body['portionable'] === 'true';
+    if (body['recipeDischarge'] !== undefined) payload.recipeDischarge = body['recipeDischarge'] === 'true';
+    if (body['dailyControl'] !== undefined) payload.dailyControl = body['dailyControl'] === 'true';
+    if (body['useMarketPrice'] !== undefined) payload.useMarketPrice = body['useMarketPrice'] === 'true';
+    if (body['isActive'] !== undefined) payload.isActive = body['isActive'] === 'true';
+    if (body['image'] !== undefined) payload.image = body['image'] as string;
+
+    const tenantSlug = c.req.header('X-Tenant-Slug') || c.req.header('x-tenant-slug') || c.req.param('slug') || c.req.query('slug') || c.req.query('tenantSlug') || 'general';
+
+    const data = await catalog.updateItem(id, payload, imageFile, tenantSlug);
     if (!data) return c.json({ success: false, message: 'Artículo no encontrado' }, 404);
     return c.json({ success: true, data });
   } catch (e) {

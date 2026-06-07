@@ -1,11 +1,7 @@
-import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "./s3";
-import { PhotonImage, resize, SamplingFilter } from "@cf-wasm/photon";
 
 const s3Client = getS3Client();
-const BUCKET_NAME = process.env.R2_BUCKET!;
-// const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
-const PUBLIC_URL = "https://assets.mikuywasi.com";
+const PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
 /**
  * Construye la URL pública de una imagen.
@@ -23,28 +19,20 @@ export function getImageUrl(key: string | null | undefined): string | null {
  * Si la imagen ya es menor al máximo, solo convierte a WebP sin agrandarla.
  */
 async function processImage(file: File, maxSize: number): Promise<Buffer> {
-  const arrayBuffer = await file.arrayBuffer();
-  const photonImage = PhotonImage.new_from_byteslice(new Uint8Array(arrayBuffer));
+  const image = new Bun.Image(file);
+  const metadata = await image.metadata();
 
-  const width = photonImage.get_width();
-  const height = photonImage.get_height();
+  console.log(`[processImage] Original dimensions: ${metadata.width}x${metadata.height}, maxSize: ${maxSize}`);
 
-  console.log(`[processImage] Original dimensions: ${width}x${height}, maxSize: ${maxSize}`);
+  let pipeline = image;
 
-  let processedImage = photonImage;
-
-  if (width > maxSize || height > maxSize) {
-    const ratio = Math.min(maxSize / width, maxSize / height);
-    const newWidth = Math.floor(width * ratio);
-    const newHeight = Math.floor(height * ratio);
-    console.log(`[processImage] Resizing to: ${newWidth}x${newHeight}`);
-    processedImage = resize(photonImage, newWidth, newHeight, SamplingFilter.Lanczos3);
-    photonImage.free();
+  if (metadata.width > maxSize || metadata.height > maxSize) {
+    console.log(`[processImage] Resizing to fit inside: ${maxSize}x${maxSize}`);
+    pipeline = pipeline.resize(maxSize, maxSize, { fit: "inside" });
   }
 
-  const output = Buffer.from(processedImage.get_bytes_webp());
+  const output = await pipeline.webp({ quality: 80 }).buffer();
   console.log(`[processImage] WebP conversion complete. Output size: ${output.length} bytes`);
-  processedImage.free();
 
   return output;
 }
@@ -73,14 +61,7 @@ export async function uploadToR2(file: File, folder: string = "general", maxSize
 
   const fileName = `${folder}/${crypto.randomUUID()}.${ext}`;
 
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: fileName,
-    Body: body as Buffer,
-    ContentType: contentType,
-  });
-
-  await s3Client.send(command);
+  await s3Client.write(fileName, body, { type: contentType });
   return fileName;
 }
 
@@ -96,11 +77,7 @@ export async function deleteFromR2(keyOrUrl: string | null | undefined) {
       ? keyOrUrl.replace(`${PUBLIC_URL}/`, '')
       : keyOrUrl;
 
-    const command = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-    await s3Client.send(command);
+    await s3Client.delete(key);
   } catch (error) {
     console.error('Error deleting from R2:', error);
   }

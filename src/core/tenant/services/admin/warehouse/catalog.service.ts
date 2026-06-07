@@ -11,6 +11,7 @@ import {
   branches,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
+import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 
 // ─── Categorías ─────────────────────────────────────────────
 export async function listCategories() {
@@ -462,10 +463,16 @@ export async function listItems(filters?: { search?: string; subcategoryId?: num
   }
 
   const q = db.select().from(items);
+  let results;
   if (conditions.length) {
-    return q.where(and(...conditions)).orderBy(asc(items.code));
+    results = await q.where(and(...conditions)).orderBy(asc(items.code));
+  } else {
+    results = await q.orderBy(asc(items.code));
   }
-  return q.orderBy(asc(items.code));
+  return results.map((item) => ({
+    ...item,
+    image: getImageUrl(item.image),
+  }));
 }
 
 export async function getItemById(id: number) {
@@ -484,26 +491,41 @@ export async function getItemById(id: number) {
     .innerJoin(storageAreas, eq(itemAreaAssignments.areaId, storageAreas.id))
     .where(eq(itemAreaAssignments.itemId, id));
 
-  return { ...item, areaAssignments: assignments };
+  return {
+    ...item,
+    image: getImageUrl(item.image),
+    areaAssignments: assignments,
+  };
 }
 
-export async function createItem(data: {
-  code: string;
-  shortDescription: string;
-  subcategoryId: number;
-  ledgerUnitId?: number;
-  costUnitId?: number;
-  ledgerUnit?: string;
-  costUnit?: string;
-  conversionFactor?: string;
-  minStock?: string;
-  expiryDays?: number;
-  portionable?: boolean;
-  recipeDischarge?: boolean;
-  dailyControl?: boolean;
-  useMarketPrice?: boolean;
-}) {
+export async function createItem(
+  data: {
+    code: string;
+    shortDescription: string;
+    subcategoryId: number;
+    ledgerUnitId?: number;
+    costUnitId?: number;
+    ledgerUnit?: string;
+    costUnit?: string;
+    conversionFactor?: string;
+    minStock?: string;
+    expiryDays?: number;
+    portionable?: boolean;
+    recipeDischarge?: boolean;
+    dailyControl?: boolean;
+    useMarketPrice?: boolean;
+    isActive?: boolean;
+  },
+  imageFile?: File,
+  centralAreaId?: number,
+  tenantSlug: string = 'general'
+) {
   const db = getTenantDb();
+
+  let imageUrl = null;
+  if (imageFile) {
+    imageUrl = await uploadToR2(imageFile, `${tenantSlug}/insumos`, 200);
+  }
 
   return db.transaction(async (tx) => {
     if (data.ledgerUnitId && !data.ledgerUnit) {
@@ -517,16 +539,55 @@ export async function createItem(data: {
     if (!data.ledgerUnit) data.ledgerUnit = '';
     if (!data.costUnit) data.costUnit = data.ledgerUnit;
 
-    const [item] = await tx.insert(items).values(data).returning();
-    return item;
+    const [item] = await tx.insert(items).values({
+      ...data,
+      image: imageUrl,
+    }).returning();
+
+    if (centralAreaId) {
+      await tx.insert(itemAreaAssignments).values({
+        itemId: item.id,
+        areaId: centralAreaId,
+        isActive: true,
+      }).onConflictDoNothing();
+    }
+
+    return {
+      ...item,
+      image: getImageUrl(item.image),
+    };
   });
 }
 
-export async function updateItem(id: number, data: Record<string, unknown>) {
+export async function updateItem(
+  id: number,
+  data: Record<string, unknown>,
+  imageFile?: File,
+  tenantSlug: string = 'general'
+) {
   const db = getTenantDb();
 
   return db.transaction(async (tx) => {
+    const [existingItem] = await tx.select().from(items).where(eq(items.id, id));
+    if (!existingItem) throw new Error('Artículo no encontrado');
+
+    let imageUrl = existingItem.image;
+    if (imageFile) {
+      if (existingItem.image) {
+        await deleteFromR2(existingItem.image);
+      }
+      imageUrl = await uploadToR2(imageFile, `${tenantSlug}/insumos`, 200);
+    } else if (data.image === '') {
+      if (existingItem.image) {
+        await deleteFromR2(existingItem.image);
+      }
+      imageUrl = '';
+    }
+
     const payload: Record<string, unknown> = { ...data, updatedAt: new Date() };
+    if (imageFile || data.image === '') {
+      payload.image = imageUrl;
+    }
 
     if (payload.ledgerUnitId && !payload.ledgerUnit) {
       const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, payload.ledgerUnitId as number));
@@ -538,7 +599,10 @@ export async function updateItem(id: number, data: Record<string, unknown>) {
     }
 
     const [row] = await tx.update(items).set(payload).where(eq(items.id, id)).returning();
-    return row;
+    return {
+      ...row,
+      image: getImageUrl(row.image),
+    };
   });
 }
 
@@ -575,7 +639,7 @@ export async function listItemsByArea(areaId: number, search?: string) {
     );
   }
 
-  return db
+  const results = await db
     .select({
       item: items,
       assignmentId: itemAreaAssignments.id,
@@ -584,4 +648,12 @@ export async function listItemsByArea(areaId: number, search?: string) {
     .innerJoin(items, eq(itemAreaAssignments.itemId, items.id))
     .where(and(...conditions))
     .orderBy(asc(items.shortDescription));
+
+  return results.map((row) => ({
+    ...row,
+    item: {
+      ...row.item,
+      image: getImageUrl(row.item.image),
+    },
+  }));
 }

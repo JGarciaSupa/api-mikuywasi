@@ -134,6 +134,13 @@
       "when": 1780798936605,
       "tag": "0018_extras_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780803545574,
+      "tag": "0019_add_field_image_insumo",
+      "breakpoints": true
     }
   ]
 }

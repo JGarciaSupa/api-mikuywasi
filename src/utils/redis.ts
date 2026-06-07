@@ -1,63 +1,8 @@
-import Redis from 'ioredis';
+import { RedisClient } from "bun";
 
-// Cargar variables de entorno específicas para Redis
-const redisUrl = process.env.REDIS_URL;
-const redisHost = process.env.REDIS_HOST || '127.0.0.1';
-const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
-const redisPassword = process.env.REDIS_PASSWORD || undefined;
-const redisDb = parseInt(process.env.REDIS_DB || '0', 10);
+export const redis = new RedisClient(process.env.REDIS_URL!);
 
-console.log('[Redis] Configurando conexión...');
-
-// Configuración de la instancia de Redis
-const connectionOptions = redisUrl
-  ? {
-    path: undefined,
-    maxRetriesPerRequest: null,
-    retryStrategy(times: number) {
-      const delay = Math.min(times * 50, 2000);
-      return delay;
-    },
-  }
-  : {
-    host: redisHost,
-    port: redisPort,
-    password: redisPassword,
-    db: redisDb,
-    maxRetriesPerRequest: null,
-    retryStrategy(times: number) {
-      const delay = Math.min(times * 50, 2000);
-      return delay;
-    },
-  };
-
-// Crear cliente de Redis
-export const redis = redisUrl ? new Redis(redisUrl, connectionOptions) : new Redis(connectionOptions);
-
-// Monitoreo de eventos de conexión
-redis.on('connect', () => {
-  console.log('[Redis] Cliente conectándose al servidor...');
-});
-
-redis.on('ready', () => {
-  console.log('[Redis] ¡Conexión establecida y lista para operar!');
-});
-
-redis.on('error', (err) => {
-  console.error('[Redis] Error de conexión:', err.message || err);
-});
-
-redis.on('close', () => {
-  console.warn('[Redis] Conexión cerrada.');
-});
-
-redis.on('reconnecting', (delay: number) => {
-  console.log(`[Redis] Reconectando en ${delay}ms...`);
-});
-
-redis.on('end', () => {
-  console.error('[Redis] La conexión de Redis ha finalizado de forma permanente.');
-});
+console.log('[Redis] Cliente nativo de Bun conectado vía REDIS_URL');
 
 /**
  * Utilidades de caché simplificadas con serialización automática a JSON.
@@ -142,8 +87,8 @@ export const cache = {
    */
   async exists(key: string): Promise<boolean> {
     try {
-      const count = await redis.exists(key);
-      return count > 0;
+      const result = await redis.exists(key);
+      return Boolean(result);
     } catch (error) {
       console.error(`[Redis Cache] Error verificando existencia de "${key}":`, error);
       return false;
@@ -158,7 +103,7 @@ export const cache = {
   async expire(key: string, seconds: number): Promise<boolean> {
     try {
       const result = await redis.expire(key, seconds);
-      return result === 1;
+      return Boolean(result);
     } catch (error) {
       console.error(`[Redis Cache] Error asignando expiración a "${key}":`, error);
       return false;
@@ -172,19 +117,19 @@ export const cache = {
    */
   async delByPrefix(prefix: string): Promise<number> {
     try {
-      const stream = redis.scanStream({
-        match: `${prefix}*`,
-        count: 100, // Procesar en bloques de 100
-      });
-
+      let cursor = '0';
       let deletedCount = 0;
 
-      for await (const keys of stream) {
+      do {
+        // El cliente nativo de Bun usa: redis.scan(cursor, "MATCH", pattern, "COUNT", n)
+        const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+        cursor = nextCursor;
+
         if (keys.length > 0) {
           const count = await redis.del(...keys);
           deletedCount += count;
         }
-      }
+      } while (cursor !== '0');
 
       if (deletedCount > 0) {
         console.log(`[Redis Cache] Se eliminaron ${deletedCount} claves con prefijo "${prefix}"`);

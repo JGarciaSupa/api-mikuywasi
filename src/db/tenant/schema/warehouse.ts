@@ -91,6 +91,7 @@ export const measurementUnits = pgTable('measurement_units', {
 
 export const items = pgTable('items', {
 	id: serial('id').primaryKey(),
+	image: varchar('image', { length: 255 }).default(''),
 	code: varchar('code', { length: 20 }).notNull().unique(),
 	shortDescription: varchar('short_description', { length: 100 }).notNull(),
 	subcategoryId: integer('subcategory_id').references(() => itemSubcategories.id),

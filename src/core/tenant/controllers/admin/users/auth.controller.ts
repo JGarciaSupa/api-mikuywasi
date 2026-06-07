@@ -14,26 +14,30 @@ function getPlatform(c: Context): 'web' | 'mobile' {
 }
 
 function setRefreshTokenCookie(c: Context, refreshToken: string) {
-  const isSecure = c.req.url.startsWith('https://') || 
-                   c.req.header('x-forwarded-proto') === 'https' || 
-                   process.env.NODE_ENV === 'production';
+  const isDev = process.env.NODE_ENV !== 'production';
+  const isSecure = c.req.url.startsWith('https://') ||
+    c.req.header('x-forwarded-proto') === 'https' ||
+    !isDev;
   setCookie(c, 'refreshToken', refreshToken, {
     httpOnly: true,
     secure: isSecure,
-    sameSite: isSecure ? 'None' : 'Lax',
+    // Dev: cross-origin (localhost:5173 → localhost:3000) requiere 'None'
+    // Prod: HTTPS cross-subdomain también requiere 'None'
+    sameSite: isDev ? 'None' : (isSecure ? 'None' : 'Lax'),
     path: '/',
     maxAge: 15 * 24 * 60 * 60 // 15 días
   });
 }
 
 function clearRefreshTokenCookie(c: Context) {
-  const isSecure = c.req.url.startsWith('https://') || 
-                   c.req.header('x-forwarded-proto') === 'https' || 
-                   process.env.NODE_ENV === 'production';
-  deleteCookie(c, 'refreshToken', { 
+  const isDev = process.env.NODE_ENV !== 'production';
+  const isSecure = c.req.url.startsWith('https://') ||
+    c.req.header('x-forwarded-proto') === 'https' ||
+    !isDev;
+  deleteCookie(c, 'refreshToken', {
     path: '/',
     secure: isSecure,
-    sameSite: isSecure ? 'None' : 'Lax'
+    sameSite: isDev ? 'None' : (isSecure ? 'None' : 'Lax'),
   });
 }
 
