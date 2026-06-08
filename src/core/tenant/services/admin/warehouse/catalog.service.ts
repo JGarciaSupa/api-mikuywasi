@@ -524,7 +524,7 @@ export async function createItem(
 
   let imageUrl = null;
   if (imageFile) {
-    imageUrl = await uploadToR2(imageFile, `restaurante/${tenantSlug}/insumos`, 200);
+    imageUrl = await uploadToR2(imageFile, `${tenantSlug}/insumos`, 200);
   }
 
   return db.transaction(async (tx) => {

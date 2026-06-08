@@ -108,27 +108,46 @@ export async function updateSettings(data: UpdateSettingsInput) {
 
 export async function updateLogo(file: File) {
   const db = getTenantDb();
+  const tenantId = getTenantId();
+
+  // Obtener el slug del tenant desde la base de datos master
+  const tenantMaster = await masterDb.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+  const slug = tenantMaster?.slug || 'default';
+
   let [existing] = await db.select().from(tenantConfigs);
   if (!existing) {
     [existing] = await db.insert(tenantConfigs).values({}).returning();
   }
 
-  if (existing.logo) {
-    await deleteFromR2(existing.logo);
+  const oldLogo = existing.logo;
+
+  // 1. Subir la nueva imagen a R2 organizada por su slug
+  const logoKey = await uploadToR2(file, `${slug}/logos`, 256);
+
+  try {
+    // 2. Actualizar la base de datos
+    const [updated] = await db
+      .update(tenantConfigs)
+      .set({ logo: logoKey, updatedAt: new Date() })
+      .where(eq(tenantConfigs.id, existing.id))
+      .returning();
+
+    // 3. Eliminar el archivo antiguo de R2 sólo si la base de datos se actualizó correctamente
+    if (oldLogo) {
+      await deleteFromR2(oldLogo);
+    }
+
+    return {
+      ...updated,
+      logo: getImageUrl(updated.logo)
+    };
+  } catch (error) {
+    // Rollback: si falla la actualización de la BD, borrar la imagen recién subida
+    await deleteFromR2(logoKey);
+    throw error;
   }
-
-  const logoKey = await uploadToR2(file, 'logos', 256);
-
-  const [updated] = await db
-    .update(tenantConfigs)
-    .set({ logo: logoKey, updatedAt: new Date() })
-    .where(eq(tenantConfigs.id, existing.id))
-    .returning();
-
-  return {
-    ...updated,
-    logo: getImageUrl(updated.logo)
-  };
 }
 
 export async function deleteLogo() {
@@ -138,15 +157,19 @@ export async function deleteLogo() {
     [existing] = await db.insert(tenantConfigs).values({}).returning();
   }
 
-  if (existing.logo) {
-    await deleteFromR2(existing.logo);
-  }
+  const oldLogo = existing.logo;
 
+  // 1. Actualizar la base de datos primero
   const [updated] = await db
     .update(tenantConfigs)
     .set({ logo: null, updatedAt: new Date() })
     .where(eq(tenantConfigs.id, existing.id))
     .returning();
+
+  // 2. Eliminar de R2 sólo si la base de datos se actualizó correctamente
+  if (oldLogo) {
+    await deleteFromR2(oldLogo);
+  }
 
   return {
     ...updated,
