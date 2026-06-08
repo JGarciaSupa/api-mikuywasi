@@ -1,5 +1,5 @@
 import { masterDb, getTenantDb } from '../../../db';
-import { tenants, subscriptions, plans, dbServers } from '../../../db/master/schema';
+import { tenants, subscriptions, plans, dbServers, subActions, baseRoles, tenantFeatureGrants, tenantRoleGrants } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
 import { fullSyncTenant } from './rbac-sync.service';
 import type { CreateTenantInput, UpdateTenantInput, RenewSubscriptionInput } from '../validations/tenants.validation';
@@ -140,6 +140,31 @@ async function dropTenantDatabase(server: any, dbName: string) {
   }
 }
 
+// Otorga todas las sub-acciones y roles base activos a un tenant recién creado.
+// Llamar ANTES de fullSyncTenant para que el sync encuentre los grants ya registrados.
+async function autoGrantAllToNewTenant(tenantId: number) {
+  const [allSubActions, allBaseRoles] = await Promise.all([
+    masterDb.select({ id: subActions.id }).from(subActions).where(eq(subActions.isActive, true)),
+    masterDb.select({ id: baseRoles.id }).from(baseRoles).where(eq(baseRoles.isActive, true)),
+  ]);
+
+  if (allSubActions.length > 0) {
+    await masterDb
+      .insert(tenantFeatureGrants)
+      .values(allSubActions.map((sa) => ({ tenantId, subActionId: sa.id })))
+      .onConflictDoNothing();
+  }
+
+  if (allBaseRoles.length > 0) {
+    await masterDb
+      .insert(tenantRoleGrants)
+      .values(allBaseRoles.map((br) => ({ tenantId, baseRoleId: br.id })))
+      .onConflictDoNothing();
+  }
+
+  console.log(`[RBAC Grant] Tenant ${tenantId}: ${allSubActions.length} features y ${allBaseRoles.length} roles concedidos.`);
+}
+
 export const getAllTenants = async (
   page = 1,
   limit = 10,
@@ -278,9 +303,14 @@ export const createTenant = async (data: CreateTenantInput) => {
     // 4. Insertar datos iniciales (tenant_configs singleton, etc.)
     await seedTenantData(server, data.dbName);
 
-    // 5. Sincronizar RBAC: copia el catálogo de permisos y clona los roles base
-    //    que el Superadmin haya pre-concedido al tenant antes de su creación.
-    //    Si no hay grants aún, esta llamada es un no-op seguro.
+    // 5. Otorgar automáticamente todos los módulos y roles activos al nuevo tenant
+    try {
+      await autoGrantAllToNewTenant(createdTenantId);
+    } catch (grantError) {
+      console.warn('[RBAC Grant] Auto-grant inicial falló (no crítico):', grantError);
+    }
+
+    // 6. Sincronizar RBAC: propaga los grants al catálogo y roles locales del tenant
     try {
       await fullSyncTenant(createdTenantId);
     } catch (syncError) {
@@ -446,8 +476,12 @@ export const getTenantUsers = async (tenantId: number) => {
       image: tenantSchema.users.image,
       createdAt: tenantSchema.users.createdAt,
       updatedAt: tenantSchema.users.updatedAt,
+      rbacRoleCode: tenantSchema.roles.code,
+      rbacRoleName: tenantSchema.roles.name,
     })
     .from(tenantSchema.users)
+    .leftJoin(tenantSchema.userRoles, eq(tenantSchema.userRoles.userId, tenantSchema.users.id))
+    .leftJoin(tenantSchema.roles, eq(tenantSchema.roles.id, tenantSchema.userRoles.roleId))
     .orderBy(tenantSchema.users.createdAt);
   return items;
 };
@@ -475,7 +509,30 @@ export const createTenantUser = async (tenantId: number, data: any) => {
     .returning();
 
   const { password: _, ...safeUser } = newUser;
-  return safeUser;
+
+  let rbacRoleCode: string | null = null;
+  let rbacRoleName: string | null = null;
+
+  if (data.rbacBaseRoleCode) {
+    const [rbacRole] = await db
+      .select({ id: tenantSchema.roles.id, code: tenantSchema.roles.code, name: tenantSchema.roles.name })
+      .from(tenantSchema.roles)
+      .where(and(eq(tenantSchema.roles.code, data.rbacBaseRoleCode), eq(tenantSchema.roles.isActive, true)));
+
+    if (rbacRole) {
+      await db
+        .insert(tenantSchema.userRoles)
+        .values({ userId: newUser.id, roleId: rbacRole.id })
+        .onConflictDoUpdate({
+          target: tenantSchema.userRoles.userId,
+          set: { roleId: rbacRole.id },
+        });
+      rbacRoleCode = rbacRole.code;
+      rbacRoleName = rbacRole.name;
+    }
+  }
+
+  return { ...safeUser, rbacRoleCode, rbacRoleName };
 };
 
 export const updateTenantUser = async (tenantId: number, userId: number, data: any) => {
@@ -508,7 +565,40 @@ export const updateTenantUser = async (tenantId: number, userId: number, data: a
     .returning();
 
   const { password: _, ...safeUser } = updatedUser;
-  return safeUser;
+
+  let rbacRoleCode: string | null = null;
+  let rbacRoleName: string | null = null;
+
+  if (data.rbacBaseRoleCode) {
+    const [rbacRole] = await db
+      .select({ id: tenantSchema.roles.id, code: tenantSchema.roles.code, name: tenantSchema.roles.name })
+      .from(tenantSchema.roles)
+      .where(and(eq(tenantSchema.roles.code, data.rbacBaseRoleCode), eq(tenantSchema.roles.isActive, true)));
+
+    if (rbacRole) {
+      await db
+        .insert(tenantSchema.userRoles)
+        .values({ userId, roleId: rbacRole.id })
+        .onConflictDoUpdate({
+          target: tenantSchema.userRoles.userId,
+          set: { roleId: rbacRole.id },
+        });
+      rbacRoleCode = rbacRole.code;
+      rbacRoleName = rbacRole.name;
+    }
+  } else {
+    const [existing] = await db
+      .select({ code: tenantSchema.roles.code, name: tenantSchema.roles.name })
+      .from(tenantSchema.userRoles)
+      .leftJoin(tenantSchema.roles, eq(tenantSchema.roles.id, tenantSchema.userRoles.roleId))
+      .where(eq(tenantSchema.userRoles.userId, userId));
+    if (existing) {
+      rbacRoleCode = existing.code ?? null;
+      rbacRoleName = existing.name ?? null;
+    }
+  }
+
+  return { ...safeUser, rbacRoleCode, rbacRoleName };
 };
 
 export const updateTenantUserPassword = async (tenantId: number, userId: number, data: any) => {

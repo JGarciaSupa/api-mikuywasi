@@ -62,7 +62,9 @@ export async function loginController(c: Context) {
         success: true,
         data: {
           accessToken: result.accessToken,
-          user: result.user
+          user: result.user,
+          branches: result.branches,
+          currentBranch: result.currentBranch,
         }
       });
     }
@@ -72,7 +74,9 @@ export async function loginController(c: Context) {
       data: {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-        user: result.user
+        user: result.user,
+        branches: result.branches,
+        currentBranch: result.currentBranch,
       },
     });
   } catch (error) {
@@ -124,7 +128,9 @@ export async function refreshController(c: Context) {
         success: true,
         data: {
           accessToken: result.accessToken,
-          user: result.user
+          user: result.user,
+          branches: result.branches,
+          currentBranch: result.currentBranch,
         }
       });
     }
@@ -134,7 +140,9 @@ export async function refreshController(c: Context) {
       data: {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-        user: result.user
+        user: result.user,
+        branches: result.branches,
+        currentBranch: result.currentBranch,
       }
     });
   } catch (error) {

@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { validationHook } from '@/core/tenant/validations/hook';
 
 const staffRoles = ['admin', 'kitchen', 'waiter', 'delivery'] as const;
+const rbacBaseRoles = ['rol_admin', 'rol_cajero', 'rol_cocinero', 'rol_mozo', 'rol_almacenero'] as const;
 
 export const createTenantUserSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(255),
@@ -13,6 +14,7 @@ export const createTenantUserSchema = z.object({
     .regex(/^[a-zA-Z0-9_.]+$/, 'El username solo puede contener letras, números, puntos y guiones bajos'),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255),
   role: z.enum(staffRoles, { error: 'Rol inválido' }),
+  rbacBaseRoleCode: z.enum(rbacBaseRoles).optional().nullable(),
   image: z.string().url('URL de imagen inválida').optional().nullable(),
 });
 
@@ -25,6 +27,7 @@ export const updateTenantUserSchema = z.object({
     .regex(/^[a-zA-Z0-9_.]+$/, 'El username solo puede contener letras, números, puntos y guiones bajos')
     .optional(),
   role: z.enum(staffRoles).optional(),
+  rbacBaseRoleCode: z.enum(rbacBaseRoles).optional().nullable(),
   image: z.string().url('URL de imagen inválida').optional().nullable(),
 });
 
