@@ -48,6 +48,7 @@ routes.put('/measurement-units/:id', catalog.updateMeasurementUnit);
 
 routes.get('/items', catalog.listItems);
 routes.post('/items', catalog.createItem);
+routes.post('/items/import', catalog.importItems);
 routes.get('/items/:id', catalog.getItem);
 routes.put('/items/:id', catalog.updateItem);
 routes.get('/areas/:areaId/items', catalog.listItemsByArea);

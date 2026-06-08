@@ -559,6 +559,178 @@ export async function createItem(
   });
 }
 
+export async function importItems(itemsList: any[], tenantSlug: string = 'general') {
+  const db = getTenantDb();
+
+  // Load cache of existing masters
+  const allCategories = await db.select().from(itemCategories);
+  const allSubcategories = await db.select().from(itemSubcategories);
+  const allUnits = await db.select().from(measurementUnits).where(eq(measurementUnits.isActive, true));
+  const allAreas = await db.select().from(storageAreas).where(eq(storageAreas.isActive, true));
+
+  const successes: any[] = [];
+  const failures: any[] = [];
+
+  // Local lookup tables/helper structures
+  const categoryCache = new Map<string, typeof itemCategories.$inferSelect>();
+  for (const cat of allCategories) {
+    categoryCache.set(cat.name.trim().toLowerCase(), cat);
+  }
+
+  const subcategoryCache = new Map<string, typeof itemSubcategories.$inferSelect>();
+  for (const subcat of allSubcategories) {
+    subcategoryCache.set(`${subcat.categoryId}:${subcat.name.trim().toLowerCase()}`, subcat);
+  }
+
+  const unitCache = new Map<string, typeof measurementUnits.$inferSelect>();
+  for (const unit of allUnits) {
+    unitCache.set(unit.code.trim().toLowerCase(), unit);
+  }
+
+  const areaCache = new Map<string, typeof storageAreas.$inferSelect>();
+  for (const area of allAreas) {
+    areaCache.set(area.name.trim().toLowerCase(), area);
+  }
+
+  for (let idx = 0; idx < itemsList.length; idx++) {
+    const row = itemsList[idx];
+    const rowNum = idx + 1;
+
+    try {
+      // Basic validations
+      const code = String(row.code || '').trim().toUpperCase();
+      const shortDescription = String(row.shortDescription || '').trim();
+      const categoryName = String(row.categoryName || '').trim();
+      const subcategoryName = String(row.subcategoryName || '').trim();
+      const ledgerUnitCode = String(row.ledgerUnitCode || '').trim();
+      const costUnitCode = String(row.costUnitCode || '').trim();
+      const areaName = String(row.areaName || '').trim();
+
+      if (!code) throw new Error('El código es requerido');
+      if (!shortDescription) throw new Error('La descripción es requerida');
+      if (!categoryName) throw new Error('La categoría es requerida');
+      if (!subcategoryName) throw new Error('La subcategoría es requerida');
+      if (!ledgerUnitCode) throw new Error('La unidad de medida contable es requerida');
+
+      // We process each item inside a mini-transaction
+      const importedItem = await db.transaction(async (tx) => {
+        // 1. Check if item code already exists
+        const [existingItem] = await tx.select().from(items).where(eq(items.code, code)).limit(1);
+        if (existingItem) {
+          throw new Error(`El código "${code}" ya está registrado`);
+        }
+
+        // 2. Resolve or create Category
+        const catKey = categoryName.toLowerCase();
+        let category = categoryCache.get(catKey);
+        if (!category) {
+          const [newCat] = await tx
+            .insert(itemCategories)
+            .values({ name: categoryName })
+            .returning();
+          category = newCat;
+          categoryCache.set(catKey, category);
+        }
+
+        // 3. Resolve or create Subcategory
+        const subcatKey = `${category.id}:${subcategoryName.toLowerCase()}`;
+        let subcategory = subcategoryCache.get(subcatKey);
+        if (!subcategory) {
+          const [newSub] = await tx
+            .insert(itemSubcategories)
+            .values({ categoryId: category.id, name: subcategoryName })
+            .returning();
+          subcategory = newSub;
+          subcategoryCache.set(subcatKey, subcategory);
+        }
+
+        // 4. Resolve Ledger Unit
+        const ledgerUnit = unitCache.get(ledgerUnitCode.toLowerCase());
+        if (!ledgerUnit) {
+          throw new Error(`La unidad de medida contable "${ledgerUnitCode}" no existe`);
+        }
+
+        // 5. Resolve Cost Unit (optional, defaults to ledgerUnit)
+        let costUnit = ledgerUnit;
+        if (costUnitCode) {
+          const resolvedCostUnit = unitCache.get(costUnitCode.toLowerCase());
+          if (!resolvedCostUnit) {
+            throw new Error(`La unidad de medida de costo "${costUnitCode}" no existe`);
+          }
+          costUnit = resolvedCostUnit;
+        }
+
+        // 6. Resolve Storage Area (optional)
+        let areaId: number | undefined;
+        if (areaName) {
+          const storageArea = areaCache.get(areaName.toLowerCase());
+          if (!storageArea) {
+            throw new Error(`El almacén/área "${areaName}" no existe en el sistema`);
+          }
+          areaId = storageArea.id;
+        }
+
+        // Prepare flags & decimals
+        const conversionFactor = row.conversionFactor ? String(parseFloat(row.conversionFactor)) : '1';
+        const minStock = row.minStock ? String(parseFloat(row.minStock)) : '0';
+        const expiryDays = row.expiryDays ? parseInt(row.expiryDays, 10) || 0 : 0;
+        
+        const portionable = row.portionable === true || String(row.portionable).toUpperCase() === 'SI' || String(row.portionable).toUpperCase() === 'TRUE';
+        const recipeDischarge = row.recipeDischarge === true || String(row.recipeDischarge).toUpperCase() === 'SI' || String(row.recipeDischarge).toUpperCase() === 'TRUE';
+        const dailyControl = row.dailyControl !== false && String(row.dailyControl).toUpperCase() !== 'NO' && String(row.dailyControl).toUpperCase() !== 'FALSE';
+        const useMarketPrice = row.useMarketPrice === true || String(row.useMarketPrice).toUpperCase() === 'SI' || String(row.useMarketPrice).toUpperCase() === 'TRUE';
+        const isActive = row.isActive !== false && String(row.isActive).toUpperCase() !== 'NO' && String(row.isActive).toUpperCase() !== 'FALSE';
+
+        // Insert item
+        const [insertedItem] = await tx.insert(items).values({
+          code,
+          shortDescription,
+          subcategoryId: subcategory.id,
+          ledgerUnitId: ledgerUnit.id,
+          costUnitId: costUnit.id,
+          ledgerUnit: ledgerUnit.code,
+          costUnit: costUnit.code,
+          conversionFactor,
+          minStock,
+          expiryDays,
+          portionable,
+          recipeDischarge,
+          dailyControl,
+          useMarketPrice,
+          isActive,
+        }).returning();
+
+        // Assign area if specified
+        if (areaId) {
+          await tx.insert(itemAreaAssignments).values({
+            itemId: insertedItem.id,
+            areaId,
+            isActive: true,
+          }).onConflictDoNothing();
+        }
+
+        return insertedItem;
+      });
+
+      successes.push({
+        row: rowNum,
+        code: importedItem.code,
+        shortDescription: importedItem.shortDescription,
+      });
+
+    } catch (err: any) {
+      failures.push({
+        row: rowNum,
+        code: row.code || 'S/C',
+        description: row.shortDescription || 'S/D',
+        error: err.message || 'Error desconocido',
+      });
+    }
+  }
+
+  return { successes, failures };
+}
+
 export async function updateItem(
   id: number,
   data: Record<string, unknown>,

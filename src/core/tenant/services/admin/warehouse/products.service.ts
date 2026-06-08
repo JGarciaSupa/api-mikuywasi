@@ -1,7 +1,9 @@
 import { products, categories } from '@/db/tenant/schema';
 import { eq, and, ilike, desc, count, inArray, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
-import { getTenantDb } from '@/utils/tenant-context';
+import { getTenantDb, getTenantId } from '@/utils/tenant-context';
+import { masterDb } from '@/db';
+import { tenants } from '@/db/master/schema';
 
 const MAX_SIZE = 500;
 
@@ -76,6 +78,7 @@ export const getProductById = async (id: number) => {
 
 export const createProduct = async (data: any, imageFile?: File) => {
   const db = getTenantDb();
+  const tenantId = getTenantId();
   // Verificar límite de 150 productos
   const [totalResult] = await db.select({ count: count() })
     .from(products);
@@ -84,9 +87,15 @@ export const createProduct = async (data: any, imageFile?: File) => {
     throw new Error('Solo se permite un máximo de 150 productos por tenant');
   }
 
+  // Obtener el slug del tenant desde la base de datos master
+  const tenantMaster = await masterDb.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+  const tenantSlug = tenantMaster?.slug || 'general';
+
   let imageUrl = null;
   if (imageFile) {
-    imageUrl = await uploadToR2(imageFile, 'products', MAX_SIZE);
+    imageUrl = await uploadToR2(imageFile, `${tenantSlug}/productos`, MAX_SIZE);
   }
 
   const [newProduct] = await db.insert(products).values({
@@ -102,15 +111,22 @@ export const createProduct = async (data: any, imageFile?: File) => {
 
 export const updateProduct = async (id: number, data: any, imageFile?: File) => {
   const db = getTenantDb();
+  const tenantId = getTenantId();
   const [existingProduct] = await db.select().from(products).where(eq(products.id, id));
   if (!existingProduct) throw new Error('Producto no encontrado');
+
+  // Obtener el slug del tenant desde la base de datos master
+  const tenantMaster = await masterDb.query.tenants.findFirst({
+    where: eq(tenants.id, tenantId),
+  });
+  const tenantSlug = tenantMaster?.slug || 'general';
 
   let imageUrl = existingProduct.image;
   if (imageFile) {
     if (existingProduct.image) {
       await deleteFromR2(existingProduct.image);
     }
-    imageUrl = await uploadToR2(imageFile, 'products', MAX_SIZE);
+    imageUrl = await uploadToR2(imageFile, `${tenantSlug}/productos`, MAX_SIZE);
   }
 
   const [updatedProduct] = await db.update(products)

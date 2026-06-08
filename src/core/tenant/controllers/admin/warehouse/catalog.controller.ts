@@ -145,6 +145,21 @@ export const createItem = async (c: Context) => {
   }
 };
 
+export const importItems = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    const { items: itemsList } = body;
+    if (!Array.isArray(itemsList)) {
+      return c.json({ success: false, message: 'Se requiere un listado de insumos' }, 400);
+    }
+    const tenantSlug = c.req.header('X-Tenant-Slug') || c.req.header('x-tenant-slug') || c.req.param('slug') || c.req.query('slug') || c.req.query('tenantSlug') || 'general';
+    const data = await catalog.importItems(itemsList, tenantSlug);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al importar artículos');
+  }
+};
+
 export const listItemsByArea = async (c: Context) => {
   try {
     const areaId = parseInt(c.req.param('areaId') || '0', 10);
