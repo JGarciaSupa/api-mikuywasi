@@ -114,7 +114,8 @@ export async function updateLogo(file: File) {
   const tenantMaster = await masterDb.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
-  const slug = tenantMaster?.slug || 'default';
+
+  const slug = tenantMaster?.slug!;
 
   let [existing] = await db.select().from(tenantConfigs);
   if (!existing) {
