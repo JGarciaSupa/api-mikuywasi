@@ -1,4 +1,4 @@
-import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches } from '../../../../db/tenant/schema';
+import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -8,6 +8,8 @@ function toNum(v: unknown) {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
+
+const roundQty = (val: number) => Number(val.toFixed(3));
 
 /**
  * Obtener información pública del tenant (config, banners, social links)
@@ -278,7 +280,7 @@ export const validateOrderStockBeforeCreate = async (orderData: any) => {
     return;
   }
 
-  const requiredByItem = new Map<number, number>();
+  const requiredByItemAndArea = new Map<string, { itemId: number; areaId: number; qty: number; description: string }>();
   const orderItemsInput = orderData?.items ?? [];
 
   for (const oi of orderItemsInput) {
@@ -295,75 +297,183 @@ export const validateOrderStockBeforeCreate = async (orderData: any) => {
       continue;
     }
 
+    // Obtener el área de producción para esta sucursal y producto
+    let [bra] = await db
+      .select()
+      .from(branchRecipeAreas)
+      .where(
+        and(
+          eq(branchRecipeAreas.productId, oi.productId),
+          eq(branchRecipeAreas.branchId, branchId)
+        )
+      )
+      .limit(1);
+
+    // Fallback: si esta sucursal no tiene área configurada, usar configuración de sucursal 1
+    if (!bra?.areaId && branchId !== 1) {
+      const [fallback] = await db
+        .select()
+        .from(branchRecipeAreas)
+        .where(
+          and(
+            eq(branchRecipeAreas.productId, oi.productId),
+            eq(branchRecipeAreas.branchId, 1)
+          )
+        )
+        .limit(1);
+      if (fallback?.areaId) bra = fallback;
+    }
+
+    const targetAreaId = bra?.areaId;
+    if (!targetAreaId) {
+      // Si no hay área configurada, no sabemos de dónde descontar.
+      // Omitimos validación de stock para evitar bloqueos del flujo de venta.
+      continue;
+    }
+
     const [recipe] = await db
       .select()
       .from(recipes)
       .where(and(eq(recipes.productId, oi.productId), eq(recipes.isActive, true)))
       .limit(1);
 
-    // 3. Si no tiene receta activa, es un producto directo. Se puede vender libremente sin validar stock.
-    if (!recipe) {
-      continue;
-    }
+    if (recipe) {
+      const lines = await db
+        .select()
+        .from(recipeLines)
+        .where(eq(recipeLines.recipeId, recipe.id));
 
-    const lines = await db
-      .select()
-      .from(recipeLines)
-      .where(eq(recipeLines.recipeId, recipe.id));
+      const orderQty = toNum(oi.quantity);
+      const servings = toNum(recipe.servings) || 1;
+      const yieldFactor = (toNum(recipe.yieldPct) || 100) / 100;
 
-    const orderQty = toNum(oi.quantity);
-    const servings = toNum(recipe.servings) || 1;
-    const yieldFactor = (toNum(recipe.yieldPct) || 100) / 100;
+      for (const rl of lines) {
+        if (rl.isOptional) continue;
+        const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+        if (!item?.recipeDischarge) continue;
 
-    for (const rl of lines) {
-      if (rl.isOptional) continue;
-      const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
-      if (!item?.recipeDischarge) continue;
+        let ingredientQty = (toNum(rl.qty) / servings) * orderQty / yieldFactor;
+        if (rl.isCost && toNum(item.conversionFactor) > 0) {
+          ingredientQty = ingredientQty / toNum(item.conversionFactor);
+        }
 
-      let ingredientQty = (toNum(rl.qty) / servings) * orderQty / yieldFactor;
-      if (rl.isCost && toNum(item.conversionFactor) > 0) {
-        ingredientQty = ingredientQty / toNum(item.conversionFactor);
+        const key = `${rl.itemId}-${targetAreaId}`;
+        const existing = requiredByItemAndArea.get(key);
+        if (existing) {
+          existing.qty += ingredientQty;
+        } else {
+          requiredByItemAndArea.set(key, {
+            itemId: rl.itemId,
+            areaId: targetAreaId,
+            qty: ingredientQty,
+            description: item.shortDescription,
+          });
+        }
       }
+    }
 
-      requiredByItem.set(rl.itemId, (requiredByItem.get(rl.itemId) ?? 0) + ingredientQty);
+    // Procesar requerimientos de extras para este producto (también se descuentan de targetAreaId)
+    if (oi.extras?.length) {
+      const extraIds = oi.extras.map((e: any) => e.extraId);
+      const extrasData = await db
+        .select()
+        .from(productExtras)
+        .where(inArray(productExtras.id, extraIds));
+
+      for (const sel of oi.extras) {
+        const extra = extrasData.find((e) => e.id === sel.extraId);
+        if (!extra) continue;
+
+        if (extra.sourceType === 'item' && extra.itemId) {
+          const [directItem] = await db.select().from(items).where(eq(items.id, extra.itemId));
+          if (!directItem) continue;
+
+          const totalQty = roundQty(sel.qty * toNum(extra.itemQty));
+          const key = `${extra.itemId}-${targetAreaId}`;
+          const existing = requiredByItemAndArea.get(key);
+          if (existing) {
+            existing.qty += totalQty;
+          } else {
+            requiredByItemAndArea.set(key, {
+              itemId: extra.itemId,
+              areaId: targetAreaId,
+              qty: totalQty,
+              description: directItem.shortDescription,
+            });
+          }
+        } else if (extra.sourceType === 'recipe' && extra.recipeId) {
+          const lines = await db
+            .select()
+            .from(recipeLines)
+            .where(eq(recipeLines.recipeId, extra.recipeId));
+
+          for (const rl of lines) {
+            if (rl.isOptional) continue;
+            const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+            if (!item?.recipeDischarge) continue;
+            let qty = toNum(rl.qty) * sel.qty;
+            if (rl.isCost && toNum(item.conversionFactor) > 0) {
+              qty = qty / toNum(item.conversionFactor);
+            }
+
+            const key = `${rl.itemId}-${targetAreaId}`;
+            const existing = requiredByItemAndArea.get(key);
+            if (existing) {
+              existing.qty += qty;
+            } else {
+              requiredByItemAndArea.set(key, {
+                itemId: rl.itemId,
+                areaId: targetAreaId,
+                qty,
+                description: item.shortDescription,
+              });
+            }
+          }
+        }
+      }
     }
   }
 
-  // Agregar requerimientos de extras al mismo mapa antes de validar
-  const { calcExtrasStockRequired } = await import('../admin/warehouse/extras.service');
-  const extrasRequired = await calcExtrasStockRequired(orderItemsInput);
-  for (const [itemId, qty] of extrasRequired) {
-    requiredByItem.set(itemId, (requiredByItem.get(itemId) ?? 0) + qty);
-  }
-
-  if (requiredByItem.size === 0) return;
+  if (requiredByItemAndArea.size === 0) return;
 
   const missing: string[] = [];
-  for (const [itemId, requiredQty] of requiredByItem) {
-    const [stockItem] = await db.select().from(items).where(eq(items.id, itemId));
-    if (!stockItem) continue;
-    const current = toNum(stockItem.currentStock);
-    if (requiredQty > current) {
+  for (const [, req] of requiredByItemAndArea) {
+    const [snap] = await db
+      .select()
+      .from(stockSnapshot)
+      .where(and(eq(stockSnapshot.itemId, req.itemId), eq(stockSnapshot.areaId, req.areaId)));
+
+    const [area] = await db.select().from(storageAreas).where(eq(storageAreas.id, req.areaId));
+    const areaName = area?.name ?? `Área #${req.areaId}`;
+
+    const current = snap ? toNum(snap.currentStock) : 0;
+    if (req.qty > current) {
       missing.push(
-        `${stockItem.shortDescription}: requerido ${requiredQty.toFixed(3)}, disponible ${current.toFixed(3)}`
+        `${req.description} en [${areaName}]: requerido ${req.qty.toFixed(3)}, disponible ${current.toFixed(3)}`
       );
     }
   }
 
   if (missing.length > 0) {
-    throw new Error(`Stock insuficiente para procesar el pedido. ${missing.join(' | ')}`);
+    throw new Error(`Stock insuficiente para procesar el pedido. Detalles: ${missing.join(' | ')}`);
   }
 };
 
 /**
  * Descarga de stock inmediata al crear un pedido.
- * Se llama fire-and-forget: los errores de stock no bloquean al mozo.
+ * Los errores de stock no bloquean al mozo, pero se devuelven como advertencias.
  */
 export const triggerStockDischargeForOrder = async (orderId: string): Promise<string[]> => {
   try {
     const { autoDischargeOnOrderCreated } = await import('../admin/warehouse/sales-discharge.service');
-    await autoDischargeOnOrderCreated(orderId);
-    return [];
+    const result = await autoDischargeOnOrderCreated(orderId);
+    const warnings: string[] = [];
+    if (result.skipped.length > 0) {
+      for (const s of result.skipped) {
+        warnings.push(`${s.productName}: ${s.reason}`);
+      }
+    }
+    return warnings;
   } catch (err: any) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[stock] Descarga omitida para pedido ${orderId}: ${msg}`);

@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, ilike } from 'drizzle-orm';
 import { mainLedger, areaLedger, stockSnapshot, wasteLog, items, storageAreas, warehouses } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 
@@ -7,6 +7,7 @@ export async function getMainLedger(filters: {
   areaId?: number;
   from?: string;
   to?: string;
+  documentType?: string;
   limit?: number;
 }) {
   const db = getTenantDb();
@@ -14,7 +15,12 @@ export async function getMainLedger(filters: {
   if (filters.itemId) conditions.push(eq(mainLedger.itemId, filters.itemId));
   if (filters.areaId) conditions.push(eq(mainLedger.areaId, filters.areaId));
   if (filters.from) conditions.push(gte(mainLedger.recordedAt, new Date(filters.from)));
-  if (filters.to) conditions.push(lte(mainLedger.recordedAt, new Date(filters.to)));
+  if (filters.to) {
+    const to = new Date(filters.to);
+    to.setHours(23, 59, 59, 999);
+    conditions.push(lte(mainLedger.recordedAt, to));
+  }
+  if (filters.documentType) conditions.push(ilike(mainLedger.documentType, `%${filters.documentType}%`));
 
   let q = db.select().from(mainLedger).orderBy(desc(mainLedger.recordedAt));
   if (conditions.length) q = q.where(and(...conditions)) as typeof q;
@@ -27,6 +33,7 @@ export async function getAreaLedger(filters: {
   areaId?: number;
   from?: string;
   to?: string;
+  documentType?: string;
   limit?: number;
 }) {
   const db = getTenantDb();
@@ -34,7 +41,12 @@ export async function getAreaLedger(filters: {
   if (filters.itemId) conditions.push(eq(areaLedger.itemId, filters.itemId));
   if (filters.areaId) conditions.push(eq(areaLedger.areaId, filters.areaId));
   if (filters.from) conditions.push(gte(areaLedger.recordedAt, new Date(filters.from)));
-  if (filters.to) conditions.push(lte(areaLedger.recordedAt, new Date(filters.to)));
+  if (filters.to) {
+    const to = new Date(filters.to);
+    to.setHours(23, 59, 59, 999);
+    conditions.push(lte(areaLedger.recordedAt, to));
+  }
+  if (filters.documentType) conditions.push(ilike(areaLedger.documentType, `%${filters.documentType}%`));
 
   let q = db.select().from(areaLedger).orderBy(desc(areaLedger.recordedAt));
   if (conditions.length) q = q.where(and(...conditions)) as typeof q;
@@ -43,16 +55,23 @@ export async function getAreaLedger(filters: {
 }
 
 /** Kardex unificado: central o sub según el área */
-export async function getKardexByArea(areaId: number, itemId?: number, limit = 100) {
+export async function getKardexByArea(
+  areaId: number,
+  itemId?: number,
+  limit = 200,
+  from?: string,
+  to?: string,
+  documentType?: string
+) {
   const db = getTenantDb();
   const [area] = await db.select().from(storageAreas).where(eq(storageAreas.id, areaId));
   if (!area) throw new Error('Área no encontrada');
 
   const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
   if (wh?.isCentral) {
-    return getMainLedger({ areaId, itemId, limit });
+    return getMainLedger({ areaId, itemId, limit, from, to, documentType });
   }
-  return getAreaLedger({ areaId, itemId, limit });
+  return getAreaLedger({ areaId, itemId, limit, from, to, documentType });
 }
 
 export async function getStockByArea(areaId?: number) {

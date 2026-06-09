@@ -1,9 +1,9 @@
-import { eq, asc, and, desc } from 'drizzle-orm';
-import { recipes, recipeLines, products, items, branchRecipeAreas } from '../../../../../db/tenant/schema';
+import { eq, asc, and, desc, inArray } from 'drizzle-orm';
+import { recipes, recipeLines, products, items, branchRecipeAreas, branches } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from './shared/numbers';
 
-async function getRecipeWithLines(id: number) {
+async function getRecipeWithLines(id: number, branchId = 1) {
   const db = getTenantDb();
   const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
   if (!recipe) return null;
@@ -12,7 +12,7 @@ async function getRecipeWithLines(id: number) {
   if (recipe.productId) {
     [bra] = await db.select().from(branchRecipeAreas).where(
       and(
-        eq(branchRecipeAreas.branchId, 1),
+        eq(branchRecipeAreas.branchId, branchId),
         eq(branchRecipeAreas.productId, recipe.productId)
       )
     ).limit(1);
@@ -38,7 +38,7 @@ async function getRecipeWithLines(id: number) {
   return { ...recipe, productionAreaId: bra?.areaId || null, producedItemName, lines };
 }
 
-export async function listRecipes(productId?: number) {
+export async function listRecipes(productId?: number, branchId = 1) {
   const db = getTenantDb();
   let q = db
     .select({
@@ -52,7 +52,7 @@ export async function listRecipes(productId?: number) {
     .leftJoin(items, eq(recipes.producedItemId, items.id))
     .leftJoin(branchRecipeAreas, and(
       eq(branchRecipeAreas.productId, recipes.productId),
-      eq(branchRecipeAreas.branchId, 1)
+      eq(branchRecipeAreas.branchId, branchId)
     ))
     .orderBy(desc(recipes.createdAt))
     .$dynamic();
@@ -79,8 +79,8 @@ export async function listRecipes(productId?: number) {
   });
 }
 
-export async function getRecipeById(id: number) {
-  const recipe = await getRecipeWithLines(id);
+export async function getRecipeById(id: number, branchId = 1) {
+  const recipe = await getRecipeWithLines(id, branchId);
   if (!recipe) return null;
 
   const cost = recipe.lines.reduce((sum, row) => {
@@ -139,7 +139,7 @@ export async function getRecipeById(id: number) {
   };
 }
 
-export async function getRecipeByProductId(productId: number) {
+export async function getRecipeByProductId(productId: number, branchId = 1) {
   const db = getTenantDb();
   const [recipe] = await db
     .select()
@@ -147,7 +147,7 @@ export async function getRecipeByProductId(productId: number) {
     .where(and(eq(recipes.productId, productId), eq(recipes.isActive, true)))
     .limit(1);
   if (!recipe) return null;
-  return getRecipeById(recipe.id);
+  return getRecipeById(recipe.id, branchId);
 }
 
 export async function createRecipe(
@@ -161,6 +161,7 @@ export async function createRecipe(
     yieldPct?: string;
     isActive?: boolean;
     productionAreaId?: number | null;
+    branchId?: number | null;
   },
   lines: {
     itemId: number;
@@ -174,7 +175,8 @@ export async function createRecipe(
   const db = getTenantDb();
 
   return db.transaction(async (tx) => {
-    const { productionAreaId, ...recipeData } = header;
+    const { productionAreaId, branchId: rawBranchId, ...recipeData } = header;
+    const branchId = rawBranchId ?? 1;
 
     let finalName = recipeData.name;
     if (!finalName) {
@@ -197,12 +199,12 @@ export async function createRecipe(
     if (productionAreaId && recipeData.productId) {
       await tx.delete(branchRecipeAreas).where(
         and(
-          eq(branchRecipeAreas.branchId, 1),
+          eq(branchRecipeAreas.branchId, branchId),
           eq(branchRecipeAreas.productId, recipeData.productId)
         )
       );
       await tx.insert(branchRecipeAreas).values({
-        branchId: 1,
+        branchId,
         productId: recipeData.productId,
         areaId: productionAreaId,
       });
@@ -220,15 +222,20 @@ export async function createRecipe(
           notes: l.notes,
         }))
       );
+      // Auto-activar descarga por receta en todos los insumos de las líneas
+      const itemIds = lines.map((l) => l.itemId);
+      if (itemIds.length) {
+        await tx.update(items).set({ recipeDischarge: true }).where(inArray(items.id, itemIds));
+      }
     }
 
-    return getRecipeById(recipe.id);
+    return getRecipeById(recipe.id, branchId);
   });
 }
 
 export async function updateRecipe(
   id: number,
-  header: Partial<typeof recipes.$inferInsert> & { productionAreaId?: number | null },
+  header: Partial<typeof recipes.$inferInsert> & { productionAreaId?: number | null; branchId?: number | null },
   lines?: {
     itemId: number;
     qty: number;
@@ -241,8 +248,9 @@ export async function updateRecipe(
   const db = getTenantDb();
 
   return db.transaction(async (tx) => {
-    const { productionAreaId, ...recipeData } = header;
-    
+    const { productionAreaId, branchId: rawBranchId, ...recipeData } = header;
+    const branchId = rawBranchId ?? 1;
+
     const [existing] = await tx.select().from(recipes).where(eq(recipes.id, id));
     if (!existing) return null;
 
@@ -267,27 +275,31 @@ export async function updateRecipe(
 
     await tx
       .update(recipes)
-      .set({ 
-        ...recipeData, 
+      .set({
+        ...recipeData,
         name: finalName,
         productId: recipeData.productId === undefined ? existing.productId : recipeData.productId,
         producedItemId: recipeData.producedItemId === undefined ? existing.producedItemId : recipeData.producedItemId,
-        updatedAt: new Date() 
+        updatedAt: new Date(),
       })
       .where(eq(recipes.id, id));
 
-    if (productionAreaId && mergedProductId) {
+    if (productionAreaId !== undefined && mergedProductId) {
+      // Eliminar la configuración de área para esta sucursal (si existe)
       await tx.delete(branchRecipeAreas).where(
         and(
-          eq(branchRecipeAreas.branchId, 1),
+          eq(branchRecipeAreas.branchId, branchId),
           eq(branchRecipeAreas.productId, mergedProductId)
         )
       );
-      await tx.insert(branchRecipeAreas).values({
-        branchId: 1,
-        productId: mergedProductId,
-        areaId: productionAreaId,
-      });
+      // Solo insertar si se proporcionó un área válida
+      if (productionAreaId) {
+        await tx.insert(branchRecipeAreas).values({
+          branchId,
+          productId: mergedProductId,
+          areaId: productionAreaId,
+        });
+      }
     }
 
     if (lines) {
@@ -304,9 +316,96 @@ export async function updateRecipe(
             notes: l.notes,
           }))
         );
+        // Auto-activar descarga por receta en todos los insumos de las líneas
+        const itemIds = lines.map((l) => l.itemId);
+        if (itemIds.length) {
+          await tx.update(items).set({ recipeDischarge: true }).where(inArray(items.id, itemIds));
+        }
       }
     }
 
-    return getRecipeById(id);
+    return getRecipeById(id, branchId);
+  });
+}
+
+/**
+ * Propaga la configuración de áreas de producción desde la sucursal 1
+ * a todas las demás sucursales activas que aún no tengan configuración propia.
+ * También activa recipeDischarge=true en todos los insumos que están en alguna receta.
+ * Devuelve el número de registros creados y el número de insumos actualizados.
+ */
+export async function propagateBranchAreas(): Promise<{
+  areasCreated: number;
+  itemsActivated: number;
+}> {
+  const db = getTenantDb();
+
+  return db.transaction(async (tx) => {
+    // 1. Obtener todas las sucursales excepto la 1
+    const allBranches = await tx
+      .select({ id: branches.id })
+      .from(branches)
+      .where(and(eq(branches.isActive, true)));
+
+    const otherBranchIds = allBranches.map((b) => b.id).filter((id) => id !== 1);
+
+    // 2. Obtener toda la configuración de sucursal 1
+    const sourceMappings = await tx
+      .select()
+      .from(branchRecipeAreas)
+      .where(eq(branchRecipeAreas.branchId, 1));
+
+    let areasCreated = 0;
+
+    for (const mapping of sourceMappings) {
+      for (const targetBranchId of otherBranchIds) {
+        // Verificar si ya existe configuración para esta sucursal+producto
+        const [existing] = await tx
+          .select()
+          .from(branchRecipeAreas)
+          .where(
+            and(
+              eq(branchRecipeAreas.branchId, targetBranchId),
+              eq(branchRecipeAreas.productId, mapping.productId)
+            )
+          )
+          .limit(1);
+
+        if (!existing) {
+          await tx.insert(branchRecipeAreas).values({
+            branchId: targetBranchId,
+            productId: mapping.productId,
+            areaId: mapping.areaId,
+          });
+          areasCreated++;
+        }
+      }
+    }
+
+    // 3. Activar recipeDischarge=true en todos los insumos que están en recetas activas
+    const recipeItemIds = await tx
+      .select({ itemId: recipeLines.itemId })
+      .from(recipeLines)
+      .innerJoin(recipes, eq(recipeLines.recipeId, recipes.id))
+      .where(eq(recipes.isActive, true));
+
+    const uniqueItemIds = [...new Set(recipeItemIds.map((r) => r.itemId))];
+    let itemsActivated = 0;
+
+    if (uniqueItemIds.length > 0) {
+      const result = await tx
+        .update(items)
+        .set({ recipeDischarge: true })
+        .where(
+          and(
+            inArray(items.id, uniqueItemIds),
+            eq(items.recipeDischarge, false)
+          )
+        )
+        .returning({ id: items.id });
+      itemsActivated = result.length;
+    }
+
+    return { areasCreated, itemsActivated };
   });
 }

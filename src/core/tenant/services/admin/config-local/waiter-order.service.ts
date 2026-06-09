@@ -188,6 +188,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
                 dischargeId,
                 itemId: l.itemId,
                 recipeId: l.recipeId,
+                areaId: l.productionAreaId,
                 qty: String(l.qty),
                 unit: l.unit,
                 avgPrice: String(l.avgPrice),
@@ -203,7 +204,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
             await applyStockExit({
               branchId: existingDischarge.branchId,
               itemId: l.itemId,
-              areaId: existingDischarge.areaId,
+              areaId: l.productionAreaId,
               qty: l.qty,
               unitPrice: l.avgPrice,
               documentType: 'descarga_venta',
@@ -241,7 +242,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
           await applyStockEntry({
             branchId: existingDischarge.branchId,
             itemId: l.itemId,
-            areaId: existingDischarge.areaId,
+            areaId: l.productionAreaId,
             qty: l.qty,
             unitPrice: l.avgPrice,
             documentType: 'reverso_descarga',
@@ -295,7 +296,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
             await applyStockExit({
               branchId: existingDischarge.branchId,
               itemId: l.itemId,
-              areaId: existingDischarge.areaId,
+              areaId: l.productionAreaId,
               qty: l.qty,
               unitPrice: l.avgPrice,
               documentType: 'descarga_venta',
@@ -306,7 +307,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
             await applyStockEntry({
               branchId: existingDischarge.branchId,
               itemId: l.itemId,
-              areaId: existingDischarge.areaId,
+              areaId: l.productionAreaId,
               qty: l.qty,
               unitPrice: l.avgPrice,
               documentType: 'reverso_descarga',

@@ -33,18 +33,19 @@ export async function getSalesDischargeByOrderId(orderId: string) {
   return getDischargeWithLines(doc.id);
 }
 
+export interface DischargeSkipReason {
+  productId: number;
+  productName: string;
+  reason: string;
+}
+
 /** Calcula líneas de descarga a partir de un pedido (cualquier estado activo) */
 export async function buildDischargeFromOrder(orderId: string) {
-  console.log(`[buildDischargeFromOrder] Iniciando para pedido: ${orderId}`);
   const db = getTenantDb();
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
-  if (!order) {
-    console.log(`[buildDischargeFromOrder] Pedido no encontrado: ${orderId}`);
-    throw new Error('Pedido no encontrado');
-  }
+  if (!order) throw new Error('Pedido no encontrado');
 
   const oItems = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-  console.log(`[buildDischargeFromOrder] Encontrados ${oItems.length} items en el pedido`);
   const calculated: {
     itemId: number;
     recipeId: number | null;
@@ -54,9 +55,9 @@ export async function buildDischargeFromOrder(orderId: string) {
     lineCost: number;
     productionAreaId: number;
   }[] = [];
+  const skipped: DischargeSkipReason[] = [];
 
   for (const oi of oItems) {
-    console.log(`[buildDischargeFromOrder] Evaluando item: ${oi.productName} (productId: ${oi.productId})`);
     if (!oi.productId) continue;
 
     const [recipe] = await db
@@ -66,12 +67,15 @@ export async function buildDischargeFromOrder(orderId: string) {
       .limit(1);
 
     if (!recipe) {
-      console.log(`[buildDischargeFromOrder] Sin receta activa para productId: ${oi.productId}`);
+      skipped.push({
+        productId: oi.productId,
+        productName: oi.productName,
+        reason: 'Sin receta activa configurada',
+      });
       continue;
     }
 
-    // Obtener el área de producción para esta sucursal y producto
-    const [bra] = await db
+    let [bra] = await db
       .select()
       .from(branchRecipeAreas)
       .where(
@@ -82,8 +86,28 @@ export async function buildDischargeFromOrder(orderId: string) {
       )
       .limit(1);
 
+    // Fallback: si esta sucursal no tiene área configurada, usar la configuración
+    // de sucursal 1 (compatibilidad con datos anteriores al fix de branchId).
+    if (!bra?.areaId && order.branchId !== 1) {
+      const [fallback] = await db
+        .select()
+        .from(branchRecipeAreas)
+        .where(
+          and(
+            eq(branchRecipeAreas.productId, oi.productId),
+            eq(branchRecipeAreas.branchId, 1)
+          )
+        )
+        .limit(1);
+      if (fallback?.areaId) bra = fallback;
+    }
+
     if (!bra?.areaId) {
-      console.log(`[buildDischargeFromOrder] Sin branchRecipeAreas (área de producción) para productId: ${oi.productId} en branchId: ${order.branchId}`);
+      skipped.push({
+        productId: oi.productId,
+        productName: oi.productName,
+        reason: `Sin área de producción configurada para esta sucursal (sucursal #${order.branchId})`,
+      });
       continue;
     }
 
@@ -123,18 +147,16 @@ export async function buildDischargeFromOrder(orderId: string) {
       });
     }
 
-    // Descargar extras seleccionados para este order_item usando el mismo área de producción
     const extraLines = await buildExtrasDischargeLines(db, oi.id, bra.areaId);
     for (const el of extraLines) {
       calculated.push({ ...el, recipeId: null, productionAreaId: bra.areaId });
     }
   }
 
-  console.log(`[buildDischargeFromOrder] Líneas calculadas a descargar (incl. extras): ${calculated.length}`);
-  return { order, lines: calculated };
+  return { order, lines: calculated, skipped };
 }
 
-export async function createSalesDischargeFromOrder(orderId: string, areaId: number, actor?: AuditActor) {
+export async function createSalesDischargeFromOrder(orderId: string, areaId?: number | null, actor?: AuditActor) {
   const db = getTenantDb();
   const existing = await getSalesDischargeByOrderId(orderId);
   if (existing) throw new Error('Ya existe una descarga para este pedido');
@@ -150,7 +172,7 @@ export async function createSalesDischargeFromOrder(orderId: string, areaId: num
       .values({
         orderId,
         branchId: order.branchId,
-        areaId,
+        areaId: areaId || null,
         status: 'draft',
         totalCost: String(totalCost),
         createdBy: actor?.userName,
@@ -162,6 +184,7 @@ export async function createSalesDischargeFromOrder(orderId: string, areaId: num
         dischargeId: doc.id,
         itemId: l.itemId,
         recipeId: l.recipeId,
+        areaId: l.productionAreaId,
         qty: String(l.qty),
         unit: l.unit,
         avgPrice: String(l.avgPrice),
@@ -188,11 +211,18 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
       const qty = toNum(line.qty);
       if (qty <= 0) continue;
 
+      const targetAreaId = line.areaId ?? doc.areaId;
+      if (!targetAreaId) {
+        const [itemRow] = await tx.select({ name: items.shortDescription }).from(items).where(eq(items.id, line.itemId));
+        const itemName = itemRow?.name ?? `insumo #${line.itemId}`;
+        throw new Error(`El insumo "${itemName}" no tiene un área de almacenamiento especificada en la descarga.`);
+      }
+
       await applyStockExit(
         {
           branchId: doc.branchId,
           itemId: line.itemId,
-          areaId: doc.areaId,
+          areaId: targetAreaId,
           qty,
           unitPrice: toNum(line.avgPrice),
           documentType: 'descarga_venta',
@@ -230,24 +260,24 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
 }
 
 /** Hook para invocar al crear un pedido — descuenta stock inmediatamente */
-export async function autoDischargeOnOrderCreated(orderId: string, actor?: AuditActor) {
-  console.log(`[autoDischargeOnOrderCreated] Iniciando trigger para pedido: ${orderId}`);
+export async function autoDischargeOnOrderCreated(
+  orderId: string,
+  actor?: AuditActor
+): Promise<{ discharge: Awaited<ReturnType<typeof processSalesDischarge>> | null; skipped: DischargeSkipReason[] }> {
   const built = await buildDischargeFromOrder(orderId);
+
   if (!built.lines.length) {
-    console.log(`[autoDischargeOnOrderCreated] No hay líneas para descargar. Abortando auto-discharge.`);
-    return null;
+    return { discharge: null, skipped: built.skipped };
   }
 
   const areaId = built.lines[0].productionAreaId;
-  console.log(`[autoDischargeOnOrderCreated] Creando documento de descarga en areaId: ${areaId}`);
   const created = await createSalesDischargeFromOrder(orderId, areaId, actor);
   if (!created) {
-    console.log(`[autoDischargeOnOrderCreated] Falla al crear el documento (createSalesDischargeFromOrder retornó falso)`);
-    return null;
+    return { discharge: null, skipped: built.skipped };
   }
 
-  console.log(`[autoDischargeOnOrderCreated] Procesando descarga ID: ${created.id}`);
-  return processSalesDischarge(created.id, actor);
+  const discharge = await processSalesDischarge(created.id, actor);
+  return { discharge, skipped: built.skipped };
 }
 
 /** Revierte la descarga de un pedido (cancel): repone stock y marca voided */
@@ -262,11 +292,15 @@ export async function reverseDischargeForOrder(orderId: string, actor?: AuditAct
     for (const line of discharge.lines) {
       const qty = toNum(line.qty);
       if (qty <= 0) continue;
+
+      const targetAreaId = line.areaId ?? discharge.areaId;
+      if (!targetAreaId) continue;
+
       await applyStockEntry(
         {
           branchId: discharge.branchId,
           itemId: line.itemId,
-          areaId: discharge.areaId,
+          areaId: targetAreaId,
           qty,
           unitPrice: toNum(line.avgPrice),
           documentType: 'reverso_descarga',
@@ -372,6 +406,8 @@ export async function getSalesDischargeDetail(id: number) {
       itemName: items.shortDescription,
       itemUnit: items.ledgerUnit,
       recipeId: salesDischargeLines.recipeId,
+      areaId: salesDischargeLines.areaId,
+      areaName: storageAreas.name,
       qty: salesDischargeLines.qty,
       unit: salesDischargeLines.unit,
       avgPrice: salesDischargeLines.avgPrice,
@@ -379,6 +415,7 @@ export async function getSalesDischargeDetail(id: number) {
     })
     .from(salesDischargeLines)
     .leftJoin(items, eq(salesDischargeLines.itemId, items.id))
+    .leftJoin(storageAreas, eq(salesDischargeLines.areaId, storageAreas.id))
     .where(eq(salesDischargeLines.dischargeId, id));
 
   return { ...doc, lines };

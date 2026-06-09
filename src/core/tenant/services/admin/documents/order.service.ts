@@ -148,6 +148,13 @@ export const getOrderById = async (id: string) => {
  */
 export const updateOrderStatus = async (id: string, status: string) => {
   const db = getTenantDb();
+
+  // If order status is updated to 'cancelled', revert the stock discharge
+  if (status === 'cancelled') {
+    const { reverseDischargeForOrder } = await import('../warehouse/sales-discharge.service');
+    await reverseDischargeForOrder(id);
+  }
+
   const [updated] = await db
     .update(orders)
     .set({

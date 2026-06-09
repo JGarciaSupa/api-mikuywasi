@@ -558,7 +558,7 @@ export const salesDischarge = pgTable('sales_discharge', {
 	id: serial('id').primaryKey(),
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id).unique(),
 	branchId: integer('branch_id').notNull().references(() => branches.id),
-	areaId: integer('area_id').notNull().references(() => storageAreas.id),
+	areaId: integer('area_id').references(() => storageAreas.id),
 	date: timestamp('date', { withTimezone: true }).defaultNow(),
 	status: varchar('status', { length: 20, enum: ['draft', 'processed', 'voided'] as const })
 		.notNull().default('draft'),
@@ -578,6 +578,7 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 	dischargeId: integer('discharge_id').notNull().references(() => salesDischarge.id, { onDelete: 'cascade' }),
 	itemId: integer('item_id').notNull().references(() => items.id),
 	recipeId: integer('recipe_id').references(() => recipes.id), // nullable: null cuando la descarga proviene de extra directo (item)
+	areaId: integer('area_id').references(() => storageAreas.id),
 	qty: decimal('qty', { precision: 12, scale: 4 }).notNull(),
 	unit: varchar('unit', { length: 30 }),
 	avgPrice: decimal('avg_price', { precision: 12, scale: 4 }).notNull().default('0'),
@@ -585,6 +586,7 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 }, (table) => ({
 	dischargeIdx: index('sales_discharge_lines_discharge_idx').on(table.dischargeId),
 	itemIdx: index('sales_discharge_lines_item_idx').on(table.itemId),
+	areaIdx: index('sales_discharge_lines_area_idx').on(table.areaId),
 }));
 
 // ==========================================
@@ -811,6 +813,7 @@ export const salesDischargeLinesRelations = relations(salesDischargeLines, ({ on
 	discharge: one(salesDischarge, { fields: [salesDischargeLines.dischargeId], references: [salesDischarge.id] }),
 	item: one(items, { fields: [salesDischargeLines.itemId], references: [items.id] }),
 	recipe: one(recipes, { fields: [salesDischargeLines.recipeId], references: [recipes.id] }),
+	area: one(storageAreas, { fields: [salesDischargeLines.areaId], references: [storageAreas.id] }),
 }));
 
 export const cashRegistersRelations = relations(cashRegisters, ({ one, many }) => ({

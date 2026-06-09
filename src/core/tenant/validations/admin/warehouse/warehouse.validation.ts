@@ -137,7 +137,7 @@ export const createRecipeSchema = z.object({
 
 export const createSalesDischargeSchema = z.object({
   orderId: z.string().min(1),
-  areaId: z.number().int(),
+  areaId: z.number().int().optional().nullable(),
 });
 
 export const upsertSettingSchema = z.object({

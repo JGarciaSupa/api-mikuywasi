@@ -104,6 +104,7 @@ routes.get('/recipes/:id', recipesLedger.getRecipe);
 routes.get('/products/:productId/recipe', recipesLedger.getRecipeByProduct);
 routes.post('/recipes', validateCreateRecipe, recipesLedger.createRecipe);
 routes.put('/recipes/:id', recipesLedger.updateRecipe);
+routes.post('/recipes/propagate-areas', recipesLedger.propagateRecipeAreas);
 
 // ── Flujo 8 — Descarga de venta ──────────────────────────────────────────────
 routes.get('/sales-discharge', recipesLedger.listSalesDischarges);

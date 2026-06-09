@@ -9,7 +9,8 @@ import { jsonError, getAuditActor } from '@/utils/helpers';
 export const listRecipes = async (c: Context) => {
   try {
     const productId = c.req.query('productId') ? parseInt(c.req.query('productId')!) : undefined;
-    const data = await recipes.listRecipes(productId);
+    const branchId = c.req.query('branchId') ? parseInt(c.req.query('branchId')!) : 1;
+    const data = await recipes.listRecipes(productId, branchId);
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al listar recetas');
@@ -19,7 +20,8 @@ export const listRecipes = async (c: Context) => {
 export const getRecipe = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0', 10);
-    const data = await recipes.getRecipeById(id);
+    const branchId = c.req.query('branchId') ? parseInt(c.req.query('branchId')!) : 1;
+    const data = await recipes.getRecipeById(id, branchId);
     if (!data) return c.json({ success: false, message: 'Receta no encontrada' }, 404);
     return c.json({ success: true, data });
   } catch (e) {
@@ -30,7 +32,8 @@ export const getRecipe = async (c: Context) => {
 export const getRecipeByProduct = async (c: Context) => {
   try {
     const productId = parseInt(c.req.param('productId') || '0', 10);
-    const data = await recipes.getRecipeByProductId(productId);
+    const branchId = c.req.query('branchId') ? parseInt(c.req.query('branchId')!) : 1;
+    const data = await recipes.getRecipeByProductId(productId, branchId);
     if (!data) return c.json({ success: false, message: 'Receta no encontrada para este producto' }, 404);
     return c.json({ success: true, data });
   } catch (e) {
@@ -47,6 +50,7 @@ export const createRecipe = async (c: Context) => {
     return jsonError(c, e, 'Error al crear receta');
   }
 };
+// Nota: branchId viene dentro de header (del body JSON) y se pasa directo al servicio
 
 export const updateRecipe = async (c: Context) => {
   try {
@@ -120,8 +124,11 @@ export const getKardex = async (c: Context) => {
   try {
     const areaId = parseInt(c.req.param('areaId') || '0', 10);
     const itemId = c.req.query('itemId') ? parseInt(c.req.query('itemId')!) : undefined;
-    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 100;
-    const data = await ledger.getKardexByArea(areaId, itemId, limit);
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 200;
+    const from = c.req.query('from') || undefined;
+    const to = c.req.query('to') || undefined;
+    const documentType = c.req.query('documentType') || undefined;
+    const data = await ledger.getKardexByArea(areaId, itemId, limit, from, to, documentType);
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al obtener kardex');
@@ -202,6 +209,19 @@ export const getItemMovements = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (e) {
     return jsonError(c, e, 'Error al obtener movimientos del insumo');
+  }
+};
+
+export const propagateRecipeAreas = async (c: Context) => {
+  try {
+    const data = await recipes.propagateBranchAreas();
+    return c.json({
+      success: true,
+      message: `Propagación completada: ${data.areasCreated} área(s) copiada(s) a otras sucursales, ${data.itemsActivated} insumo(s) activado(s) para descarga por receta.`,
+      data,
+    });
+  } catch (e) {
+    return jsonError(c, e, 'Error al propagar áreas de recetas');
   }
 };
 

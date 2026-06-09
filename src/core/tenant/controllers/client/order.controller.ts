@@ -9,20 +9,28 @@ export const createOrderController = async (c: Context) => {
   try {
     const body = await c.req.json();
     
+    // Validate stock before creating
+    await tenantService.validateOrderStockBeforeCreate(body);
+    
     // Call service to create the order
     const result = await tenantService.createOrder(body);
+
+    // Trigger stock discharge immediately
+    const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);
 
     return c.json({
       success: true,
       message: 'Pedido creado exitosamente',
-      data: result
+      data: { ...result, stockWarnings: stockWarnings.length ? stockWarnings : undefined }
     }, 201);
   } catch (error: any) {
     console.error('Error in createOrderController:', error);
+    const msg = error?.message || 'Error al procesar el pedido';
+    const status = msg.includes('Stock insuficiente') ? 422 : 500;
     return c.json({
       success: false,
-      message: error.message || 'Error al procesar el pedido'
-    }, 500);
+      message: msg
+    }, status as any);
   }
 };
 
