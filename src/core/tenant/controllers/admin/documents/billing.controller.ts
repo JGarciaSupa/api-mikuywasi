@@ -122,8 +122,8 @@ export const createDocumentController = async (c: Context) => {
 export const voidDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
-    const { reason } = await c.req.json();
-    const updated = await billingService.voidDocument(id, reason);
+    const { reason, cancelOrder } = await c.req.json();
+    const updated = await billingService.voidDocument(id, reason, cancelOrder === true);
     return c.json({ success: true, data: updated });
   } catch (error: any) {
     const status =

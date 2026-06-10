@@ -682,7 +682,7 @@ export async function getDocumentReceipt(id: number) {
 
 // ── Void document ──────────────────────────────────────────────────────────────
 
-export async function voidDocument(id: number, reason: string) {
+export async function voidDocument(id: number, reason: string, cancelOrder = false) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
@@ -693,11 +693,16 @@ export async function voidDocument(id: number, reason: string) {
   const issuedDate = new Date(doc.issuedAt!).toISOString().slice(0, 10);
 
   // Anular localmente primero
-  const [updated] = await db
+  await db
     .update(billingDocuments)
     .set({ status: 'voided', voidedAt: new Date(), voidedReason: reason.trim(), updatedAt: new Date() })
-    .where(eq(billingDocuments.id, id))
-    .returning();
+    .where(eq(billingDocuments.id, id));
+
+  // Cancelar pedido asociado si se solicitó (revierte descuento de stock)
+  if (cancelOrder) {
+    const { updateOrderStatus } = await import('../documents/order.service');
+    await updateOrderStatus(doc.orderId, 'cancelled');
+  }
 
   // Enviar Comunicación de Baja a SUNAT solo si fue aceptado por SUNAT
   if (
@@ -728,11 +733,7 @@ export async function voidDocument(id: number, reason: string) {
           updatedAt: new Date(),
         })
         .where(eq(billingDocuments.id, id));
-
-      const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
-      return final;
     } catch {
-      // Si el facturador falla, el documento ya está anulado localmente; guardar error
       await db
         .update(billingDocuments)
         .set({ voidedSunatStatus: 'ERROR', updatedAt: new Date() })
