@@ -375,6 +375,121 @@ export async function consultarEstadoBaja(
   };
 }
 
+// ── Summary / Resumen Diario (RC) — para anulación de boletas ─────────────────
+
+export interface SummaryDocumento {
+  tipo_doc: '03';
+  serie_nro: string;      // ej: "B001-00000010"
+  cliente_tipo: string;   // '0' sin doc, '1' DNI, '4' CE, '6' RUC
+  cliente_nro: string;    // número de doc o '-'
+  estado: '3';            // '3' = anulado
+  total: number;
+  gravadas: number;
+  igv: number;
+}
+
+export interface SummaryPayload {
+  emisor: { ruc: string };
+  fec_generacion: string; // YYYY-MM-DD — fecha de emisión de la boleta
+  fec_resumen: string;    // YYYY-MM-DD — fecha del resumen (hoy)
+  documentos: SummaryDocumento[];
+}
+
+export interface SummaryResponse {
+  id: number;
+  xmlFilename: string;
+  ticket: string | null;
+  status: 'PENDING' | 'ERROR';
+  message: string;
+}
+
+export async function enviarResumenDiarioBaja(
+  payload: SummaryPayload,
+): Promise<{ success: boolean; data: SummaryResponse }> {
+  const endpoint = '/api/v1/summary/send';
+  const url = `${BASE_URL}${endpoint}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
+
+  log.req('POST', endpoint, payload);
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err: any) {
+    log.err('POST', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (summary/send): ${err?.message ?? err}`);
+  }
+
+  if (res.status === 422 || res.ok) {
+    const json = await res.json() as { success: boolean; data: SummaryResponse };
+    if (!json.success) {
+      log.err('POST', endpoint, res.status, json.data?.message ?? 'Error resumen SUNAT');
+    } else {
+      log.ok('POST', endpoint, res.status);
+    }
+    return json;
+  }
+
+  const errText = await res.text().catch(() => res.statusText);
+  log.err('POST', endpoint, res.status, errText);
+  throw new Error(`Facturador summary/send → ${res.status}: ${errText}`);
+}
+
+// ── Summary status (consultar estado RC — para boletas anuladas) ──────────────
+
+export interface SummaryStatusResponse {
+  success: boolean;
+  pending: boolean;
+  code: string | null;
+  description: string | null;
+}
+
+export async function consultarEstadoResumen(
+  ticket: string,
+  ruc: string,
+): Promise<SummaryStatusResponse> {
+  const endpoint = '/api/v1/summary/status';
+  const url = `${BASE_URL}${endpoint}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticket, ruc }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
+
+  log.req('POST', endpoint, { ticket, ruc });
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err: any) {
+    log.err('POST', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (summary/status): ${err?.message ?? err}`);
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.statusText);
+    log.err('POST', endpoint, res.status, errText);
+    throw new Error(`Facturador summary/status → ${res.status}: ${errText}`);
+  }
+
+  log.ok('POST', endpoint, res.status);
+  const json = await res.json() as any;
+  const data = json.data ?? {};
+
+  return {
+    success: data.pending === false && (data.status === 'ACCEPTED' || data.responseCode === '0'),
+    pending: data.pending === true,
+    code: data.responseCode ?? null,
+    description: data.message ?? null,
+  };
+}
+
 // ── Certificate conversion ─────────────────────────────────────────────────────
 
 export interface CertificateResult {

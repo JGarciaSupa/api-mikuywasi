@@ -11,7 +11,7 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja } from '../../../../../utils/facturador-client';
+import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -217,6 +217,12 @@ export async function createDocument(input: CreateDocumentInput) {
       throw new Error('La factura requiere RUC de 11 dígitos');
     }
     if (!input.buyerName) throw new Error('La factura requiere razón social del comprador');
+  }
+
+  if ((input.documentType === 'boleta' || input.documentType === 'nota_de_venta') && input.buyerDocType) {
+    if (!['DNI', 'RUC', 'CE'].includes(input.buyerDocType)) {
+      throw new Error('Tipo de documento inválido. Use DNI, RUC o CE');
+    }
   }
 
   // Calcular líneas antes de la transacción para reutilizarlas después
@@ -578,6 +584,12 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
     }
   }
 
+  if (doc.documentType === 'boleta' && buyer.buyerDocType) {
+    if (!['DNI', 'RUC', 'CE'].includes(buyer.buyerDocType)) {
+      throw new Error('Tipo de documento inválido para boleta. Use DNI, RUC o CE');
+    }
+  }
+
   // Actualizar los campos del comprador en la BD
   await db
     .update(billingDocuments)
@@ -682,6 +694,12 @@ export async function getDocumentReceipt(id: number) {
 
 // ── Void document ──────────────────────────────────────────────────────────────
 
+// SUNAT requiere fechas en zona Lima (UTC-5), no en UTC
+function limaDateStr(d: Date): string {
+  const lima = new Date(d.getTime() - 5 * 60 * 60 * 1000);
+  return lima.toISOString().slice(0, 10);
+}
+
 export async function voidDocument(id: number, reason: string, cancelOrder = false) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
@@ -689,8 +707,8 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
   if (doc.status !== 'issued') throw new Error(`No se puede anular un documento en estado '${doc.status}'`);
   if (!reason?.trim()) throw new Error('Se requiere un motivo de anulación');
 
-  const today = new Date().toISOString().slice(0, 10);
-  const issuedDate = new Date(doc.issuedAt!).toISOString().slice(0, 10);
+  const today = limaDateStr(new Date());
+  const issuedDate = limaDateStr(new Date(doc.issuedAt!));
 
   // Anular localmente primero
   await db
@@ -704,43 +722,139 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
     await updateOrderStatus(doc.orderId, 'cancelled');
   }
 
-  // Enviar Comunicación de Baja a SUNAT solo si fue aceptado por SUNAT
+  // Notificar a SUNAT solo si el comprobante fue aceptado previamente
   if (
     (doc.documentType === 'factura' || doc.documentType === 'boleta') &&
     doc.sunatStatus === 'ACEPTADO'
   ) {
-    try {
-      const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
-      const tipoDoc = doc.documentType === 'factura' ? '01' : '03';
+    await enviarBajaSunat(db, id, doc, reason.trim(), today, issuedDate);
+  }
 
+  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  return final;
+}
+
+// ── Envío a SUNAT según tipo: factura→RA, boleta→Resumen Diario ───────────────
+
+async function enviarBajaSunat(
+  db: TenantDb,
+  id: number,
+  doc: typeof billingDocuments.$inferSelect,
+  reason: string,
+  today: string,
+  issuedDate: string,
+): Promise<void> {
+  try {
+    const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+    let success = false;
+    let ticket: string | null = null;
+
+    if (doc.documentType === 'factura') {
+      // Facturas: Comunicación de Baja (RA)
       const res = await enviarComunicacionBaja({
         emisor: { ruc },
         fec_generacion: issuedDate,
         fec_comunicacion: today,
         documentos: [{
-          tipo_doc: tipoDoc,
+          tipo_doc: '01',
           serie: doc.series,
           correlativo: String(doc.sequential).padStart(8, '0'),
-          des_motivo_baja: reason.trim(),
+          des_motivo_baja: reason,
         }],
       });
+      success = res.success;
+      ticket = res.data?.ticket ?? null;
+    } else {
+      // Boletas: Resumen Diario (RC) con estado='3' (anulado)
+      // SUNAT error 2308: boletas NO pueden ir por RA
+      const buyerTipo = doc.buyerDocType === 'RUC' ? '6'
+        : doc.buyerDocType === 'DNI' ? '1'
+        : doc.buyerDocType === 'CE'  ? '4' : '0';
 
-      await db
-        .update(billingDocuments)
-        .set({
-          voidedTicket: res.data?.ticket ?? null,
-          voidedSunatStatus: res.success ? 'PENDIENTE' : 'ERROR',
-          updatedAt: new Date(),
-        })
-        .where(eq(billingDocuments.id, id));
-    } catch {
-      await db
-        .update(billingDocuments)
-        .set({ voidedSunatStatus: 'ERROR', updatedAt: new Date() })
-        .where(eq(billingDocuments.id, id));
+      const res = await enviarResumenDiarioBaja({
+        emisor: { ruc },
+        fec_generacion: issuedDate,
+        fec_resumen: today,
+        documentos: [{
+          tipo_doc: '03',
+          serie_nro: `${doc.series}-${String(doc.sequential).padStart(8, '0')}`,
+          cliente_tipo: buyerTipo,
+          cliente_nro: doc.buyerDocNumber ?? '-',
+          estado: '3',
+          total: toNum(doc.total),
+          gravadas: toNum(doc.subtotal),
+          igv: toNum(doc.taxAmount),
+        }],
+      });
+      success = res.success;
+      ticket = res.data?.ticket ?? null;
     }
+
+    await db
+      .update(billingDocuments)
+      .set({
+        voidedTicket: ticket,
+        voidedSunatStatus: success ? 'PENDIENTE' : 'ERROR',
+        updatedAt: new Date(),
+      })
+      .where(eq(billingDocuments.id, id));
+  } catch {
+    await db
+      .update(billingDocuments)
+      .set({ voidedSunatStatus: 'ERROR', updatedAt: new Date() })
+      .where(eq(billingDocuments.id, id));
   }
+}
+
+// ── Retry SUNAT void communication ────────────────────────────────────────────
+
+export async function retryVoidSunat(id: number) {
+  const db = getTenantDb();
+  const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  if (!doc) throw new Error('Documento no encontrado');
+  if (doc.status !== 'voided') throw new Error('Solo se puede reintentar la baja de documentos anulados');
+  if (doc.sunatStatus !== 'ACEPTADO') throw new Error('El documento no fue aceptado por SUNAT, no requiere comunicación de baja');
+  if (doc.voidedSunatStatus === 'PENDIENTE' || doc.voidedSunatStatus === 'ACEPTADO') {
+    throw new Error('La comunicación de baja ya fue enviada y está en proceso o aceptada');
+  }
+
+  const today = limaDateStr(new Date());
+  const issuedDate = limaDateStr(new Date(doc.issuedAt!));
+  const reason = doc.voidedReason ?? 'ANULACION';
+
+  await enviarBajaSunat(db, id, doc, reason, today, issuedDate);
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;
+}
+
+// ── Check void SUNAT status (consultar ticket PENDIENTE) ──────────────────────
+
+export async function checkVoidStatus(id: number) {
+  const db = getTenantDb();
+  const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  if (!doc) throw new Error('Documento no encontrado');
+  if (doc.status !== 'voided') throw new Error('Solo se puede consultar el estado de documentos anulados');
+  if (doc.voidedSunatStatus !== 'PENDIENTE') throw new Error('El documento no tiene una comunicación de baja pendiente');
+  if (!doc.voidedTicket) throw new Error('El documento no tiene ticket de SUNAT registrado');
+
+  const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+
+  let newStatus: 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO';
+
+  if (doc.documentType === 'factura') {
+    const result = await consultarEstadoBaja(doc.voidedTicket, ruc);
+    newStatus = result.pending ? 'PENDIENTE' : result.success ? 'ACEPTADO' : 'RECHAZADO';
+  } else {
+    const result = await consultarEstadoResumen(doc.voidedTicket, ruc);
+    newStatus = result.pending ? 'PENDIENTE' : result.success ? 'ACEPTADO' : 'RECHAZADO';
+  }
+
+  const [updated] = await db
+    .update(billingDocuments)
+    .set({ voidedSunatStatus: newStatus, updatedAt: new Date() })
+    .where(eq(billingDocuments.id, id))
+    .returning();
+
+  return updated;
 }

@@ -135,6 +135,34 @@ export const voidDocumentController = async (c: Context) => {
   }
 };
 
+export const checkVoidStatusController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const updated = await billingService.checkVoidStatus(id);
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('Solo se puede') || error.message?.includes('no tiene') ? 422 :
+          500;
+    return c.json({ success: false, message: error.message || 'Error al consultar estado de baja' }, status as any);
+  }
+};
+
+export const retryVoidSunatController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const updated = await billingService.retryVoidSunat(id);
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('Solo se puede') || error.message?.includes('no fue aceptado') || error.message?.includes('ya fue enviada') ? 422 :
+          500;
+    return c.json({ success: false, message: error.message || 'Error al reintentar comunicación de baja' }, status as any);
+  }
+};
+
 export const retryDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
