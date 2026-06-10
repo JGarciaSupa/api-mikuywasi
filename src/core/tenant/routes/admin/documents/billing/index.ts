@@ -41,9 +41,9 @@ routes.put('/documents/:id/correct', correctAndRetryController);
 routes.get('/documents/:id/pdf', getDocumentPdfController);
 routes.get('/preview/:orderId', previewDocumentController);
 routes.post('/documents', createDocumentController);
-routes.post('/documents/:id/void', voidDocumentController);
 routes.post('/documents/:id/void-status', checkVoidStatusController);
 routes.post('/documents/:id/void-retry', retryVoidSunatController);
+routes.post('/documents/:id/void', voidDocumentController);
 routes.post('/documents/:id/retry', retryDocumentController);
 
 export default routes;

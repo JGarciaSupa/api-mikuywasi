@@ -343,9 +343,10 @@ export async function consultarEstadoBaja(
   ruc: string,
 ): Promise<VoidedStatusResponse> {
   const endpoint = `/api/v1/voided/status`;
-  const url = `${BASE_URL}${endpoint}?ticket=${encodeURIComponent(ticket)}&ruc=${encodeURIComponent(ruc)}`;
+  // Pasamos id=ticket para que el facturador encuentre el voucher por responseCode y actualice su BD
+  const url = `${BASE_URL}${endpoint}?ticket=${encodeURIComponent(ticket)}&ruc=${encodeURIComponent(ruc)}&id=${encodeURIComponent(ticket)}`;
 
-  log.req('GET', `${endpoint}?ticket=${ticket}&ruc=${ruc}`);
+  log.req('GET', `${endpoint}?ticket=${ticket}&ruc=${ruc}&id=${ticket}`);
 
   let res: Response;
   try {
@@ -455,14 +456,15 @@ export async function consultarEstadoResumen(
 ): Promise<SummaryStatusResponse> {
   const endpoint = '/api/v1/summary/status';
   const url = `${BASE_URL}${endpoint}`;
+  // Pasamos id=ticket para que el facturador encuentre el voucher por responseCode y actualice su BD
   const init: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ticket, ruc }),
+    body: JSON.stringify({ id: ticket, ticket, ruc }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   };
 
-  log.req('POST', endpoint, { ticket, ruc });
+  log.req('POST', endpoint, { id: ticket, ticket, ruc });
 
   let res: Response;
   try {
@@ -479,7 +481,14 @@ export async function consultarEstadoResumen(
   }
 
   log.ok('POST', endpoint, res.status);
-  const json = await res.json() as any;
+  const rawText = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    log.err('POST', endpoint, 'JSON_PARSE', `Non-JSON body: ${rawText.slice(0, 500)}`);
+    throw new Error(`Facturador summary/status devolvió respuesta no JSON: ${rawText.slice(0, 200)}`);
+  }
   const data = json.data ?? {};
 
   return {
