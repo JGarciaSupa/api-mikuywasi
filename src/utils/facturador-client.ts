@@ -269,6 +269,112 @@ export async function obtenerPdfBuffer(comprobanteId: number): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// ── Voided (Comunicación de Baja RA) ──────────────────────────────────────────
+
+export interface VoidedDocumento {
+  tipo_doc: '01' | '03';   // '01'=Factura '03'=Boleta
+  serie: string;
+  correlativo: string;
+  des_motivo_baja: string;
+}
+
+export interface VoidedPayload {
+  emisor: { ruc: string };
+  fec_generacion: string;    // YYYY-MM-DD — fecha de los documentos anulados
+  fec_comunicacion: string;  // YYYY-MM-DD — fecha de esta comunicación
+  documentos: VoidedDocumento[];
+}
+
+export interface VoidedResponse {
+  id: number;
+  xmlFilename: string;
+  ticket: string | null;
+  status: 'PENDING' | 'ERROR';
+  message: string;
+}
+
+export interface VoidedStatusResponse {
+  success: boolean;
+  pending: boolean;
+  code: string | null;
+  description: string | null;
+  cdrZip: string | null;
+}
+
+export async function enviarComunicacionBaja(
+  payload: VoidedPayload,
+): Promise<{ success: boolean; data: VoidedResponse }> {
+  const endpoint = '/api/v1/voided/send';
+  const url = `${BASE_URL}${endpoint}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
+
+  log.req('POST', endpoint, payload);
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err: any) {
+    log.err('POST', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (voided/send): ${err?.message ?? err}`);
+  }
+
+  if (res.status === 422 || res.ok) {
+    const json = await res.json() as { success: boolean; data: VoidedResponse };
+    if (!json.success) {
+      log.err('POST', endpoint, res.status, json.data?.message ?? 'Error baja SUNAT');
+    } else {
+      log.ok('POST', endpoint, res.status);
+    }
+    return json;
+  }
+
+  const errText = await res.text().catch(() => res.statusText);
+  log.err('POST', endpoint, res.status, errText);
+  throw new Error(`Facturador voided/send → ${res.status}: ${errText}`);
+}
+
+export async function consultarEstadoBaja(
+  ticket: string,
+  ruc: string,
+): Promise<VoidedStatusResponse> {
+  const endpoint = `/api/v1/voided/status`;
+  const url = `${BASE_URL}${endpoint}?ticket=${encodeURIComponent(ticket)}&ruc=${encodeURIComponent(ruc)}`;
+
+  log.req('GET', `${endpoint}?ticket=${ticket}&ruc=${ruc}`);
+
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (err: any) {
+    log.err('GET', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (voided/status): ${err?.message ?? err}`);
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.statusText);
+    log.err('GET', endpoint, res.status, errText);
+    throw new Error(`Facturador voided/status → ${res.status}: ${errText}`);
+  }
+
+  log.ok('GET', endpoint, res.status);
+  const json = await res.json() as any;
+
+  if (json.code === '98') return { success: false, pending: true, code: '98', description: 'En proceso por SUNAT', cdrZip: null };
+
+  return {
+    success: json.success === true,
+    pending: false,
+    code: json.code ?? null,
+    description: json.cdrResponse?.description ?? json.error?.message ?? null,
+    cdrZip: json.cdrZip ?? null,
+  };
+}
+
 // ── Certificate conversion ─────────────────────────────────────────────────────
 
 export interface CertificateResult {

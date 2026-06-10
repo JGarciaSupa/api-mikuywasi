@@ -79,6 +79,7 @@ export function parseDbError(error: unknown): { message: string; status: number 
     }
     if (
       msg.includes('inválid') ||
+      msg.includes('incorrect') ||
       msg.includes('GENERADO') ||
       msg.includes('draft') ||
       msg.includes('insuficiente') ||

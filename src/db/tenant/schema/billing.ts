@@ -61,6 +61,8 @@ export const billingDocuments = pgTable('billing_documents', {
 	issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow(),
 	voidedAt: timestamp('voided_at', { withTimezone: true }),
 	voidedReason: text('voided_reason'),
+	voidedTicket: varchar('voided_ticket', { length: 60 }),
+	voidedSunatStatus: varchar('voided_sunat_status', { length: 20 }),
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

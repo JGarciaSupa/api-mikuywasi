@@ -11,7 +11,7 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer } from '../../../../../utils/facturador-client';
+import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -689,11 +689,57 @@ export async function voidDocument(id: number, reason: string) {
   if (doc.status !== 'issued') throw new Error(`No se puede anular un documento en estado '${doc.status}'`);
   if (!reason?.trim()) throw new Error('Se requiere un motivo de anulación');
 
+  const today = new Date().toISOString().slice(0, 10);
+  const issuedDate = new Date(doc.issuedAt!).toISOString().slice(0, 10);
+
+  // Anular localmente primero
   const [updated] = await db
     .update(billingDocuments)
     .set({ status: 'voided', voidedAt: new Date(), voidedReason: reason.trim(), updatedAt: new Date() })
     .where(eq(billingDocuments.id, id))
     .returning();
 
-  return updated;
+  // Enviar Comunicación de Baja a SUNAT solo si fue aceptado por SUNAT
+  if (
+    (doc.documentType === 'factura' || doc.documentType === 'boleta') &&
+    doc.sunatStatus === 'ACEPTADO'
+  ) {
+    try {
+      const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+      const tipoDoc = doc.documentType === 'factura' ? '01' : '03';
+
+      const res = await enviarComunicacionBaja({
+        emisor: { ruc },
+        fec_generacion: issuedDate,
+        fec_comunicacion: today,
+        documentos: [{
+          tipo_doc: tipoDoc,
+          serie: doc.series,
+          correlativo: String(doc.sequential).padStart(8, '0'),
+          des_motivo_baja: reason.trim(),
+        }],
+      });
+
+      await db
+        .update(billingDocuments)
+        .set({
+          voidedTicket: res.data?.ticket ?? null,
+          voidedSunatStatus: res.success ? 'PENDIENTE' : 'ERROR',
+          updatedAt: new Date(),
+        })
+        .where(eq(billingDocuments.id, id));
+
+      const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+      return final;
+    } catch {
+      // Si el facturador falla, el documento ya está anulado localmente; guardar error
+      await db
+        .update(billingDocuments)
+        .set({ voidedSunatStatus: 'ERROR', updatedAt: new Date() })
+        .where(eq(billingDocuments.id, id));
+    }
+  }
+
+  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  return final;
 }
