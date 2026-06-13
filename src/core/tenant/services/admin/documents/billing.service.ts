@@ -420,7 +420,7 @@ async function emitirYActualizarDoc(
     const res = await emitirComprobante(payload);
 
     if (!res.success) {
-      console.error('[SUNAT RECHAZO]', JSON.stringify({
+      const logData: Record<string, unknown> = {
         doc:           `${doc.documentType} ${doc.documentNumber}`,
         ruc,
         responseCode:  res.data?.responseCode,
@@ -429,7 +429,12 @@ async function emitirYActualizarDoc(
         error_detalle: res.data?.error_detalle,
         notes:         res.data?.notes,
         diagnostico:   res.data?.diagnostico,
-      }, null, 2));
+      };
+      // Para HTTP 400: decodificar y loguear el XML enviado a SUNAT para inspección
+      if (res.data?.tipo_error === 'HTTP_ERROR' && res.data?.xmlBase64) {
+        logData['xml_enviado'] = Buffer.from(res.data.xmlBase64, 'base64').toString('utf-8');
+      }
+      console.error('[SUNAT RECHAZO]', JSON.stringify(logData, null, 2));
     }
 
     // Cuando SUNAT rechaza, armar un mensaje completo con tipo + detalle para facilitar el debug
