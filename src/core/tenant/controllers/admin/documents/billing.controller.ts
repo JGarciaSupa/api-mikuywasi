@@ -180,6 +180,7 @@ export const retryDocumentController = async (c: Context) => {
 export const convertCertificateController = async (c: Context) => {
   try {
     const { p12Base64, password } = await c.req.json();
+    console.log('[cert-convert] received', { p12Len: p12Base64?.length, passLen: password?.length, passHex: password ? Buffer.from(password).toString('hex') : null });
     if (!p12Base64 || !password) {
       return c.json({ success: false, message: 'Se requieren p12Base64 y password' }, 400);
     }
@@ -208,6 +209,17 @@ export const correctAndRetryController = async (c: Context) => {
           error.message?.includes('requiere') ? 400 :
             500;
     return c.json({ success: false, message: error.message || 'Error al corregir el documento' }, status as any);
+  }
+};
+
+export const diagnoseDocumentController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const result = await billingService.diagnoseDocument(id);
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrado') ? 404 : 500;
+    return c.json({ success: false, message: error.message || 'Error al diagnosticar documento' }, status as any);
   }
 };
 

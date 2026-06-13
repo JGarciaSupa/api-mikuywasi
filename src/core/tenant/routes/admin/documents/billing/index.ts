@@ -17,6 +17,7 @@ import {
   correctAndRetryController,
   getDocumentPdfController,
   convertCertificateController,
+  diagnoseDocumentController,
 } from '../../../../controllers/admin/documents/billing.controller';
 
 const routes = new Hono();
@@ -45,5 +46,6 @@ routes.post('/documents/:id/void-status', checkVoidStatusController);
 routes.post('/documents/:id/void-retry', retryVoidSunatController);
 routes.post('/documents/:id/void', voidDocumentController);
 routes.post('/documents/:id/retry', retryDocumentController);
+routes.get('/documents/:id/diagnose', diagnoseDocumentController);
 
 export default routes;

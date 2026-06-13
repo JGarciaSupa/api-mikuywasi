@@ -11,7 +11,7 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen } from '../../../../../utils/facturador-client';
+import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen, diagnosticarEmision } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -419,10 +419,35 @@ async function emitirYActualizarDoc(
 
     const res = await emitirComprobante(payload);
 
+    if (!res.success) {
+      console.error('[SUNAT RECHAZO]', JSON.stringify({
+        doc:           `${doc.documentType} ${doc.documentNumber}`,
+        ruc,
+        responseCode:  res.data?.responseCode,
+        responseMsg:   res.data?.responseMessage,
+        tipo_error:    res.data?.tipo_error,
+        error_detalle: res.data?.error_detalle,
+        notes:         res.data?.notes,
+        diagnostico:   res.data?.diagnostico,
+      }, null, 2));
+    }
+
+    // Cuando SUNAT rechaza, armar un mensaje completo con tipo + detalle para facilitar el debug
+    let sunatMsg = res.data.responseMessage ?? null;
+    if (!res.success && res.data.tipo_error) {
+      const parts: string[] = [`[${res.data.tipo_error}]`];
+      if (sunatMsg) parts.push(sunatMsg);
+      if (res.data.error_detalle?.message && res.data.error_detalle.message !== sunatMsg) {
+        parts.push(`Detalle: ${res.data.error_detalle.message}`);
+      }
+      if (res.data.notes?.length) parts.push(`Notas: ${res.data.notes.join(' | ')}`);
+      sunatMsg = parts.join(' — ');
+    }
+
     sunatUpdate = {
       sunat_status: res.success ? 'ACEPTADO' : 'RECHAZADO',
       sunat_code: res.data.responseCode ?? null,
-      sunat_message: res.data.responseMessage ?? null,
+      sunat_message: sunatMsg,
       xml_hash: res.data.hash ?? null,
       xml_filename: res.data.xmlFilename ?? null,
       facturador_comprobante_id: res.data.id ?? null,
@@ -826,6 +851,54 @@ export async function retryVoidSunat(id: number) {
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;
+}
+
+// ── Diagnose SUNAT config (sin enviar nada) ────────────────────────────────────
+
+/**
+ * Dado el ID de un documento, resuelve la empresa del facturador y consulta
+ * su configuración sin enviar nada a SUNAT.
+ * Expone: ambiente, URL, usuario SOL, info del certificado y advertencias.
+ * Útil para depurar el error 0111 "No tiene perfil para enviar comprobantes".
+ */
+export async function diagnoseDocument(docId: number) {
+  const db = getTenantDb();
+
+  const [doc] = await db
+    .select({ branchId: billingDocuments.branchId, sunatStatus: billingDocuments.sunatStatus, sunatCode: billingDocuments.sunatCode, sunatMessage: billingDocuments.sunatMessage })
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, docId));
+
+  if (!doc) throw new Error('Documento no encontrado');
+
+  const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+  const diagResult = await diagnosticarEmision(ruc);
+
+  return {
+    documento: {
+      id: docId,
+      sunatStatus: doc.sunatStatus,
+      sunatCode: doc.sunatCode,
+      sunatMessage: doc.sunatMessage,
+    },
+    configuracion: diagResult,
+    posibles_causas_0111: [
+      diagResult.ambiente === 'beta'
+        ? '⚠️  AMBIENTE=beta: el RUC está enviando a la URL de pruebas, no a producción. Cambie a "produccion" en la empresa del facturador.'
+        : null,
+      diagResult.cert_ruc_match === false
+        ? `⚠️  El certificado (CN: ${diagResult.cert_cn}) no coincide con el RUC ${diagResult.ruc}. Suba el certificado correcto.`
+        : null,
+      diagResult.cert_vigente === false
+        ? `⚠️  El certificado está vencido (expiró: ${diagResult.cert_expira}). Renuévelo en SUNAT.`
+        : null,
+      !diagResult.tiene_cert
+        ? '⚠️  No hay certificado registrado para esta empresa.'
+        : null,
+      '⚠️  Verificar en el portal SUNAT SOL que el usuario secundario tiene el rol "Emisión Electrónica".',
+      '⚠️  Verificar que el RUC esté habilitado como emisor electrónico en SUNAT (modalidad directa o a través de PSE).',
+    ].filter(Boolean),
+  };
 }
 
 // ── Check void SUNAT status (consultar ticket PENDIENTE) ──────────────────────

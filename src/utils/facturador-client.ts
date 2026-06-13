@@ -94,6 +94,10 @@ export interface ComprobanteResponse {
   notes: string[];
   xmlBase64: string | null;
   cdrBase64: string | null;
+  // Campos de diagnóstico — presentes sólo cuando SUNAT rechaza
+  tipo_error?: string | null;       // 'CDR_RECHAZO' | 'SUNAT_POLICY' | 'SOAP_FAULT' | 'NETWORK_ERROR'
+  error_detalle?: Record<string, string | null> | null;
+  diagnostico?: Record<string, unknown> | null;
 }
 
 // ── Internal ───────────────────────────────────────────────────────────────────
@@ -192,7 +196,16 @@ export async function emitirComprobante(
   if (res.status === 422 || res.ok) {
     const json = await res.json() as { success: boolean; data: ComprobanteResponse };
     if (res.status === 422) {
-      log.err('POST', endpoint, 422, `SUNAT rechazó: ${json.data?.responseCode} — ${json.data?.responseMessage}`);
+      const tipoError = json.data?.tipo_error ?? 'RECHAZO';
+      const detalle   = json.data?.error_detalle?.message
+        ? ` | Detalle: ${json.data.error_detalle.message}`
+        : '';
+      const notas     = json.data?.notes?.length
+        ? ` | Notas: ${(json.data.notes as string[]).join('; ')}`
+        : '';
+      log.err('POST', endpoint, 422,
+        `[${tipoError}] ${json.data?.responseCode} — ${json.data?.responseMessage}${detalle}${notas}`
+      );
     } else {
       log.ok('POST', endpoint, res.status);
     }
@@ -497,6 +510,36 @@ export async function consultarEstadoResumen(
     code: data.responseCode ?? null,
     description: data.message ?? null,
   };
+}
+
+// ── Diagnose (depuración de configuración sin enviar a SUNAT) ─────────────────
+
+export interface DiagnoseResult {
+  empresa_id: number;
+  razon_social: string;
+  ruc: string;
+  ambiente: string;
+  sunat_url: string;
+  sol_usuario: string;
+  sol_usuario_full: string;
+  tiene_cert: boolean;
+  cert_cn: string | null;
+  cert_expira: string | null;
+  cert_vigente: boolean | null;
+  cert_ruc_match: boolean | null;
+  warnings: string[];
+}
+
+/**
+ * Consulta la configuración de una empresa en el facturador sin enviar nada a SUNAT.
+ * Muestra ambiente, URL, usuario SOL, info del certificado y advertencias de config.
+ * Útil para depurar el error SUNAT 0111 "No tiene perfil para enviar comprobantes".
+ */
+export async function diagnosticarEmision(ruc: string): Promise<DiagnoseResult> {
+  const res = await request<{ success: boolean; data: DiagnoseResult }>(
+    'POST', '/api/v1/invoice/diagnose', { ruc },
+  );
+  return res.data;
 }
 
 // ── Certificate conversion ─────────────────────────────────────────────────────
