@@ -1,4 +1,4 @@
-import { eq, and, desc, like, or, gte, lte, count, sql } from 'drizzle-orm';
+import { eq, and, desc, like, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
 import {
   billingDocuments,
   billingDocumentLines,
@@ -7,6 +7,7 @@ import {
   tenantConfigs,
   orders,
   orderItems,
+  orderSplits,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
@@ -17,6 +18,7 @@ import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacion
 
 export interface CreateDocumentInput {
   orderId: string;
+  splitId?: number | null;
   documentType: 'factura' | 'boleta' | 'nota_de_venta';
   seriesId: number;
   buyerDocType?: 'RUC' | 'DNI' | 'CE';
@@ -44,6 +46,43 @@ export interface ListDocumentsFilters {
 
 function padSequential(n: number) {
   return String(n).padStart(8, '0');
+}
+
+// ── Número a letras (español, para leyenda SUNAT código 1000) ──────────────────
+
+const UNIDADES = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
+  'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
+const DECENAS  = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+const CENTENAS = ['', 'CIEN', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
+  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+function _letras(n: number): string {
+  if (n === 0) return 'CERO';
+  if (n < 0)   return 'MENOS ' + _letras(-n);
+  if (n < 20)  return UNIDADES[n];
+  if (n < 100) {
+    const d = Math.floor(n / 10), u = n % 10;
+    return d === 2 && u > 0 ? `VEINTI${UNIDADES[u]}` : u === 0 ? DECENAS[d] : `${DECENAS[d]} Y ${UNIDADES[u]}`;
+  }
+  if (n < 1000) {
+    const c = Math.floor(n / 100), r = n % 100;
+    if (c === 1) return r === 0 ? 'CIEN' : `CIENTO ${_letras(r)}`;
+    return r === 0 ? CENTENAS[c] : `${CENTENAS[c]} ${_letras(r)}`;
+  }
+  if (n < 1_000_000) {
+    const m = Math.floor(n / 1000), r = n % 1000;
+    const miles = m === 1 ? 'MIL' : `${_letras(m)} MIL`;
+    return r === 0 ? miles : `${miles} ${_letras(r)}`;
+  }
+  const m = Math.floor(n / 1_000_000), r = n % 1_000_000;
+  const mill = m === 1 ? 'UN MILLÓN' : `${_letras(m)} MILLONES`;
+  return r === 0 ? mill : `${mill} ${_letras(r)}`;
+}
+
+function montoEnLetras(monto: number, moneda = 'SOLES'): string {
+  const entero    = Math.floor(monto);
+  const centavos  = Math.round((monto - entero) * 100);
+  return `SON ${_letras(entero)} CON ${String(centavos).padStart(2, '0')}/100 ${moneda}`;
 }
 
 interface LineCalc {
@@ -143,17 +182,35 @@ async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: numbe
 
 // ── Preview ────────────────────────────────────────────────────────────────────
 
-export async function previewDocument(orderId: string, seriesId: number) {
+export async function previewDocument(orderId: string, seriesId: number, splitId?: number | null) {
   const db = getTenantDb();
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error('Pedido no encontrado');
   if (order.status === 'cancelled') throw new Error('No se puede facturar un pedido cancelado');
 
+  // Validar pago antes de mostrar preview
+  if (splitId != null) {
+    const [split] = await db
+      .select({ paymentStatus: orderSplits.paymentStatus })
+      .from(orderSplits)
+      .where(and(eq(orderSplits.id, splitId), eq(orderSplits.orderId, orderId)));
+    if (!split) throw new Error('Cuenta no encontrada');
+    if (split.paymentStatus !== 'paid') {
+      throw new Error('La cuenta debe estar pagada antes de emitir un comprobante');
+    }
+  } else {
+    if (order.paymentStatus !== 'paid') {
+      throw new Error('El pedido debe estar pagado antes de emitir un comprobante');
+    }
+  }
+
   const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, seriesId));
   if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
 
-  const ois = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const ois = splitId != null
+    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), eq(orderItems.splitId, splitId)))
+    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.splitId)));
 
   const priceInclTax = series.priceInclTax;
   const taxRate = toNum(series.taxRate);
@@ -194,19 +251,47 @@ export async function createDocument(input: CreateDocumentInput) {
   if (!order) throw new Error('Pedido no encontrado');
   if (order.status === 'cancelled') throw new Error('No se puede facturar un pedido cancelado');
 
+  // Bloquear facturación hasta que el pago esté completo
+  if (input.splitId != null) {
+    const [split] = await db
+      .select({ paymentStatus: orderSplits.paymentStatus, orderId: orderSplits.orderId })
+      .from(orderSplits)
+      .where(and(eq(orderSplits.id, input.splitId), eq(orderSplits.orderId, input.orderId)));
+    if (!split) throw new Error('Cuenta no encontrada');
+    if (split.paymentStatus !== 'paid') {
+      throw new Error('La cuenta debe estar pagada antes de emitir un comprobante');
+    }
+  } else {
+    if (order.paymentStatus !== 'paid') {
+      throw new Error('El pedido debe estar pagado antes de emitir un comprobante');
+    }
+  }
+
+  // Verificar documento existente por (orderId, splitId) para evitar duplicados
+  const existingDocWhere = input.splitId != null
+    ? and(
+        eq(billingDocuments.orderId, input.orderId),
+        eq(billingDocuments.splitId, input.splitId),
+        sql`${billingDocuments.status} != 'voided'`
+      )
+    : and(
+        eq(billingDocuments.orderId, input.orderId),
+        isNull(billingDocuments.splitId),
+        sql`${billingDocuments.status} != 'voided'`
+      );
+
   const existingDoc = await db
     .select({ id: billingDocuments.id })
     .from(billingDocuments)
-    .where(
-      and(
-        eq(billingDocuments.orderId, input.orderId),
-        sql`${billingDocuments.status} != 'voided'`
-      )
-    )
+    .where(existingDocWhere)
     .limit(1);
 
   if (existingDoc.length) {
-    throw new Error('El pedido ya tiene un documento de venta activo');
+    throw new Error(
+      input.splitId != null
+        ? 'Esta cuenta ya tiene un documento de venta activo'
+        : 'El pedido ya tiene un documento de venta activo'
+    );
   }
 
   if (input.documentType === 'factura') {
@@ -225,8 +310,10 @@ export async function createDocument(input: CreateDocumentInput) {
     }
   }
 
-  // Calcular líneas antes de la transacción para reutilizarlas después
-  const ois = await db.select().from(orderItems).where(eq(orderItems.orderId, input.orderId));
+  // Calcular líneas antes de la transacción — filtrar por split si aplica
+  const ois = input.splitId != null
+    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), eq(orderItems.splitId, input.splitId)))
+    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), isNull(orderItems.splitId)));
 
   // series.priceInclTax y taxRate los necesitamos antes; los leemos sin lock
   const [seriesPreview] = await db
@@ -285,6 +372,7 @@ export async function createDocument(input: CreateDocumentInput) {
       .values({
         branchId: order.branchId,
         orderId: input.orderId,
+        splitId: input.splitId ?? null,
         seriesId: series.id,
         documentType: input.documentType,
         series: series.series,
@@ -392,6 +480,7 @@ async function emitirYActualizarDoc(
         subtotal: toNum(doc.total),
         total: toNum(doc.total),
       },
+      leyenda: montoEnLetras(toNum(doc.total), doc.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
       detalles: lineCalcs.map((l, i) => {
         // l.subtotal = total de línea SIN IGV (correcto para ambos priceInclTax)
         // l.lineTotal = total de línea CON IGV

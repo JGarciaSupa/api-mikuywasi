@@ -260,9 +260,27 @@ export const orders = pgTable('orders', {
 	statusIdx: index('orders_status_idx').on(table.status),
 }));
 
+// Cuentas separadas dentro de un pedido (para dividir la facturación)
+export const orderSplits = pgTable('order_splits', {
+	id: serial('id').primaryKey(),
+	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+	label: varchar('label', { length: 100 }).notNull().default('Cuenta'),
+	paymentStatus: text('payment_status', {
+		enum: ['unpaid', 'paid', 'review_pending']
+	}).default('unpaid').notNull(),
+	paymentMethod: text('payment_method'),
+	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull().default('0.00'),
+	total: decimal('total', { precision: 10, scale: 2 }).notNull().default('0.00'),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	orderIdx: index('order_splits_order_idx').on(table.orderId),
+}));
+
 export const orderItems = pgTable('order_items', {
 	id: serial('id').primaryKey(),
 	orderId: varchar('order_id', { length: 12 }).references(() => orders.id, { onDelete: 'cascade' }).notNull(),
+	splitId: integer('split_id').references(() => orderSplits.id, { onDelete: 'set null' }),
 	productId: integer('product_id').references(() => products.id),
 	productName: varchar('product_name', { length: 150 }).notNull(),
 	unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
@@ -337,9 +355,16 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
 	table: one(tables, { fields: [orders.tableId], references: [tables.id] }),
 	driver: one(users, { fields: [orders.driverId], references: [users.id] }),
 	orderItems: many(orderItems),
+	splits: many(orderSplits),
+}));
+
+export const orderSplitsRelations = relations(orderSplits, ({ one, many }) => ({
+	order: one(orders, { fields: [orderSplits.orderId], references: [orders.id] }),
+	items: many(orderItems),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 	order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
+	split: one(orderSplits, { fields: [orderItems.splitId], references: [orderSplits.id] }),
 	product: one(products, { fields: [orderItems.productId], references: [products.id] }),
 }));

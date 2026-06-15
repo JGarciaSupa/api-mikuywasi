@@ -92,10 +92,14 @@ export const previewDocumentController = async (c: Context) => {
     }
     const seriesId = Number(c.req.query('seriesId'));
     if (!seriesId) return c.json({ success: false, message: 'Se requiere seriesId como query param' }, 400);
-    const preview = await billingService.previewDocument(orderId, seriesId);
+    const splitIdRaw = c.req.query('splitId');
+    const splitId = splitIdRaw != null ? Number(splitIdRaw) : null;
+    const preview = await billingService.previewDocument(orderId, seriesId, splitId);
     return c.json({ success: true, data: preview });
   } catch (error: any) {
-    const status = error.message?.includes('no encontrado') ? 404 : 500;
+    const status = error.message?.includes('no encontrado') || error.message?.includes('no encontrada') ? 404
+      : error.message?.includes('pagada') || error.message?.includes('pagado') ? 422
+      : 500;
     return c.json({ success: false, message: error.message || 'Error al previsualizar documento' }, status as any);
   }
 };
@@ -106,14 +110,15 @@ export const createDocumentController = async (c: Context) => {
     const payload = c.get('jwtPayload') as { userId?: number; username?: string } | undefined;
     const result = await billingService.createDocument({
       ...body,
+      splitId: body.splitId ?? null,
       createdBy: payload?.username ?? null,
     });
     return c.json({ success: true, data: result }, 201);
   } catch (error: any) {
     const status =
-      error.message?.includes('no encontrado') ? 404 :
+      error.message?.includes('no encontrado') || error.message?.includes('no encontrada') ? 404 :
         error.message?.includes('ya tiene un documento') ? 409 :
-          error.message?.includes('requiere') ? 422 :
+          error.message?.includes('requiere') || error.message?.includes('pagada') || error.message?.includes('pagado') ? 422 :
             500;
     return c.json({ success: false, message: error.message || 'Error al crear documento' }, status as any);
   }

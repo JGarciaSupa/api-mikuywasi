@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean } from 'drizzle-orm/pg-core';
-import { orders, products, branches } from './core';
+import { orders, orderSplits, products, branches } from './core';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
 // ==========================================
@@ -26,6 +26,7 @@ export const billingDocuments = pgTable('billing_documents', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id), // Documento emitido desde esta sede
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id),
+	splitId: integer('split_id').references(() => orderSplits.id),
 	seriesId: integer('series_id').notNull().references(() => billingSeries.id),
 	documentType: varchar('document_type', { length: 20,
 		enum: ['factura', 'boleta', 'nota_de_venta'] as const }).notNull(),
@@ -102,6 +103,7 @@ export const billingSeriesRelations = relations(billingSeries, ({ one, many }) =
 export const billingDocumentsRelations = relations(billingDocuments, ({ one, many }) => ({
 	branch: one(branches, { fields: [billingDocuments.branchId], references: [branches.id] }),
 	order: one(orders, { fields: [billingDocuments.orderId], references: [orders.id] }),
+	split: one(orderSplits, { fields: [billingDocuments.splitId], references: [orderSplits.id] }),
 	series: one(billingSeries, { fields: [billingDocuments.seriesId], references: [billingSeries.id] }),
 	lines: many(billingDocumentLines),
 }));
