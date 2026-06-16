@@ -121,8 +121,6 @@ export const createItem = async (c: Context) => {
       code: body['code'] as string,
       shortDescription: body['shortDescription'] as string,
       subcategoryId,
-      ledgerUnit: body['ledgerUnit'] as string | undefined,
-      costUnit: body['costUnit'] as string | undefined,
       ledgerUnitId: body['ledgerUnitId'] ? parseInt(body['ledgerUnitId'] as string, 10) : undefined,
       costUnitId: body['costUnitId'] ? parseInt(body['costUnitId'] as string, 10) : undefined,
       conversionFactor: body['conversionFactor'] as string | undefined,
@@ -262,8 +260,6 @@ export const updateItem = async (c: Context) => {
     if (body['code'] !== undefined) payload.code = body['code'] as string;
     if (body['shortDescription'] !== undefined) payload.shortDescription = body['shortDescription'] as string;
     if (body['subcategoryId'] !== undefined) payload.subcategoryId = parseInt(body['subcategoryId'] as string, 10);
-    if (body['ledgerUnit'] !== undefined) payload.ledgerUnit = body['ledgerUnit'] as string;
-    if (body['costUnit'] !== undefined) payload.costUnit = body['costUnit'] as string;
     if (body['ledgerUnitId'] !== undefined) payload.ledgerUnitId = body['ledgerUnitId'] ? parseInt(body['ledgerUnitId'] as string, 10) : null;
     if (body['costUnitId'] !== undefined) payload.costUnitId = body['costUnitId'] ? parseInt(body['costUnitId'] as string, 10) : null;
     if (body['conversionFactor'] !== undefined) payload.conversionFactor = body['conversionFactor'] as string;

@@ -12,6 +12,7 @@ import {
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
+import { itemSelectShape } from './shared/item-select';
 
 // ─── Categorías ─────────────────────────────────────────────
 export async function listCategories() {
@@ -462,7 +463,10 @@ export async function listItems(filters?: { search?: string; subcategoryId?: num
     conditions.push(inArray(items.subcategoryId, subcatIds));
   }
 
-  const q = db.select().from(items);
+  const { cols, lu, cu } = itemSelectShape();
+  const q = db.select(cols).from(items)
+    .leftJoin(lu, eq(items.ledgerUnitId, lu.id))
+    .leftJoin(cu, eq(items.costUnitId, cu.id));
   let results;
   if (conditions.length) {
     results = await q.where(and(...conditions)).orderBy(asc(items.code));
@@ -477,7 +481,11 @@ export async function listItems(filters?: { search?: string; subcategoryId?: num
 
 export async function getItemById(id: number) {
   const db = getTenantDb();
-  const [item] = await db.select().from(items).where(eq(items.id, id));
+  const { cols, lu, cu } = itemSelectShape();
+  const [item] = await db.select(cols).from(items)
+    .leftJoin(lu, eq(items.ledgerUnitId, lu.id))
+    .leftJoin(cu, eq(items.costUnitId, cu.id))
+    .where(eq(items.id, id));
   if (!item) return null;
 
   const assignments = await db
@@ -505,8 +513,6 @@ export async function createItem(
     subcategoryId: number;
     ledgerUnitId?: number;
     costUnitId?: number;
-    ledgerUnit?: string;
-    costUnit?: string;
     conversionFactor?: string;
     minStock?: string;
     expiryDays?: number;
@@ -528,16 +534,27 @@ export async function createItem(
   }
 
   return db.transaction(async (tx) => {
-    if (data.ledgerUnitId && !data.ledgerUnit) {
+    let ledgerUnitRow: typeof measurementUnits.$inferSelect | undefined;
+    let costUnitRow: typeof measurementUnits.$inferSelect | undefined;
+
+    if (data.ledgerUnitId) {
       const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, data.ledgerUnitId));
-      if (u) data.ledgerUnit = u.code;
+      if (u) ledgerUnitRow = u;
     }
-    if (data.costUnitId && !data.costUnit) {
+    if (data.costUnitId) {
       const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, data.costUnitId));
-      if (u) data.costUnit = u.code;
+      if (u) costUnitRow = u;
     }
-    if (!data.ledgerUnit) data.ledgerUnit = '';
-    if (!data.costUnit) data.costUnit = data.ledgerUnit;
+
+    // Validate dimension compatibility when both units are known and different
+    if (ledgerUnitRow && costUnitRow && ledgerUnitRow.id !== costUnitRow.id) {
+      if (ledgerUnitRow.dimension && costUnitRow.dimension && ledgerUnitRow.dimension !== costUnitRow.dimension) {
+        throw new Error(
+          `Unidades incompatibles: la unidad contable "${ledgerUnitRow.code}" (${ledgerUnitRow.dimension}) ` +
+          `y la unidad de costo "${costUnitRow.code}" (${costUnitRow.dimension}) miden magnitudes distintas`
+        );
+      }
+    }
 
     const [item] = await tx.insert(items).values({
       ...data,
@@ -660,6 +677,18 @@ export async function importItems(itemsList: any[], tenantSlug: string = 'genera
           costUnit = resolvedCostUnit;
         }
 
+        // Validate dimension compatibility (e.g., no mixing KG with LT)
+        if (
+          ledgerUnit.dimension && costUnit.dimension &&
+          ledgerUnit.id !== costUnit.id &&
+          ledgerUnit.dimension !== costUnit.dimension
+        ) {
+          throw new Error(
+            `Unidades incompatibles: la unidad contable "${ledgerUnit.code}" (${ledgerUnit.dimension}) ` +
+            `y la unidad de costo "${costUnit.code}" (${costUnit.dimension}) miden magnitudes distintas`
+          );
+        }
+
         // 6. Resolve Storage Area (optional)
         let areaId: number | undefined;
         if (areaName) {
@@ -688,8 +717,6 @@ export async function importItems(itemsList: any[], tenantSlug: string = 'genera
           subcategoryId: subcategory.id,
           ledgerUnitId: ledgerUnit.id,
           costUnitId: costUnit.id,
-          ledgerUnit: ledgerUnit.code,
-          costUnit: costUnit.code,
           conversionFactor,
           minStock,
           expiryDays,
@@ -761,16 +788,33 @@ export async function updateItem(
       payload.image = imageUrl;
     }
 
-    if (payload.ledgerUnitId && !payload.ledgerUnit) {
+    let updateLedgerUnit: typeof measurementUnits.$inferSelect | undefined;
+    let updateCostUnit: typeof measurementUnits.$inferSelect | undefined;
+
+    if (payload.ledgerUnitId) {
       const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, payload.ledgerUnitId as number));
-      if (u) payload.ledgerUnit = u.code;
+      if (u) updateLedgerUnit = u;
     }
-    if (payload.costUnitId && !payload.costUnit) {
+    if (payload.costUnitId) {
       const [u] = await tx.select().from(measurementUnits).where(eq(measurementUnits.id, payload.costUnitId as number));
-      if (u) payload.costUnit = u.code;
+      if (u) updateCostUnit = u;
     }
 
-    const [row] = await tx.update(items).set(payload).where(eq(items.id, id)).returning();
+    // Validate dimension compatibility when both sides are being set and differ
+    const finalLedger = updateLedgerUnit;
+    const finalCost = updateCostUnit;
+    if (finalLedger && finalCost && finalLedger.id !== finalCost.id) {
+      if (finalLedger.dimension && finalCost.dimension && finalLedger.dimension !== finalCost.dimension) {
+        throw new Error(
+          `Unidades incompatibles: la unidad contable "${finalLedger.code}" (${finalLedger.dimension}) ` +
+          `y la unidad de costo "${finalCost.code}" (${finalCost.dimension}) miden magnitudes distintas`
+        );
+      }
+    }
+
+    // Strip columns removed from schema
+    const { ledgerUnit: _lu, costUnit: _cu, currentStock: _cs, ...cleanPayload } = payload as any;
+    const [row] = await tx.update(items).set(cleanPayload).where(eq(items.id, id)).returning();
     return {
       ...row,
       image: getImageUrl(row.image),
@@ -811,13 +855,16 @@ export async function listItemsByArea(areaId: number, search?: string) {
     );
   }
 
+  const { cols, lu, cu } = itemSelectShape();
   const results = await db
     .select({
-      item: items,
+      item: cols,
       assignmentId: itemAreaAssignments.id,
     })
     .from(itemAreaAssignments)
     .innerJoin(items, eq(itemAreaAssignments.itemId, items.id))
+    .leftJoin(lu, eq(items.ledgerUnitId, lu.id))
+    .leftJoin(cu, eq(items.costUnitId, cu.id))
     .where(and(...conditions))
     .orderBy(asc(items.shortDescription));
 

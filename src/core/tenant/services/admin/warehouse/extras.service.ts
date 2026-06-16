@@ -10,6 +10,7 @@ import {
 } from '../../../../../db/tenant/schema';
 import { getTenantDb, type TenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundQty, roundMoney } from './shared/numbers';
+import { fetchItemWithUnits } from './shared/item-select';
 
 // ─── Grupos ─────────────────────────────────────────────────────────────────
 
@@ -234,11 +235,12 @@ export async function calcExtrasStockRequired(
 
         for (const rl of lines) {
           if (rl.isOptional) continue;
-          const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+          const item = await fetchItemWithUnits(db, rl.itemId);
           if (!item?.recipeDischarge) continue;
           let qty = toNum(rl.qty) * sel.qty;
-          if (rl.isCost && toNum(item.conversionFactor) > 0) {
-            qty = qty / toNum(item.conversionFactor);
+          const factor1 = toNum(item.conversionFactor);
+          if (factor1 > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId) {
+            qty = qty / factor1;
           }
           required.set(rl.itemId, (required.get(rl.itemId) ?? 0) + roundQty(qty));
         }
@@ -272,7 +274,7 @@ export async function buildExtrasDischargeLines(
   for (const { extra, qty: selQty } of extras) {
     if (extra.sourceType === 'item' && extra.itemId) {
       const totalQty = roundQty(selQty * toNum(extra.itemQty));
-      const [item] = await db.select().from(items).where(eq(items.id, extra.itemId));
+      const item = await fetchItemWithUnits(db, extra.itemId);
       if (!item) continue;
       const avgPrice = toNum(item.avgPrice);
       lines.push({
@@ -290,11 +292,12 @@ export async function buildExtrasDischargeLines(
 
       for (const rl of rLines) {
         if (rl.isOptional) continue;
-        const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+        const item = await fetchItemWithUnits(db, rl.itemId);
         if (!item?.recipeDischarge) continue;
         let ingredientQty = toNum(rl.qty) * selQty;
-        if (rl.isCost && toNum(item.conversionFactor) > 0) {
-          ingredientQty = ingredientQty / toNum(item.conversionFactor);
+        const factor2 = toNum(item.conversionFactor);
+        if (factor2 > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId) {
+          ingredientQty = ingredientQty / factor2;
         }
         ingredientQty = roundQty(ingredientQty);
         const avgPrice = toNum(item.avgPrice);

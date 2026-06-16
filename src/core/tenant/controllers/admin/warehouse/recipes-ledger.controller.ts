@@ -103,8 +103,8 @@ export const previewSalesDischarge = async (c: Context) => {
 export const createSalesDischarge = async (c: Context) => {
   try {
     const { orderId, areaId } = c.req.valid('json' as never);
-    const data = await salesDischarge.createSalesDischargeFromOrder(orderId, areaId, getAuditActor(c));
-    return c.json({ success: true, data }, 201);
+    const result = await salesDischarge.createSalesDischargeFromOrder(orderId, areaId, getAuditActor(c));
+    return c.json({ success: true, data: result.discharge, skipped: result.skipped }, 201);
   } catch (e) {
     return jsonError(c, e, 'Error al crear descarga de venta');
   }

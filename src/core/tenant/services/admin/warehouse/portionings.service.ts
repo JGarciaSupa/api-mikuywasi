@@ -9,6 +9,7 @@ import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundQty, roundMoney, weightedAveragePrice } from './shared/numbers';
 import { writeAuditLog } from './shared/audit.service';
 import { applyStockEntry, applyStockExit } from './shared/stock-movement.service';
+import { fetchItemWithUnits } from './shared/item-select';
 import type { AuditActor } from './types';
 
 async function getPortioningWithLines(id: number) {
@@ -126,7 +127,7 @@ export async function processPortioning(id: number, actor?: AuditActor) {
   const docNumber = `PC-${id}`;
 
   return db.transaction(async (tx) => {
-    const [source] = await tx.select().from(items).where(eq(items.id, doc.sourceItemId));
+    const source = await fetchItemWithUnits(db, doc.sourceItemId);
     const inputQty = toNum(doc.inputQty);
     const sourcePrice = toNum(source?.avgPrice);
 
@@ -162,7 +163,7 @@ export async function processPortioning(id: number, actor?: AuditActor) {
         tx
       );
 
-      const [target] = await tx.select().from(items).where(eq(items.id, line.targetItemId));
+      const target = await fetchItemWithUnits(db, line.targetItemId);
       const newAvg = weightedAveragePrice(
         toNum(target?.currentStock),
         toNum(target?.avgPrice),

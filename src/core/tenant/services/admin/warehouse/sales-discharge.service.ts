@@ -1,4 +1,5 @@
-import { eq, and, desc, ilike, count } from 'drizzle-orm';
+import { eq, and, desc, ilike, count, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import {
   salesDischarge,
   salesDischargeLines,
@@ -10,12 +11,14 @@ import {
   items,
   products,
   storageAreas,
+  measurementUnits,
 } from '../../../../../db/tenant/schema';
 import { buildExtrasDischargeLines } from './extras.service';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './shared/numbers';
 import { writeAuditLog } from './shared/audit.service';
 import { applyStockExit, applyStockEntry } from './shared/stock-movement.service';
+import { fetchItemWithUnits } from './shared/item-select';
 import type { AuditActor } from './types';
 
 async function getDischargeWithLines(id: number) {
@@ -86,22 +89,6 @@ export async function buildDischargeFromOrder(orderId: string) {
       )
       .limit(1);
 
-    // Fallback: si esta sucursal no tiene área configurada, usar la configuración
-    // de sucursal 1 (compatibilidad con datos anteriores al fix de branchId).
-    if (!bra?.areaId && order.branchId !== 1) {
-      const [fallback] = await db
-        .select()
-        .from(branchRecipeAreas)
-        .where(
-          and(
-            eq(branchRecipeAreas.productId, oi.productId),
-            eq(branchRecipeAreas.branchId, 1)
-          )
-        )
-        .limit(1);
-      if (fallback?.areaId) bra = fallback;
-    }
-
     if (!bra?.areaId) {
       skipped.push({
         productId: oi.productId,
@@ -123,13 +110,14 @@ export async function buildDischargeFromOrder(orderId: string) {
     for (const rl of lines) {
       if (rl.isOptional) continue;
 
-      const [item] = await db.select().from(items).where(eq(items.id, rl.itemId));
+      const item = await fetchItemWithUnits(db, rl.itemId);
       if (!item?.recipeDischarge) continue;
 
       let ingredientQty = (toNum(rl.qty) / servings) * orderQty / yieldFactor;
 
-      if (rl.isCost && toNum(item.conversionFactor) > 0) {
-        ingredientQty = ingredientQty / toNum(item.conversionFactor);
+      const factor = toNum(item.conversionFactor);
+      if (factor > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId) {
+        ingredientQty = ingredientQty / factor;
       }
 
       ingredientQty = roundQty(ingredientQty);
@@ -161,7 +149,7 @@ export async function createSalesDischargeFromOrder(orderId: string, areaId?: nu
   const existing = await getSalesDischargeByOrderId(orderId);
   if (existing) throw new Error('Ya existe una descarga para este pedido');
 
-  const { order, lines } = await buildDischargeFromOrder(orderId);
+  const { order, lines, skipped } = await buildDischargeFromOrder(orderId);
   if (!lines.length) throw new Error('No hay ingredientes con receta para descargar');
 
   const totalCost = roundMoney(lines.reduce((s, l) => s + l.lineCost, 0));
@@ -195,7 +183,8 @@ export async function createSalesDischargeFromOrder(orderId: string, areaId?: nu
     return doc.id;
   });
 
-  return getDischargeWithLines(docId);
+  const discharge = await getDischargeWithLines(docId);
+  return { discharge, skipped };
 }
 
 export async function processSalesDischarge(id: number, actor?: AuditActor) {
@@ -272,11 +261,11 @@ export async function autoDischargeOnOrderCreated(
 
   const areaId = built.lines[0].productionAreaId;
   const created = await createSalesDischargeFromOrder(orderId, areaId, actor);
-  if (!created) {
+  if (!created.discharge) {
     return { discharge: null, skipped: built.skipped };
   }
 
-  const discharge = await processSalesDischarge(created.id, actor);
+  const discharge = await processSalesDischarge(created.discharge.id, actor);
   return { discharge, skipped: built.skipped };
 }
 
@@ -399,12 +388,13 @@ export async function getSalesDischargeDetail(id: number) {
 
   if (!doc) return null;
 
+  const lu = alias(measurementUnits, 'lu');
   const lines = await db
     .select({
       id: salesDischargeLines.id,
       itemId: salesDischargeLines.itemId,
       itemName: items.shortDescription,
-      itemUnit: items.ledgerUnit,
+      itemUnit: sql<string>`COALESCE(${lu.code}, '')`.as('item_unit'),
       recipeId: salesDischargeLines.recipeId,
       areaId: salesDischargeLines.areaId,
       areaName: storageAreas.name,
@@ -415,6 +405,7 @@ export async function getSalesDischargeDetail(id: number) {
     })
     .from(salesDischargeLines)
     .leftJoin(items, eq(salesDischargeLines.itemId, items.id))
+    .leftJoin(lu, eq(items.ledgerUnitId, lu.id))
     .leftJoin(storageAreas, eq(salesDischargeLines.areaId, storageAreas.id))
     .where(eq(salesDischargeLines.dischargeId, id));
 

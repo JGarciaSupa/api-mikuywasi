@@ -1,4 +1,4 @@
-import { eq, and, asc, desc, or, inArray } from 'drizzle-orm';
+import { eq, and, asc, desc, or, inArray, sql } from 'drizzle-orm';
 import {
   items,
   storageAreas,
@@ -47,6 +47,14 @@ async function getItem(db: TenantDb, itemId: number) {
   const [item] = await db.select().from(items).where(eq(items.id, itemId));
   if (!item) throw new Error(`Artículo ${itemId} no encontrado`);
   return item;
+}
+
+async function getGlobalStock(db: TenantDb, itemId: number): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string>`COALESCE(SUM(current_stock)::text, '0')` })
+    .from(stockSnapshot)
+    .where(eq(stockSnapshot.itemId, itemId));
+  return toNum(row?.total);
 }
 
 async function upsertStockSnapshot(
@@ -102,10 +110,9 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
   const unitPrice = roundMoney(ctx.unitPrice ?? toNum(item.avgPrice));
   const entryValue = roundMoney(qty * unitPrice);
 
-  const globalStock = toNum(item.currentStock);
+  const globalStock = await getGlobalStock(db, ctx.itemId);
   const globalAvg = toNum(item.avgPrice);
   const newGlobalAvg = weightedAveragePrice(globalStock, globalAvg, qty, unitPrice);
-  const newGlobalStock = roundQty(globalStock + qty);
 
   // Determine warehouse to get warehouseId and isCentral
   const [wh] = await db.select().from(warehouses).where(eq(warehouses.id, area.warehouseId));
@@ -143,7 +150,6 @@ export async function applyStockEntry(ctx: MovementContext, tx?: TenantDb) {
     await db
       .update(items)
       .set({
-        currentStock: String(newGlobalStock),
         avgPrice: String(newGlobalAvg),
         updatedAt: new Date(),
       })
@@ -220,7 +226,6 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
     );
   }
 
-  const globalStock = toNum(item.currentStock);
   const globalAvg = toNum(item.avgPrice);
 
   // Determine warehouse to get warehouseId and isCentral
@@ -255,14 +260,6 @@ export async function applyStockExit(ctx: MovementContext, tx?: TenantDb) {
       currentStock: String(ledgerStock),
       avgPrice: String(globalAvg),
     });
-
-    await db
-      .update(items)
-      .set({
-        currentStock: String(roundQty(Math.max(0, globalStock - qty))),
-        updatedAt: new Date(),
-      })
-      .where(eq(items.id, ctx.itemId));
   } else {
     const [lastArea] = await db
       .select()
