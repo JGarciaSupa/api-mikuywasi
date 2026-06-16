@@ -14,10 +14,14 @@ export interface CachedTenant {
 
 const getTenantBySlug = async (slug: string): Promise<CachedTenant> => {
   const cacheKey = `tenant:${slug}`;
-  const cachedData = await redis.get(cacheKey);
 
-  if (cachedData) {
-    return JSON.parse(cachedData) as CachedTenant;
+  try {
+    const cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+      return JSON.parse(cachedData) as CachedTenant;
+    }
+  } catch {
+    // Redis caído — continúa con la DB directamente
   }
 
   const tenant = await masterDb.query.tenants.findFirst({
@@ -38,7 +42,13 @@ const getTenantBySlug = async (slug: string): Promise<CachedTenant> => {
     limits: tenant.plan.features,
     dbUrl: `postgres://${encodeURIComponent(tenant.server.dbUser)}:${encodeURIComponent(tenant.server.dbPassword)}@${dbHost}:${tenant.server.dbPort}/${tenant.dbName}`
   };
-  await redis.set(cacheKey, JSON.stringify(optimizedTenant), 'EX', 3600);
+
+  try {
+    await redis.set(cacheKey, JSON.stringify(optimizedTenant), 'EX', 3600);
+  } catch {
+    // Redis caído — retorna sin cachear, el próximo request reintentará
+  }
+
   return optimizedTenant;
 };
 
