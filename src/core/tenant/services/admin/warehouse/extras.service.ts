@@ -294,19 +294,17 @@ export async function buildExtrasDischargeLines(
         if (rl.isOptional) continue;
         const item = await fetchItemWithUnits(db, rl.itemId);
         if (!item?.recipeDischarge) continue;
-        let ingredientQty = toNum(rl.qty) * selQty;
+        const recipeQty = roundQty(toNum(rl.qty) * selQty);
         const factor2 = toNum(item.conversionFactor);
-        if (factor2 > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId) {
-          ingredientQty = ingredientQty / factor2;
-        }
-        ingredientQty = roundQty(ingredientQty);
+        const needsConversion = factor2 > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId;
+        const stockQty = needsConversion ? recipeQty / factor2 : recipeQty;
         const avgPrice = toNum(item.avgPrice);
         lines.push({
           itemId: rl.itemId,
-          qty: ingredientQty,
+          qty: recipeQty,
           unit: rl.unit,
           avgPrice,
-          lineCost: roundMoney(ingredientQty * avgPrice),
+          lineCost: roundMoney(stockQty * avgPrice),
         });
       }
     }

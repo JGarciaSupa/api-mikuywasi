@@ -113,24 +113,19 @@ export async function buildDischargeFromOrder(orderId: string) {
       const item = await fetchItemWithUnits(db, rl.itemId);
       if (!item?.recipeDischarge) continue;
 
-      let ingredientQty = (toNum(rl.qty) / servings) * orderQty / yieldFactor;
-
+      const recipeQty = roundQty((toNum(rl.qty) / servings) * orderQty / yieldFactor);
       const factor = toNum(item.conversionFactor);
-      if (factor > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId) {
-        ingredientQty = ingredientQty / factor;
-      }
-
-      ingredientQty = roundQty(ingredientQty);
+      const needsConversion = factor > 0 && item.costUnitId && item.ledgerUnitId !== item.costUnitId;
+      const stockQty = needsConversion ? recipeQty / factor : recipeQty;
       const avgPrice = toNum(item.avgPrice);
-      const lineCost = roundMoney(ingredientQty * avgPrice);
 
       calculated.push({
         itemId: rl.itemId,
         recipeId: recipe.id,
-        qty: ingredientQty,
+        qty: recipeQty,
         unit: rl.unit,
         avgPrice,
-        lineCost,
+        lineCost: roundMoney(stockQty * avgPrice),
         productionAreaId: bra.areaId,
       });
     }
@@ -197,8 +192,8 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
 
   await db.transaction(async (tx) => {
     for (const line of doc.lines) {
-      const qty = toNum(line.qty);
-      if (qty <= 0) continue;
+      const recipeQty = toNum(line.qty);
+      if (recipeQty <= 0) continue;
 
       const targetAreaId = line.areaId ?? doc.areaId;
       if (!targetAreaId) {
@@ -207,12 +202,18 @@ export async function processSalesDischarge(id: number, actor?: AuditActor) {
         throw new Error(`El insumo "${itemName}" no tiene un área de almacenamiento especificada en la descarga.`);
       }
 
+      const lineItem = await fetchItemWithUnits(db, line.itemId);
+      const factor = toNum(lineItem?.conversionFactor);
+      const needsConversion = factor > 0 && lineItem?.costUnitId && lineItem?.ledgerUnitId !== lineItem?.costUnitId
+        && line.unit !== lineItem?.ledgerUnit;
+      const stockQty = needsConversion ? recipeQty / factor : recipeQty;
+
       await applyStockExit(
         {
           branchId: doc.branchId,
           itemId: line.itemId,
           areaId: targetAreaId,
-          qty,
+          qty: stockQty,
           unitPrice: toNum(line.avgPrice),
           documentType: 'descarga_venta',
           documentNumber: docNumber,
@@ -279,18 +280,24 @@ export async function reverseDischargeForOrder(orderId: string, actor?: AuditAct
 
   await db.transaction(async (tx) => {
     for (const line of discharge.lines) {
-      const qty = toNum(line.qty);
-      if (qty <= 0) continue;
+      const recipeQty = toNum(line.qty);
+      if (recipeQty <= 0) continue;
 
       const targetAreaId = line.areaId ?? discharge.areaId;
       if (!targetAreaId) continue;
+
+      const lineItem = await fetchItemWithUnits(db, line.itemId);
+      const factor = toNum(lineItem?.conversionFactor);
+      const needsConversion = factor > 0 && lineItem?.costUnitId && lineItem?.ledgerUnitId !== lineItem?.costUnitId
+        && line.unit !== lineItem?.ledgerUnit;
+      const stockQty = needsConversion ? recipeQty / factor : recipeQty;
 
       await applyStockEntry(
         {
           branchId: discharge.branchId,
           itemId: line.itemId,
           areaId: targetAreaId,
-          qty,
+          qty: stockQty,
           unitPrice: toNum(line.avgPrice),
           documentType: 'reverso_descarga',
           documentNumber: docNumber,
