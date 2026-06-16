@@ -504,11 +504,20 @@ export async function consultarEstadoResumen(
   }
   const data = json.data ?? {};
 
+  // El facturador puede responder en español (pendiente/estado/codigo/mensaje)
+  // o en inglés (pending/status/responseCode/message) según la versión del contenedor
+  const isPending = data.pending === true || data.pendiente === true;
+  const statusStr: string = data.status ?? data.estado ?? '';
+  const code = data.responseCode ?? data.codigo ?? null;
+  const isAccepted = !isPending && (
+    statusStr === 'ACCEPTED' || statusStr === 'ACEPTADO' || code === '0'
+  );
+
   return {
-    success: data.pending === false && (data.status === 'ACCEPTED' || data.responseCode === '0'),
-    pending: data.pending === true,
-    code: data.responseCode ?? null,
-    description: data.message ?? null,
+    success: isAccepted,
+    pending: isPending,
+    code,
+    description: data.message ?? data.mensaje ?? null,
   };
 }
 

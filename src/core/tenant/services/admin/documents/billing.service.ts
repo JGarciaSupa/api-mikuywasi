@@ -1002,7 +1002,9 @@ export async function checkVoidStatus(id: number) {
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
   if (doc.status !== 'voided') throw new Error('Solo se puede consultar el estado de documentos anulados');
-  if (doc.voidedSunatStatus !== 'PENDIENTE') throw new Error('El documento no tiene una comunicación de baja pendiente');
+  if (doc.voidedSunatStatus !== 'PENDIENTE' && doc.voidedSunatStatus !== 'RECHAZADO') {
+    throw new Error('El documento no tiene una comunicación de baja pendiente o en proceso');
+  }
   if (!doc.voidedTicket) throw new Error('El documento no tiene ticket de SUNAT registrado');
 
   const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
