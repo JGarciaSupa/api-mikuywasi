@@ -12,7 +12,7 @@ export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ success: false, message: 'Token no proporcionado' }, 401);
+    return c.json({ status: false, message: 'Token no proporcionado' }, 401);
   }
 
   const token = authHeader.slice(7);
@@ -22,7 +22,7 @@ export async function authMiddleware(c: Context, next: Next) {
     c.set('jwtPayload', payload);
     await next();
   } catch {
-    return c.json({ success: false, message: 'Token inválido o expirado' }, 401);
+    return c.json({ status: false, message: 'Token inválido o expirado' }, 401);
   }
 }
 
@@ -30,7 +30,7 @@ export function roleMiddleware(roles: string[]) {
   return async (c: Context, next: Next) => {
     const payload = c.get('jwtPayload');
     if (!payload || !roles.includes(payload.role)) {
-      return c.json({ success: false, message: 'No tienes permisos para realizar esta acción' }, 403);
+      return c.json({ status: false, message: 'No tienes permisos para realizar esta acción' }, 403);
     }
     await next();
   };

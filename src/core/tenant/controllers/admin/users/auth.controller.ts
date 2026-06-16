@@ -59,7 +59,8 @@ export async function loginController(c: Context) {
     if (platform === 'web') {
       setRefreshTokenCookie(c, result.refreshToken);
       return c.json({
-        success: true,
+        status: true,
+        message: 'Inicio de sesión exitoso',
         data: {
           accessToken: result.accessToken,
           user: result.user,
@@ -70,7 +71,8 @@ export async function loginController(c: Context) {
     }
 
     return c.json({
-      success: true,
+      status: true,
+      message: 'Inicio de sesión exitoso',
       data: {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
@@ -82,13 +84,13 @@ export async function loginController(c: Context) {
   } catch (error) {
     if (error instanceof AuthError) {
       return c.json({
-        success: false,
+        status: false,
         message: error.message
       }, error.status as any);
     }
     console.error("Login Error:", error);
     return c.json({
-      success: false,
+      status: false,
       message: 'Error interno del servidor'
     }, 500);
   }
@@ -112,7 +114,7 @@ export async function refreshController(c: Context) {
 
     if (!rawRefreshToken) {
       return c.json({
-        success: false,
+        status: false,
         message: 'Refresh token no proporcionado'
       }, 401);
     }
@@ -125,7 +127,8 @@ export async function refreshController(c: Context) {
     if (platform === 'web') {
       setRefreshTokenCookie(c, result.refreshToken);
       return c.json({
-        success: true,
+        status: true,
+        message: 'Token actualizado exitosamente',
         data: {
           accessToken: result.accessToken,
           user: result.user,
@@ -136,7 +139,8 @@ export async function refreshController(c: Context) {
     }
 
     return c.json({
-      success: true,
+      status: true,
+      message: 'Token actualizado exitosamente',
       data: {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
@@ -148,12 +152,12 @@ export async function refreshController(c: Context) {
   } catch (error) {
     if (error instanceof AuthError) {
       return c.json({
-        success: false,
+        status: false,
         message: error.message
       }, error.status as any);
     }
     return c.json({
-      success: false,
+      status: false,
       message: 'Error interno del servidor'
     }, 500);
   }
@@ -182,9 +186,9 @@ export async function logoutController(c: Context) {
       clearRefreshTokenCookie(c);
     }
 
-    return c.json({ success: true, message: 'Sesión cerrada exitosamente' });
+    return c.json({ status: true, message: 'Sesión cerrada exitosamente' });
   } catch {
-    return c.json({ success: true, message: 'Sesión cerrada exitosamente' });
+    return c.json({ status: true, message: 'Sesión cerrada exitosamente' });
   }
 }
 
@@ -196,12 +200,12 @@ export async function profileController(c: Context) {
     const { userId } = c.get('jwtPayload');
     const user = await getProfile(userId);
 
-    return c.json({ success: true, data: user });
+    return c.json({ status: true, message: 'Perfil obtenido exitosamente', data: user });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ success: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: error.message }, error.status as any);
     }
-    return c.json({ success: false, message: 'Error interno del servidor' }, 500);
+    return c.json({ status: false, message: 'Error interno del servidor' }, 500);
   }
 }
 
@@ -217,13 +221,13 @@ export async function updateProfileController(c: Context) {
 
     const user = await updateProfile(userId, { name: data.name }, imageFile);
 
-    return c.json({ success: true, data: user });
+    return c.json({ status: true, message: 'Perfil actualizado correctamente', data: user });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ success: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: error.message }, error.status as any);
     }
     console.error("Update Profile Error:", error);
-    return c.json({ success: false, message: 'Error interno del servidor' }, 500);
+    return c.json({ status: false, message: 'Error interno del servidor' }, 500);
   }
 }
 
@@ -235,14 +239,14 @@ export async function updatePasswordController(c: Context) {
     const { userId } = c.get('jwtPayload');
     const { currentPassword, newPassword } = c.req.valid('json' as never);
 
-    const result = await updatePassword(userId, { currentPassword, newPassword });
+    await updatePassword(userId, { currentPassword, newPassword });
 
-    return c.json(result);
+    return c.json({ status: true, message: 'Contraseña actualizada correctamente' });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ success: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: error.message }, error.status as any);
     }
     console.error("Update Password Error:", error);
-    return c.json({ success: false, message: 'Error interno del servidor' }, 500);
+    return c.json({ status: false, message: 'Error interno del servidor' }, 500);
   }
 }

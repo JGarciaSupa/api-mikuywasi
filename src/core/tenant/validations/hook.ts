@@ -7,7 +7,7 @@ type ValidationResult =
 export const validationHook = (result: ValidationResult, c: Context): Response | void => {
   if (!result.success) {
     return c.json({
-      success: false,
+      status: false,
       message: result.error.issues[0].message
     }, 400);
   }

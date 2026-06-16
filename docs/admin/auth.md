@@ -7,8 +7,37 @@ Base URL: `/api/admin`
 | Header | Descripción | Requerido |
 |--------|-------------|-----------|
 | `x-platform` | `web` o `mobile`. Define cómo se envía el refresh token. Default: `web` | No |
-| `Authorization` | `Bearer <accessToken>` para rutas protegidas | Solo en `/profile` |
-| `x-refresh-token` | Refresh token (solo en mobile para `/refresh`) | Solo mobile |
+| `Authorization` | `Bearer <accessToken>` para rutas protegidas | Solo en rutas 🔒 |
+| `x-refresh-token` | Refresh token (solo mobile para `/refresh`) | Solo mobile |
+
+---
+
+## Formato de respuestas
+
+**Error:**
+```json
+{
+  "status": false,
+  "message": "Descripción del error"
+}
+```
+
+**Éxito con datos:**
+```json
+{
+  "status": true,
+  "message": "Descripción del resultado",
+  "data": { }
+}
+```
+
+**Éxito sin datos:**
+```json
+{
+  "status": true,
+  "message": "Descripción del resultado"
+}
+```
 
 ---
 
@@ -16,37 +45,58 @@ Base URL: `/api/admin`
 
 ### POST `/login`
 
-Autenticación con email y contraseña.
+Autenticación con usuario y contraseña.
 
 **Body:**
 ```json
 {
-  "email": "admin@gmail.com",
+  "username": "admin",
   "password": "12345678"
 }
 ```
 
 **Validaciones:**
-- `email` — string, email válido, máx 255 caracteres
-- `password` — string, mín 1, máx 255 caracteres
+- `username` — string, requerido, máx 50 caracteres
+- `password` — string, requerido, máx 255 caracteres
 
 **Respuesta exitosa (web):**
 > El `refreshToken` se envía automáticamente como cookie `httpOnly`.
 
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Inicio de sesión exitoso",
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIs...",
     "user": {
       "id": 1,
-      "email": "admin@gmail.com",
+      "username": "admin",
       "name": "Super Admin",
-      "role": "super-admin",
-      "tenantId": null,
+      "role": "admin",
+      "tenantId": 1,
       "image": null,
+      "roleId": null,
+      "permissions": {},
       "createdAt": "2026-03-28T...",
       "updatedAt": "2026-03-28T..."
+    },
+    "branches": [
+      {
+        "id": 1,
+        "name": "Sucursal Principal",
+        "code": "SUC01",
+        "isMain": true,
+        "isActive": true,
+        "isDefault": true
+      }
+    ],
+    "currentBranch": {
+      "id": 1,
+      "name": "Sucursal Principal",
+      "code": "SUC01",
+      "isMain": true,
+      "isActive": true,
+      "isDefault": true
     }
   }
 }
@@ -55,11 +105,14 @@ Autenticación con email y contraseña.
 **Respuesta exitosa (mobile):**
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Inicio de sesión exitoso",
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIs...",
     "refreshToken": "a1b2c3d4-e5f6-7890-...",
-    "user": { ... }
+    "user": { "...": "..." },
+    "branches": [ { "...": "..." } ],
+    "currentBranch": { "...": "..." }
   }
 }
 ```
@@ -67,7 +120,7 @@ Autenticación con email y contraseña.
 **Errores:**
 | Status | Mensaje |
 |--------|---------|
-| 400 | Error de validación (primer error de Zod) |
+| 400 | Primer error de validación Zod (ej: "El nombre de usuario es requerido") |
 | 401 | Credenciales inválidas |
 | 500 | Error interno del servidor |
 
@@ -75,7 +128,7 @@ Autenticación con email y contraseña.
 
 ### POST `/refresh`
 
-Renueva el access token usando el refresh token. Aplica **rotación de tokens** (el refresh token anterior se revoca y se genera uno nuevo).
+Renueva el access token usando el refresh token. Aplica **rotación de tokens** (el token anterior se revoca y se genera uno nuevo).
 
 **Web:** el refresh token se lee automáticamente de la cookie.
 
@@ -84,10 +137,13 @@ Renueva el access token usando el refresh token. Aplica **rotación de tokens** 
 **Respuesta exitosa (web):**
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Token actualizado exitosamente",
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-    "user": { ... }
+    "user": { "...": "..." },
+    "branches": [ { "...": "..." } ],
+    "currentBranch": { "...": "..." }
   }
 }
 ```
@@ -95,11 +151,14 @@ Renueva el access token usando el refresh token. Aplica **rotación de tokens** 
 **Respuesta exitosa (mobile):**
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Token actualizado exitosamente",
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIs...",
     "refreshToken": "nuevo-uuid-...",
-    "user": { ... }
+    "user": { "...": "..." },
+    "branches": [ { "...": "..." } ],
+    "currentBranch": { "...": "..." }
   }
 }
 ```
@@ -129,10 +188,12 @@ Revoca el refresh token actual y elimina la cookie (web).
 **Respuesta:**
 ```json
 {
-  "success": true,
+  "status": true,
   "message": "Sesión cerrada exitosamente"
 }
 ```
+
+> Nota: este endpoint siempre responde con éxito, incluso si el token ya estaba revocado o no existía.
 
 ---
 
@@ -143,14 +204,28 @@ Obtiene el perfil del usuario autenticado. Requiere `Authorization: Bearer <acce
 **Respuesta exitosa:**
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Perfil obtenido exitosamente",
   "data": {
     "id": 1,
-    "email": "admin@gmail.com",
+    "username": "admin",
     "name": "Super Admin",
-    "role": "super-admin",
-    "tenantId": null,
+    "role": "admin",
+    "tenantId": 1,
     "image": null,
+    "roleId": null,
+    "permissions": {},
+    "branches": [
+      {
+        "id": 1,
+        "name": "Sucursal Principal",
+        "code": "SUC01",
+        "isMain": true,
+        "isActive": true,
+        "isDefault": true
+      }
+    ],
+    "currentBranch": { "...": "..." },
     "createdAt": "2026-03-28T...",
     "updatedAt": "2026-03-28T..."
   }
@@ -162,71 +237,91 @@ Obtiene el perfil del usuario autenticado. Requiere `Authorization: Bearer <acce
 |--------|---------|
 | 401 | Token no proporcionado |
 | 401 | Token inválido o expirado |
-| 401 | Token inválido o expirado |
 | 404 | Usuario no encontrado |
+| 500 | Error interno del servidor |
 
 ---
 
 ### PATCH `/profile` 🔒
 
-Actualiza la información del perfil del usuario (nombre e imagen).
+Actualiza nombre e imagen de perfil. Body como `multipart/form-data`.
 
-**Body:**
-```json
-{
-  "name": "Nuevo Nombre",
-  "image": "https://r2.lobitoconsulting.store/avatars/123.jpg"
-}
-```
-
-**Validaciones:**
-- `name` — string, mín 1, máx 255 caracteres
-- `image` — string, URL válida, opcional, nullable
+**Campos:**
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `name` | string | Sí | Nombre del usuario, mín 1, máx 255 caracteres |
+| `image` | File | No | Archivo de imagen (se sube a R2 y reemplaza la anterior) |
 
 **Respuesta exitosa:**
 ```json
 {
-  "success": true,
+  "status": true,
+  "message": "Perfil actualizado correctamente",
   "data": {
     "id": 1,
-    "email": "admin@gmail.com",
+    "username": "admin",
     "name": "Nuevo Nombre",
-    "role": "super-admin",
-    "tenantId": null,
-    "image": "...",
+    "role": "admin",
+    "tenantId": 1,
+    "image": "https://r2.ejemplo.com/profile/abc123.webp",
     "createdAt": "...",
     "updatedAt": "..."
   }
 }
 ```
 
+**Errores:**
+| Status | Mensaje |
+|--------|---------|
+| 400 | El nombre es requerido |
+| 400 | El nombre no puede exceder los 255 caracteres |
+| 401 | Token no proporcionado / Token inválido o expirado |
+| 404 | Usuario no encontrado |
+| 500 | Error interno del servidor |
+
 ---
 
 ### PATCH `/password` 🔒
 
-Actualiza la contraseña del usuario.
+Actualiza la contraseña del usuario autenticado.
 
 **Body:**
 ```json
 {
-  "currentPassword": "password_actual",
-  "newPassword": "nueva_password_123",
-  "confirmPassword": "nueva_password_123"
+  "currentPassword": "contraseña_actual",
+  "newPassword": "nueva_contraseña_123",
+  "confirmPassword": "nueva_contraseña_123"
 }
 ```
 
 **Validaciones:**
-- `currentPassword` — string, requerido
-- `newPassword` — string, mín 6 caracteres
-- `confirmPassword` — debe coincidir con `newPassword`
+| Campo | Regla |
+|-------|-------|
+| `currentPassword` | string, requerido |
+| `newPassword` | string, mín 6, máx 255 caracteres |
+| `confirmPassword` | debe coincidir exactamente con `newPassword` |
 
 **Respuesta exitosa:**
 ```json
 {
-  "success": true,
+  "status": true,
   "message": "Contraseña actualizada correctamente"
 }
 ```
+
+**Errores:**
+| Status | Mensaje |
+|--------|---------|
+| 400 | La contraseña actual es requerida |
+| 400 | La nueva contraseña es requerida |
+| 400 | La nueva contraseña debe tener al menos 6 caracteres |
+| 400 | La nueva contraseña no puede exceder los 255 caracteres |
+| 400 | La confirmación de la contraseña es requerida |
+| 400 | Las contraseñas no coinciden |
+| 400 | La contraseña actual es incorrecta |
+| 401 | Token no proporcionado / Token inválido o expirado |
+| 404 | Usuario no encontrado |
+| 500 | Error interno del servidor |
 
 ---
 
@@ -234,8 +329,8 @@ Actualiza la contraseña del usuario.
 
 | Token | Expiración | Almacenamiento |
 |-------|------------|----------------|
-| Access Token (JWT) | 15 minutos | JSON response |
-| Refresh Token (UUID) | 15 días | Cookie (web) / JSON + header (mobile) |
+| Access Token (JWT) | 15 minutos | JSON response (`data.accessToken`) |
+| Refresh Token (UUID) | 15 días | Cookie httpOnly (web) / JSON response (mobile) |
 
 ## Cookie del Refresh Token (web)
 
@@ -244,8 +339,8 @@ Actualiza la contraseña del usuario.
 | `httpOnly` | `true` |
 | `secure` | `true` en producción |
 | `sameSite` | `None` |
-| `path` | `/api/admin` |
-| `maxAge` | 15 días |
+| `path` | `/` |
+| `maxAge` | 15 días (1 296 000 s) |
 
 ## Variables de Entorno
 

@@ -30,7 +30,7 @@ export const updatePasswordSchema = z
     newPassword: z
       .string({ error: "La nueva contraseña es requerida" })
       .min(6, "La nueva contraseña debe tener al menos 6 caracteres")
-      .max(255),
+      .max(255, "La nueva contraseña no puede exceder los 255 caracteres"),
     confirmPassword: z
       .string({ error: "La confirmación de la contraseña es requerida" })
       .min(1, "La confirmación de la contraseña es requerida"),
