@@ -197,10 +197,10 @@ export async function emitirComprobante(
     const json = await res.json() as { success: boolean; data: ComprobanteResponse };
     if (res.status === 422) {
       const tipoError = json.data?.tipo_error ?? 'RECHAZO';
-      const detalle   = json.data?.error_detalle?.message
+      const detalle = json.data?.error_detalle?.message
         ? ` | Detalle: ${json.data.error_detalle.message}`
         : '';
-      const notas     = json.data?.notes?.length
+      const notas = json.data?.notes?.length
         ? ` | Notas: ${(json.data.notes as string[]).join('; ')}`
         : '';
       log.err('POST', endpoint, 422,

@@ -8,6 +8,11 @@ import {
   type FacturadorEmpresaInput,
 } from '../../../../../utils/facturador-client';
 
+function isDuplicateRucError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /23000|duplicate key|duplicate entry/i.test(msg);
+}
+
 // ── Tenant-level empresa (Caso A) ─────────────────────────────────────────────
 
 export async function getTenantEmpresa() {
@@ -38,8 +43,15 @@ export async function upsertTenantEmpresa(data: FacturadorEmpresaInput) {
   if (empresaId) {
     await actualizarEmpresa(empresaId, data);
   } else {
-    const created = await crearEmpresa(data);
-    empresaId = created.id;
+    try {
+      const created = await crearEmpresa(data);
+      empresaId = created.id;
+    } catch (err: any) {
+      if (isDuplicateRucError(err)) {
+        throw new Error(`El RUC ${data.ruc} ya está registrado en el sistema de facturación. Si eliminaste la empresa anteriormente, contacta a soporte para reconectar el registro existente.`);
+      }
+      throw err;
+    }
   }
 
   await db
@@ -78,8 +90,15 @@ export async function upsertBranchEmpresa(branchId: number, data: FacturadorEmpr
   if (empresaId) {
     await actualizarEmpresa(empresaId, data);
   } else {
-    const created = await crearEmpresa(data);
-    empresaId = created.id;
+    try {
+      const created = await crearEmpresa(data);
+      empresaId = created.id;
+    } catch (err: any) {
+      if (isDuplicateRucError(err)) {
+        throw new Error(`El RUC ${data.ruc} ya está registrado en el sistema de facturación. Si eliminaste la empresa anteriormente, contacta a soporte para reconectar el registro existente.`);
+      }
+      throw err;
+    }
   }
 
   await db
