@@ -217,7 +217,7 @@ export async function getProfile(userId: number) {
     throw new AuthError('Usuario no encontrado', 404);
   }
 
-  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
+  const { roleId, roleCode, permissions, roleName } = await buildPermissionsForUser(user.id);
   const userBranchesList = await getUserBranches(user.id, roleCode);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
@@ -228,6 +228,7 @@ export async function getProfile(userId: number) {
     branches: userBranchesList,
     currentBranch: defaultBranch,
     roleId,
+    roleName,
     permissions,
   };
 }

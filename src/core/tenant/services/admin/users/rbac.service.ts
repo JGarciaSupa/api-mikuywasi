@@ -265,6 +265,7 @@ export async function removeUserOverride(userId: number, permCatalogId: number) 
 export async function buildPermissionsForUser(userId: number): Promise<{
   roleId: number | null;
   roleCode: string | null;
+  roleName: string | null;
   permissions: PermissionsMap;
 }> {
   const db = getTenantDb();
@@ -312,9 +313,10 @@ export async function buildPermissionsForUser(userId: number): Promise<{
     permissions[actionCode].push(subActionCode);
   }
 
-  return { 
-    roleId: userRole?.roleId ?? null, 
+  return {
+    roleId: userRole?.roleId ?? null,
     roleCode: userRole?.role.code ?? null,
-    permissions 
+    roleName: userRole?.role.name ?? null,
+    permissions
   };
 }
