@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   getOrdersController,
   getOrderByIdController,
@@ -21,7 +21,6 @@ const routes = new Hono();
 
 // Middlewares de seguridad globales para el módulo de órdenes
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin', 'kitchen']));
 
 // Endpoints
 routes.get('/', getOrdersController);

@@ -35,3 +35,23 @@ export function roleMiddleware(roles: string[]) {
     await next();
   };
 }
+
+export function requirePermission(actionCode: string, subActionCode: string) {
+  return async (c: Context, next: Next) => {
+    const payload = c.get('jwtPayload');
+    
+    // Si es admin tiene acceso total
+    if (payload?.role === 'rol_admin') {
+      await next();
+      return;
+    }
+
+    // Verificar si tiene el permiso específico
+    const actionPerms = payload?.permissions?.[actionCode];
+    if (!actionPerms || !actionPerms.includes(subActionCode)) {
+      return c.json({ status: false, message: 'No tienes permisos para realizar esta acción' }, 403);
+    }
+    
+    await next();
+  };
+}

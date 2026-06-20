@@ -7,11 +7,11 @@ import { getTenantDb } from '@/utils/tenant-context';
 import { buildPermissionsForUser } from './rbac.service';
 
 // Helper: obtener sucursales asignadas a un usuario
-async function getUserBranches(userId: number, userRole: string) {
+async function getUserBranches(userId: number, roleCode: string | null) {
   const db = getTenantDb();
 
   // Si es administrador, tiene acceso a todas las sucursales activas automáticamente
-  if (userRole === 'admin') {
+  if (roleCode === 'rol_admin') {
     const allBranches = await db
       .select({
         id: branches.id,
@@ -70,12 +70,12 @@ export async function login(username: string, password: string, userAgent?: stri
   }
 
   // 3. Cargar permisos del usuario (si tiene rol RBAC asignado)
-  const { roleId, permissions } = await buildPermissionsForUser(user.id);
+  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
 
   // 4. Generar access token con permisos embebidos
   const accessToken = await generateAccessToken({
     userId: user.id,
-    role: user.role,
+    role: roleCode ?? 'guest',
     roleId,
     permissions: Object.keys(permissions).length > 0 ? permissions : undefined,
   });
@@ -95,7 +95,7 @@ export async function login(username: string, password: string, userAgent?: stri
   });
 
   // 5. Obtener sucursales del usuario
-  const userBranchesList = await getUserBranches(user.id, user.role);
+  const userBranchesList = await getUserBranches(user.id, roleCode);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   // 6. Retornar datos (sin password)
@@ -150,10 +150,10 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
   }
 
   // 5. Generar nuevos tokens (recargar permisos actualizados)
-  const { roleId, permissions } = await buildPermissionsForUser(user.id);
+  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
   const accessToken = await generateAccessToken({
     userId: user.id,
-    role: user.role,
+    role: roleCode ?? 'guest',
     roleId,
     permissions: Object.keys(permissions).length > 0 ? permissions : undefined,
   });
@@ -170,7 +170,7 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     expiresAt,
   });
 
-  const userBranchesList = await getUserBranches(user.id, user.role);
+  const userBranchesList = await getUserBranches(user.id, roleCode);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   const { password: _, ...safeUser } = user;
@@ -217,10 +217,8 @@ export async function getProfile(userId: number) {
     throw new AuthError('Usuario no encontrado', 404);
   }
 
-  const [userBranchesList, { roleId, permissions }] = await Promise.all([
-    getUserBranches(user.id, user.role),
-    buildPermissionsForUser(user.id),
-  ]);
+  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
+  const userBranchesList = await getUserBranches(user.id, roleCode);
   const defaultBranch = userBranchesList.find(b => b.isDefault) || userBranchesList[0] || null;
 
   const { password: _, ...safeUser } = user;

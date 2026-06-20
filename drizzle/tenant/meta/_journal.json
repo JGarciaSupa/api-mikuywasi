@@ -162,6 +162,13 @@
       "when": 1781479759117,
       "tag": "0022_add_split_table",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781924968958,
+      "tag": "0023_roles_old_delete",
+      "breakpoints": true
     }
   ]
 }

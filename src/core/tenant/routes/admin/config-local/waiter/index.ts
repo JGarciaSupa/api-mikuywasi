@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   createWaiterOrderController,
   getWaiterMenuController,
@@ -15,7 +15,6 @@ import { validateCreateOrderFromToken } from '../../../../validations/client/ord
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin', 'waiter']));
 
 routes.get('/menu', getWaiterMenuController);
 routes.get('/tables/status', getWaiterTablesStatusController);

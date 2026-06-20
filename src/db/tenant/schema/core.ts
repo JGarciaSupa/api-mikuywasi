@@ -100,7 +100,6 @@ export const users = pgTable('users', {
 	password: varchar('password', { length: 255 }).notNull(),
 	name: varchar('name', { length: 255 }).notNull(),
 	image: text('image'),
-	role: varchar('role', { length: 255, enum: ['admin', 'kitchen', 'waiter', 'delivery'] }).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

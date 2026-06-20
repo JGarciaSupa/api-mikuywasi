@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   getKitchenOrdersController,
   updateKitchenStatusController
@@ -9,7 +9,6 @@ const routes = new Hono();
 
 // Middleware de autenticación y rol
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin', 'kitchen']));
 
 // Endpoints
 routes.get('/orders', getKitchenOrdersController);

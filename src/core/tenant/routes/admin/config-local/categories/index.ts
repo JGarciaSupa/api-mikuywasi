@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   validateCreateCategory,
   validateReorderCategories,
@@ -17,7 +17,6 @@ import {
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin']));
 
 routes.get('/', getAllCategoriesController);
 routes.post('/', validateCreateCategory, createCategoryController);

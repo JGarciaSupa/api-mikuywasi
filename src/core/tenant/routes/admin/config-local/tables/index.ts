@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   validateCreateTable,
   validateUpdateTable
@@ -15,7 +15,6 @@ import {
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin', 'waiter']));
 
 routes.get('/', getAllTablesController);
 routes.post('/', validateCreateTable, createTableController);

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import {
   validateCreateProduct,
   validateUpdateProduct
@@ -16,7 +16,6 @@ import * as extras from '../../../../controllers/admin/warehouse/extras.controll
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin']));
 
 // ── Productos ────────────────────────────────────────────────────────────────
 routes.get('/', getAllProductsController);

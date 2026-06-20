@@ -1,13 +1,12 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { authMiddleware, roleMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware } from '../../../../middleware/auth.middleware';
 import * as rbac from '../../../../controllers/admin/users/rbac.controller';
 
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('*', roleMiddleware(['admin']));
 
 // ── Catálogo de permisos disponibles para este tenant (solo lectura) ──────────
 routes.get('/catalog', rbac.listPermissionsCatalog);

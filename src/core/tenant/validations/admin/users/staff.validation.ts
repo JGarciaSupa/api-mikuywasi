@@ -12,7 +12,7 @@ export const createStaffSchema = z.object({
     .max(50, 'El username no puede exceder los 50 caracteres')
     .regex(/^[a-zA-Z0-9_.]+$/, 'El username solo puede contener letras, números, puntos y guiones bajos'),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255),
-  role: z.enum(staffRoles, { error: 'Rol inválido' }),
+  roleId: z.coerce.number().positive('Rol inválido'),
 });
 
 export const updateStaffSchema = z.object({
@@ -24,7 +24,7 @@ export const updateStaffSchema = z.object({
     .regex(/^[a-zA-Z0-9_.]+$/, 'El username solo puede contener letras, números, puntos y guiones bajos')
     .optional(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').max(255).optional(),
-  role: z.enum(staffRoles).optional(),
+  roleId: z.coerce.number().positive('Rol inválido').optional(),
 });
 
 export const staffQuerySchema = z.object({

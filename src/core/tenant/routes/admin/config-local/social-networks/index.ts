@@ -12,12 +12,11 @@ import {
   validateReorderSocialNetworks,
   validateUpdateSocialNetwork
 } from "../../../../validations/admin/config-local/social-networks.validation";
-import { authMiddleware, roleMiddleware } from "../../../../middleware/auth.middleware";
+import { authMiddleware } from "../../../../middleware/auth.middleware";
 
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
-routes.use('/*', roleMiddleware(['admin']));
 
 routes.get("/", getAllSocialNetworksController);
 routes.get("/:id", getSocialNetworkByIdController);
