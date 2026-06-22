@@ -472,7 +472,7 @@ export const getTenantUsers = async (tenantId: number) => {
       id: tenantSchema.users.id,
       name: tenantSchema.users.name,
       username: tenantSchema.users.username,
-      role: tenantSchema.users.role,
+      role: tenantSchema.roles.name,
       image: tenantSchema.users.image,
       createdAt: tenantSchema.users.createdAt,
       updatedAt: tenantSchema.users.updatedAt,
@@ -503,7 +503,6 @@ export const createTenantUser = async (tenantId: number, data: any) => {
       username: data.username,
       password: hashedPassword,
       name: data.name,
-      role: data.role,
       image: data.image ?? null,
     })
     .returning();
@@ -557,7 +556,6 @@ export const updateTenantUser = async (tenantId: number, userId: number, data: a
     .set({
       name: data.name ?? existingUser.name,
       username: data.username ?? existingUser.username,
-      role: data.role ?? existingUser.role,
       image: data.image !== undefined ? data.image : existingUser.image,
       updatedAt: new Date(),
     })
