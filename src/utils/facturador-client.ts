@@ -551,6 +551,104 @@ export async function diagnosticarEmision(ruc: string): Promise<DiagnoseResult> 
   return res.data;
 }
 
+// ── Nota de Crédito (tipo_doc 07) ────────────────────────────────────────────
+// Un solo endpoint para factura Y boleta. La diferencia está en:
+//   - documento_afectado.tipo_doc: '01' = factura, '03' = boleta
+//   - serie: FC-xxx para facturas, BC-xxx para boletas
+
+export type CodigoMotivoNC =
+  | '01' // Anulación de la operación
+  | '02' // Anulación por error en el RUC
+  | '03' // Corrección por error en la descripción
+  | '04' // Descuento global
+  | '05' // Descuento por ítem
+  | '06' // Devolución total
+  | '07' // Devolución por ítem
+  | '08' // Bonificación
+  | '09' // Disminución en el valor
+  | '10'; // Otros conceptos
+
+export interface NotaCreditoPayload {
+  emisor: { ruc: string };
+  cliente: {
+    tipo_documento: string;   // '6'=RUC '1'=DNI '0'=sin doc
+    numero_documento: string;
+    razon_social: string;
+    direccion?: string;
+  };
+  comprobante: {
+    tipo_doc: '07';           // siempre 07 para NC
+    serie: string;            // FC01…FCxx para facturas | BC01…BCxx para boletas
+    correlativo: string;
+    fecha_emision: string;    // ISO 8601 con zona Lima: -05:00
+    moneda: string;
+  };
+  documento_afectado: {
+    tipo_doc: '01' | '03';   // tipo del doc original
+    serie: string;
+    correlativo: string;
+  };
+  motivo: {
+    codigo: CodigoMotivoNC;
+    descripcion: string;
+  };
+  totales: {
+    gravadas: number;
+    igv: number;
+    total_impuestos: number;
+    valor_venta: number;
+    subtotal: number;
+    total: number;
+  };
+  detalles: DetallePayload[];
+  leyenda?: string;
+}
+
+/**
+ * Emite una Nota de Crédito electrónica (tipo_doc '07').
+ * Válida tanto para facturas (doc afectado '01', serie FC-xxx)
+ * como para boletas (doc afectado '03', serie BC-xxx).
+ * Maneja HTTP 422 como rechazo SUNAT igual que emitirComprobante.
+ */
+export async function emitirNotaCredito(
+  payload: NotaCreditoPayload,
+): Promise<{ success: boolean; data: ComprobanteResponse }> {
+  const endpoint = '/api/v1/comprobantes/nota-credito';
+  const url = `${BASE_URL}${endpoint}`;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  };
+
+  log.req('POST', endpoint, payload);
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err: any) {
+    log.err('POST', endpoint, 'NETWORK', err?.message ?? String(err));
+    throw new Error(`Facturador no disponible (${endpoint}): ${err?.message ?? err}`);
+  }
+
+  if (res.status === 422 || res.ok) {
+    const json = await res.json() as { success: boolean; data: ComprobanteResponse };
+    if (res.status === 422) {
+      const tipoError = json.data?.tipo_error ?? 'RECHAZO';
+      const detalle = json.data?.error_detalle?.message ? ` | ${json.data.error_detalle.message}` : '';
+      log.err('POST', endpoint, 422, `[${tipoError}] ${json.data?.responseCode} — ${json.data?.responseMessage}${detalle}`);
+    } else {
+      log.ok('POST', endpoint, res.status);
+    }
+    return json;
+  }
+
+  const errText = await res.text().catch(() => res.statusText);
+  log.err('POST', endpoint, res.status, errText);
+  throw new Error(`Facturador nota-credito → ${res.status}: ${errText}`);
+}
+
 // ── Certificate conversion ─────────────────────────────────────────────────────
 
 export interface CertificateResult {

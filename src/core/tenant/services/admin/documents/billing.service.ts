@@ -12,7 +12,7 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen, diagnosticarEmision } from '../../../../../utils/facturador-client';
+import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1026,4 +1026,241 @@ export async function checkVoidStatus(id: number) {
     .returning();
 
   return updated;
+}
+
+// ── Nota de Crédito ───────────────────────────────────────────────────────────
+
+export interface CreateNotaCreditoInput {
+  referencedDocumentId: number;  // ID del doc original (factura o boleta)
+  seriesId: number;              // Serie NC del tenant (FC-xxx o BC-xxx)
+  motivo: CodigoMotivoNC;        // '01'=Anulación, '06'=Devolución, etc.
+  motivoDescripcion: string;
+  notes?: string;
+  createdBy?: string;
+}
+
+/**
+ * Emite una Nota de Crédito electrónica (tipo_doc 07) vinculada a un documento
+ * previo (factura o boleta). Usa el mismo endpoint en el facturador para ambos tipos;
+ * la diferencia es la serie (FC-xxx → factura, BC-xxx → boleta) y
+ * documento_afectado.tipo_doc ('01' o '03').
+ */
+export async function createNotaCredito(input: CreateNotaCreditoInput) {
+  const db = getTenantDb();
+
+  const [originalDoc] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, input.referencedDocumentId));
+
+  if (!originalDoc) throw new Error('Documento original no encontrado');
+  if (originalDoc.documentType !== 'factura' && originalDoc.documentType !== 'boleta') {
+    throw new Error('Solo se puede emitir Nota de Crédito sobre facturas o boletas');
+  }
+  if (originalDoc.status === 'voided') throw new Error('El documento original ya está anulado');
+  if (originalDoc.sunatStatus !== 'ACEPTADO') {
+    throw new Error('Solo se puede emitir NC sobre documentos aceptados por SUNAT');
+  }
+
+  // Verificar que no exista ya una NC activa sobre este documento
+  const existingNC = await db
+    .select({ id: billingDocuments.id })
+    .from(billingDocuments)
+    .where(
+      and(
+        eq(billingDocuments.referencedDocumentId, input.referencedDocumentId),
+        sql`${billingDocuments.documentType} = 'nota_de_credito'`,
+        sql`${billingDocuments.status} != 'voided'`,
+      )
+    )
+    .limit(1);
+
+  if (existingNC.length) throw new Error('Ya existe una Nota de Crédito activa para este documento');
+
+  const lines = await db
+    .select()
+    .from(billingDocumentLines)
+    .where(eq(billingDocumentLines.documentId, input.referencedDocumentId));
+
+  const taxRate = toNum(originalDoc.taxRate);
+
+  // Transacción: reservar correlativo + insertar NC
+  const { docId } = await db.transaction(async (tx) => {
+    const [series] = await tx
+      .select()
+      .from(billingSeries)
+      .where(eq(billingSeries.id, input.seriesId))
+      .for('update');
+
+    if (!series || !series.isActive) throw new Error('Serie NC no encontrada o inactiva');
+    if (series.documentType !== 'nota_de_credito') {
+      throw new Error(`La serie '${series.series}' no es de tipo nota_de_credito`);
+    }
+
+    const sequential = series.lastSequential + 1;
+    const documentNumber = `${series.series}-${padSequential(sequential)}`;
+
+    await tx
+      .update(billingSeries)
+      .set({ lastSequential: sequential, updatedAt: new Date() })
+      .where(eq(billingSeries.id, series.id));
+
+    const [doc] = await tx
+      .insert(billingDocuments)
+      .values({
+        branchId: originalDoc.branchId,
+        orderId: originalDoc.orderId,
+        splitId: originalDoc.splitId ?? null,
+        seriesId: series.id,
+        documentType: 'nota_de_credito',
+        series: series.series,
+        sequential,
+        documentNumber,
+        referencedDocumentId: originalDoc.id,
+        buyerDocType: originalDoc.buyerDocType,
+        buyerDocNumber: originalDoc.buyerDocNumber,
+        buyerName: originalDoc.buyerName,
+        buyerAddress: originalDoc.buyerAddress,
+        buyerEmail: originalDoc.buyerEmail,
+        subtotal: originalDoc.subtotal,
+        taxRate: originalDoc.taxRate,
+        taxAmount: originalDoc.taxAmount,
+        total: originalDoc.total,
+        currency: originalDoc.currency,
+        status: 'issued',
+        notes: input.notes ?? null,
+        createdBy: input.createdBy ?? null,
+        issuedAt: new Date(),
+      })
+      .returning();
+
+    const lineRows = lines.map((l) => ({
+      documentId: doc.id,
+      productId: l.productId,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      alternativesDesc: l.alternativesDesc,
+      packagingFee: l.packagingFee,
+      subtotal: l.subtotal,
+      taxAmount: l.taxAmount,
+      lineTotal: l.lineTotal,
+      notes: l.notes,
+    }));
+
+    await tx.insert(billingDocumentLines).values(lineRows);
+
+    return { docId: doc.id };
+  });
+
+  // Emitir NC en el facturador (fuera de la TX)
+  const [savedNC] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, docId));
+
+  let sunatUpdate: Record<string, unknown>;
+
+  try {
+    const { ruc } = await resolveFacturadorConfig(db, savedNC.branchId);
+
+    const tipoDocOriginal = originalDoc.documentType === 'factura' ? '01' : '03';
+    const buyerTipoDoc = savedNC.buyerDocType === 'RUC' ? '6' : savedNC.buyerDocType === 'DNI' ? '1' : '0';
+
+    const lineCalcs = lines.map((l) => {
+      const subtotal = toNum(l.subtotal);
+      const taxAmount = toNum(l.taxAmount);
+      const lineTotal = toNum(l.lineTotal);
+      const qty = l.quantity;
+      return {
+        codigo: String(l.productId ?? l.id),
+        unidad_medida: 'NIU',
+        descripcion: l.alternativesDesc ? `${l.productName} (${l.alternativesDesc})` : l.productName,
+        cantidad: qty,
+        valor_unitario: roundMoney(subtotal / qty),
+        valor_venta: subtotal,
+        base_igv: subtotal,
+        porcentaje_igv: taxRate,
+        igv: taxAmount,
+        tipo_afectacion: '10',
+        total_impuestos: taxAmount,
+        precio_unitario: roundMoney(lineTotal / qty),
+      };
+    });
+
+    const res = await emitirNotaCredito({
+      emisor: { ruc },
+      cliente: {
+        tipo_documento: buyerTipoDoc,
+        numero_documento: savedNC.buyerDocNumber ?? '00000000',
+        razon_social: savedNC.buyerName ?? 'CLIENTE FINAL',
+        ...(savedNC.buyerAddress ? { direccion: savedNC.buyerAddress } : {}),
+      },
+      comprobante: {
+        tipo_doc: '07',
+        serie: savedNC.series,
+        correlativo: String(savedNC.sequential).padStart(8, '0'),
+        fecha_emision: new Date(savedNC.issuedAt!).toISOString().replace('Z', '-05:00'),
+        moneda: savedNC.currency,
+      },
+      documento_afectado: {
+        tipo_doc: tipoDocOriginal,
+        serie: originalDoc.series,
+        correlativo: String(originalDoc.sequential).padStart(8, '0'),
+      },
+      motivo: {
+        codigo: input.motivo,
+        descripcion: input.motivoDescripcion,
+      },
+      totales: {
+        gravadas: toNum(savedNC.subtotal),
+        igv: toNum(savedNC.taxAmount),
+        total_impuestos: toNum(savedNC.taxAmount),
+        valor_venta: toNum(savedNC.subtotal),
+        subtotal: toNum(savedNC.total),
+        total: toNum(savedNC.total),
+      },
+      detalles: lineCalcs,
+      leyenda: montoEnLetras(toNum(savedNC.total), savedNC.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
+    });
+
+    let sunatMsg = res.data.responseMessage ?? null;
+    if (!res.success && res.data.tipo_error) {
+      const parts = [`[${res.data.tipo_error}]`];
+      if (sunatMsg) parts.push(sunatMsg);
+      if (res.data.error_detalle?.message && res.data.error_detalle.message !== sunatMsg) {
+        parts.push(`Detalle: ${res.data.error_detalle.message}`);
+      }
+      sunatMsg = parts.join(' — ');
+    }
+
+    sunatUpdate = {
+      sunat_status: res.success ? 'ACEPTADO' : 'RECHAZADO',
+      sunat_code: res.data.responseCode ?? null,
+      sunat_message: sunatMsg,
+      xml_hash: res.data.hash ?? null,
+      xml_filename: res.data.xmlFilename ?? null,
+      facturador_comprobante_id: res.data.id ?? null,
+    };
+  } catch (err: any) {
+    sunatUpdate = {
+      sunat_status: 'ERROR',
+      sunat_message: err?.message ?? 'Error al conectar con el facturador',
+    };
+  }
+
+  await db
+    .update(billingDocuments)
+    .set({
+      sunatStatus: sunatUpdate['sunat_status'] as string,
+      sunatCode: sunatUpdate['sunat_code'] as string | null,
+      sunatMessage: sunatUpdate['sunat_message'] as string | null,
+      xmlHash: sunatUpdate['xml_hash'] as string | null,
+      xmlFilename: sunatUpdate['xml_filename'] as string | null,
+      facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
+      updatedAt: new Date(),
+    })
+    .where(eq(billingDocuments.id, docId));
+
+  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, docId));
+  const finalLines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, docId));
+
+  return { document: final, lines: finalLines };
 }

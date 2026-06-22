@@ -9,7 +9,7 @@ export const billingSeries = pgTable('billing_series', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id), // Serie es por sucursal
 	documentType: varchar('document_type', { length: 20,
-		enum: ['factura', 'boleta', 'nota_de_venta'] as const }).notNull(),
+		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull().unique(),
 	lastSequential: integer('last_sequential').notNull().default(0),
 	priceInclTax: boolean('price_incl_tax').notNull().default(false),
@@ -29,10 +29,11 @@ export const billingDocuments = pgTable('billing_documents', {
 	splitId: integer('split_id').references(() => orderSplits.id),
 	seriesId: integer('series_id').notNull().references(() => billingSeries.id),
 	documentType: varchar('document_type', { length: 20,
-		enum: ['factura', 'boleta', 'nota_de_venta'] as const }).notNull(),
+		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull(),
 	sequential: integer('sequential').notNull(),
 	documentNumber: varchar('document_number', { length: 20 }).notNull().unique(),
+	referencedDocumentId: integer('referenced_document_id'), // NC → ID del doc original (factura/boleta)
 
 	buyerDocType: varchar('buyer_doc_type', { length: 10,
 		enum: ['RUC', 'DNI', 'CE'] as const }),
