@@ -176,6 +176,20 @@
       "when": 1782180940125,
       "tag": "0024_add_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1782190843062,
+      "tag": "0025_remove_table_lobito_add_field_subcategorie",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1782193020810,
+      "tag": "0026_add_field_capacity_restaurant_tables",
+      "breakpoints": true
     }
   ]
 }

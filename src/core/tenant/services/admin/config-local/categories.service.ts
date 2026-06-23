@@ -1,21 +1,43 @@
 import { categories } from '@/db/tenant/schema';
-import { eq, asc, sql, or, isNull } from 'drizzle-orm';
+import { eq, asc, sql, or, isNull, and } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
- * Obtener todas las categorías
+ * Obtener todas las categorías principales (sin parentId)
  */
 export async function getAllCategories(branchId?: number) {
   const db = getTenantDb();
-  const query = db.select().from(categories);
+
+  const conditions = [isNull(categories.parentId)];
 
   if (branchId) {
-    return await query
-      .where(or(eq(categories.branchId, branchId), isNull(categories.branchId)))
-      .orderBy(asc(categories.order));
+    conditions.push(
+      or(eq(categories.branchId, branchId), isNull(categories.branchId))!
+    );
   }
 
-  return await query.orderBy(asc(categories.order));
+  return await db.select().from(categories)
+    .where(and(...conditions))
+    .orderBy(asc(categories.order));
+}
+
+/**
+ * Obtener subcategorías de una categoría padre
+ */
+export async function getSubcategoriesByParentId(parentId: number, branchId?: number) {
+  const db = getTenantDb();
+
+  const conditions = [eq(categories.parentId, parentId)];
+
+  if (branchId) {
+    conditions.push(
+      or(eq(categories.branchId, branchId), isNull(categories.branchId))!
+    );
+  }
+
+  return await db.select().from(categories)
+    .where(and(...conditions))
+    .orderBy(asc(categories.order));
 }
 
 /**
@@ -28,15 +50,20 @@ export async function getCategoryById(id: number) {
 }
 
 /**
- * Crear una nueva categoría
+ * Crear una nueva categoría o subcategoría
  */
 export async function createCategory(data: any) {
   const db = getTenantDb();
-  const [totalResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(categories);
 
-  if (Number(totalResult?.count || 0) >= 50) {
-    throw new Error('Solo se permite un máximo de 50 categorías por tenant');
+  // Si no tiene parentId, es categoría principal: limitar a 50
+  if (!data.parentId) {
+    const [totalResult] = await db.select({ count: sql<number>`count(*)` })
+      .from(categories)
+      .where(isNull(categories.parentId));
+
+    if (Number(totalResult?.count || 0) >= 50) {
+      throw new Error('Solo se permite un máximo de 50 categorías por tenant');
+    }
   }
 
   const [newCategory] = await db.insert(categories).values(data).returning();
