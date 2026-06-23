@@ -10,35 +10,19 @@ import { buildPermissionsForUser } from './rbac.service';
 async function getUserBranches(userId: number, roleCode: string | null) {
   const db = getTenantDb();
 
-  // Si es administrador, tiene acceso a todas las sucursales activas automáticamente
-  if (roleCode === 'rol_admin') {
-    const allBranches = await db
-      .select({
-        id: branches.id,
-        name: branches.name,
-        code: branches.code,
-        isMain: branches.isMain,
-        isActive: branches.isActive,
-        isDefault: branches.isMain,
-      })
-      .from(branches)
-      .where(eq(branches.isActive, true));
-    return allBranches;
-  }
-
-  const results = await db
+  const allBranches = await db
     .select({
       id: branches.id,
       name: branches.name,
       code: branches.code,
       isMain: branches.isMain,
       isActive: branches.isActive,
-      isDefault: userBranches.isDefault,
+      isDefault: branches.isMain,
     })
-    .from(userBranches)
-    .innerJoin(branches, eq(userBranches.branchId, branches.id))
-    .where(eq(userBranches.userId, userId));
-  return results;
+    .from(branches)
+    .where(eq(branches.isActive, true));
+  return allBranches;
+
 }
 
 function hashToken(token: string): string {
