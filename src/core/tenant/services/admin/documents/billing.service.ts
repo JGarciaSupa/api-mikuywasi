@@ -12,7 +12,7 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
-import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, enviarComunicacionBaja, enviarResumenDiarioBaja, consultarEstadoBaja, consultarEstadoResumen, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
+import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -874,13 +874,31 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
   if (doc.status !== 'issued') throw new Error(`No se puede anular un documento en estado '${doc.status}'`);
   if (!reason?.trim()) throw new Error('Se requiere un motivo de anulación');
 
-  const today = limaDateStr(new Date());
-  const issuedDate = limaDateStr(new Date(doc.issuedAt!));
+  let creditNoteNumber: string | null = null;
+  let creditNoteStatus: 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null = null;
 
-  // Anular localmente primero
+  // SUNAT: facturas y boletas aceptadas se anulan con Nota de Crédito (tipo 07).
+  if (
+    (doc.documentType === 'factura' || doc.documentType === 'boleta') &&
+    doc.sunatStatus === 'ACEPTADO'
+  ) {
+    const nc = await createCreditNoteForVoid(db, doc, reason.trim());
+    creditNoteNumber = nc.document?.documentNumber ?? null;
+    creditNoteStatus = nc.document?.sunatStatus as 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null;
+  }
+
+  // Anular localmente después de emitir la NC, porque createNotaCredito valida que
+  // el documento original aún no esté marcado como voided.
   await db
     .update(billingDocuments)
-    .set({ status: 'voided', voidedAt: new Date(), voidedReason: reason.trim(), updatedAt: new Date() })
+    .set({
+      status: 'voided',
+      voidedAt: new Date(),
+      voidedReason: reason.trim(),
+      voidedTicket: creditNoteNumber,
+      voidedSunatStatus: creditNoteStatus,
+      updatedAt: new Date(),
+    })
     .where(eq(billingDocuments.id, id));
 
   // Cancelar pedido asociado si se solicitó (revierte descuento de stock)
@@ -889,88 +907,71 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
     await updateOrderStatus(doc.orderId, 'cancelled');
   }
 
-  // Notificar a SUNAT solo si el comprobante fue aceptado previamente
-  if (
-    (doc.documentType === 'factura' || doc.documentType === 'boleta') &&
-    doc.sunatStatus === 'ACEPTADO'
-  ) {
-    await enviarBajaSunat(db, id, doc, reason.trim(), today, issuedDate);
-  }
-
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;
 }
 
-// ── Envío a SUNAT según tipo: factura→RA, boleta→Resumen Diario ───────────────
-
-async function enviarBajaSunat(
+async function createCreditNoteForVoid(
   db: TenantDb,
-  id: number,
   doc: typeof billingDocuments.$inferSelect,
   reason: string,
-  today: string,
-  issuedDate: string,
-): Promise<void> {
-  try {
-    const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
-    let success = false;
-    let ticket: string | null = null;
+) {
+  const seriesId = await ensureCreditNoteSeries(db, doc);
+  const nc = await createNotaCredito({
+    referencedDocumentId: doc.id,
+    seriesId,
+    motivo: '01',
+    motivoDescripcion: reason || 'ANULACION DE LA OPERACION',
+    notes: `Anulación de ${doc.documentNumber}`,
+    createdBy: 'system',
+  });
 
-    if (doc.documentType === 'factura') {
-      // Facturas: Comunicación de Baja (RA)
-      const res = await enviarComunicacionBaja({
-        emisor: { ruc },
-        fec_generacion: issuedDate,
-        fec_comunicacion: today,
-        documentos: [{
-          tipo_doc: '01',
-          serie: doc.series,
-          correlativo: String(doc.sequential).padStart(8, '0'),
-          des_motivo_baja: reason,
-        }],
-      });
-      success = res.success;
-      ticket = res.data?.ticket ?? null;
-    } else {
-      // Boletas: Resumen Diario (RC) con estado='3' (anulado)
-      // SUNAT error 2308: boletas NO pueden ir por RA
-      const buyerTipo = doc.buyerDocType === 'RUC' ? '6'
-        : doc.buyerDocType === 'DNI' ? '1'
-        : doc.buyerDocType === 'CE'  ? '4' : '0';
-
-      const res = await enviarResumenDiarioBaja({
-        emisor: { ruc },
-        fec_generacion: issuedDate,
-        fec_resumen: today,
-        documentos: [{
-          tipo_doc: '03',
-          serie_nro: `${doc.series}-${String(doc.sequential).padStart(8, '0')}`,
-          cliente_tipo: buyerTipo,
-          cliente_nro: doc.buyerDocNumber ?? '-',
-          estado: '3',
-          total: toNum(doc.total),
-          gravadas: toNum(doc.subtotal),
-          igv: toNum(doc.taxAmount),
-        }],
-      });
-      success = res.success;
-      ticket = res.data?.ticket ?? null;
-    }
-
-    await db
-      .update(billingDocuments)
-      .set({
-        voidedTicket: ticket,
-        voidedSunatStatus: success ? 'PENDIENTE' : 'ERROR',
-        updatedAt: new Date(),
-      })
-      .where(eq(billingDocuments.id, id));
-  } catch {
-    await db
-      .update(billingDocuments)
-      .set({ voidedSunatStatus: 'ERROR', updatedAt: new Date() })
-      .where(eq(billingDocuments.id, id));
+  if (nc.document?.sunatStatus !== 'ACEPTADO') {
+    throw new Error(`SUNAT no aceptó la Nota de Crédito: ${nc.document?.sunatMessage ?? 'sin detalle'}`);
   }
+
+  return nc;
+}
+
+async function ensureCreditNoteSeries(
+  db: TenantDb,
+  doc: typeof billingDocuments.$inferSelect,
+): Promise<number> {
+  const seriesCode = doc.documentType === 'factura' ? 'FC01' : 'BC01';
+
+  const [existing] = await db
+    .select()
+    .from(billingSeries)
+    .where(eq(billingSeries.series, seriesCode))
+    .limit(1);
+
+  if (existing) {
+    if (!existing.isActive) {
+      const [updated] = await db
+        .update(billingSeries)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(billingSeries.id, existing.id))
+        .returning();
+      return updated.id;
+    }
+    return existing.id;
+  }
+
+  const [created] = await db
+    .insert(billingSeries)
+    .values({
+      branchId: doc.branchId,
+      documentType: 'nota_de_credito',
+      series: seriesCode,
+      priceInclTax: true,
+      taxRate: doc.taxRate,
+      description: doc.documentType === 'factura'
+        ? 'Nota de crédito para facturas'
+        : 'Nota de crédito para boletas',
+    })
+    .returning();
+
+  return created.id;
 }
 
 // ── Retry SUNAT void communication ────────────────────────────────────────────
@@ -981,15 +982,23 @@ export async function retryVoidSunat(id: number) {
   if (!doc) throw new Error('Documento no encontrado');
   if (doc.status !== 'voided') throw new Error('Solo se puede reintentar la baja de documentos anulados');
   if (doc.sunatStatus !== 'ACEPTADO') throw new Error('El documento no fue aceptado por SUNAT, no requiere comunicación de baja');
-  if (doc.voidedSunatStatus === 'PENDIENTE' || doc.voidedSunatStatus === 'ACEPTADO') {
-    throw new Error('La comunicación de baja ya fue enviada y está en proceso o aceptada');
+  if (doc.voidedSunatStatus === 'ACEPTADO') {
+    throw new Error('La Nota de Crédito de anulación ya fue aceptada por SUNAT');
   }
 
-  const today = limaDateStr(new Date());
-  const issuedDate = limaDateStr(new Date(doc.issuedAt!));
   const reason = doc.voidedReason ?? 'ANULACION';
 
-  await enviarBajaSunat(db, id, doc, reason, today, issuedDate);
+  const originalForNc = { ...doc, status: 'issued' as const };
+  const nc = await createCreditNoteForVoid(db, originalForNc, reason);
+
+  await db
+    .update(billingDocuments)
+    .set({
+      voidedTicket: nc.document?.documentNumber ?? null,
+      voidedSunatStatus: nc.document?.sunatStatus as string,
+      updatedAt: new Date(),
+    })
+    .where(eq(billingDocuments.id, id));
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;
@@ -1043,33 +1052,47 @@ export async function diagnoseDocument(docId: number) {
   };
 }
 
-// ── Check void SUNAT status (consultar ticket PENDIENTE) ──────────────────────
+// ── Check void SUNAT status (consultar estado de la NC de anulación) ─────────
 
+/**
+ * Para Notas de Crédito (tipo 07) NO existe ticket asíncrono: SUNAT responde
+ * ACEPTADO/RECHAZADO de forma inmediata al emitirla. Por lo tanto, esta función
+ * solo se usa para reintentar la emisión cuando quedó en ERROR (p.ej. timeout
+ * de red) o para re-verificar el estado de la NC consultando el facturador.
+ *
+ * Si la NC ya está ACEPTADA/RECHAZADA, no hay nada que consultar — devolvemos
+ * el documento tal cual.
+ */
 export async function checkVoidStatus(id: number) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
   if (doc.status !== 'voided') throw new Error('Solo se puede consultar el estado de documentos anulados');
-  if (doc.voidedSunatStatus !== 'PENDIENTE' && doc.voidedSunatStatus !== 'RECHAZADO') {
-    throw new Error('El documento no tiene una comunicación de baja pendiente o en proceso');
+
+  // Si la NC ya tiene un estado terminal, no hay nada que consultar en SUNAT.
+  if (doc.voidedSunatStatus === 'ACEPTADO' || doc.voidedSunatStatus === 'RECHAZADO') {
+    return doc;
   }
-  if (!doc.voidedTicket) throw new Error('El documento no tiene ticket de SUNAT registrado');
 
-  const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
-
-  let newStatus: 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO';
-
-  if (doc.documentType === 'factura') {
-    const result = await consultarEstadoBaja(doc.voidedTicket, ruc);
-    newStatus = result.pending ? 'PENDIENTE' : result.success ? 'ACEPTADO' : 'RECHAZADO';
-  } else {
-    const result = await consultarEstadoResumen(doc.voidedTicket, ruc);
-    newStatus = result.pending ? 'PENDIENTE' : result.success ? 'ACEPTADO' : 'RECHAZADO';
+  // Solo ERROR (o null) amerita reintento: re-emitimos la NC.
+  if (doc.voidedSunatStatus !== 'ERROR' && doc.voidedSunatStatus !== null) {
+    throw new Error('La Nota de Crédito de anulación no requiere reintento');
   }
+
+  if (!doc.voidedReason) throw new Error('El documento no tiene motivo de anulación registrado');
+
+  // Re-emitir la NC. createCreditNoteForVoid valida que el doc original siga
+  // marcado como 'issued' en BD, así que restauramos temporalmente ese estado.
+  const originalForNc = { ...doc, status: 'issued' as const };
+  const nc = await createCreditNoteForVoid(db, originalForNc, doc.voidedReason);
 
   const [updated] = await db
     .update(billingDocuments)
-    .set({ voidedSunatStatus: newStatus, updatedAt: new Date() })
+    .set({
+      voidedTicket: nc.document?.documentNumber ?? null,
+      voidedSunatStatus: nc.document?.sunatStatus as string,
+      updatedAt: new Date(),
+    })
     .where(eq(billingDocuments.id, id))
     .returning();
 
