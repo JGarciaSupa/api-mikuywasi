@@ -1,4 +1,4 @@
-import { eq, asc, and, ne } from 'drizzle-orm';
+import { eq, asc, and, ne, desc } from 'drizzle-orm';
 import { billingSeries, billingDocuments } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
@@ -8,12 +8,16 @@ export interface CreateSeriesInput {
   branchId?: number;
   documentType: DocumentType;
   series: string;
+  initialSequential?: number;
+  lastSequential?: number;
   priceInclTax?: boolean;
   taxRate?: string;
   description?: string;
 }
 
 export interface UpdateSeriesInput {
+  initialSequential?: number;
+  lastSequential?: number;
   description?: string;
   priceInclTax?: boolean;
   taxRate?: string;
@@ -47,6 +51,20 @@ function validateSeriesFormat(documentType: DocumentType, series: string): void 
   }
 }
 
+function normalizeSequentialConfig(initialSequential?: number, lastSequential?: number) {
+  const normalizedInitial = Math.max(1, Math.trunc(initialSequential ?? 1));
+  const normalizedLast = Math.max(0, Math.trunc(lastSequential ?? (normalizedInitial - 1)));
+
+  if (normalizedLast < normalizedInitial - 1) {
+    throw new Error('El correlativo actual no puede ser menor al correlativo inicial menos 1');
+  }
+
+  return {
+    initialSequential: normalizedInitial,
+    lastSequential: normalizedLast,
+  };
+}
+
 export async function createSeries(input: CreateSeriesInput) {
   const db = getTenantDb();
 
@@ -54,6 +72,10 @@ export async function createSeries(input: CreateSeriesInput) {
   validateSeriesFormat(input.documentType, series);
   const priceInclTax = input.priceInclTax ??
     (input.documentType === 'boleta' || input.documentType === 'nota_de_venta');
+  const { initialSequential, lastSequential } = normalizeSequentialConfig(
+    input.initialSequential,
+    input.lastSequential,
+  );
 
   const [existing] = await db
     .select()
@@ -70,6 +92,8 @@ export async function createSeries(input: CreateSeriesInput) {
       branchId: input.branchId ?? 1,
       documentType: input.documentType,
       series,
+      initialSequential,
+      lastSequential,
       priceInclTax,
       taxRate: input.taxRate ?? '18',
       description: input.description ?? null,
@@ -100,9 +124,49 @@ export async function deleteSeries(id: number) {
 
 export async function updateSeries(id: number, input: UpdateSeriesInput) {
   const db = getTenantDb();
+  const [current] = await db.select().from(billingSeries).where(eq(billingSeries.id, id));
+  if (!current) throw new Error('Serie no encontrada');
+
+  const shouldUpdateSequentials =
+    input.initialSequential !== undefined || input.lastSequential !== undefined;
+
+  const sequentialConfig = shouldUpdateSequentials
+    ? normalizeSequentialConfig(
+        input.initialSequential ?? current.initialSequential,
+        input.lastSequential ?? current.lastSequential,
+      )
+    : null;
+
+  if (sequentialConfig) {
+    const [latestDocument] = await db
+      .select({ sequential: billingDocuments.sequential })
+      .from(billingDocuments)
+      .where(eq(billingDocuments.seriesId, id))
+      .orderBy(desc(billingDocuments.sequential))
+      .limit(1);
+
+    const highestUsedSequential = latestDocument?.sequential ?? 0;
+
+    if (sequentialConfig.lastSequential < highestUsedSequential) {
+      throw new Error(
+        `El correlativo actual no puede ser menor al último comprobante emitido (${String(highestUsedSequential).padStart(8, '0')})`
+      );
+    }
+
+    if (sequentialConfig.initialSequential > highestUsedSequential + 1) {
+      throw new Error(
+        `El correlativo inicial no puede ser mayor al siguiente correlativo disponible (${String(highestUsedSequential + 1).padStart(8, '0')})`
+      );
+    }
+  }
+
   const [row] = await db
     .update(billingSeries)
     .set({
+      ...(sequentialConfig && {
+        initialSequential: sequentialConfig.initialSequential,
+        lastSequential: sequentialConfig.lastSequential,
+      }),
       ...(input.description !== undefined && { description: input.description }),
       ...(input.priceInclTax !== undefined && { priceInclTax: input.priceInclTax }),
       ...(input.taxRate !== undefined && { taxRate: input.taxRate }),
@@ -112,6 +176,5 @@ export async function updateSeries(id: number, input: UpdateSeriesInput) {
     .where(eq(billingSeries.id, id))
     .returning();
 
-  if (!row) throw new Error('Serie no encontrada');
   return row;
 }

@@ -11,6 +11,7 @@ export const billingSeries = pgTable('billing_series', {
 	documentType: varchar('document_type', { length: 20,
 		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull().unique(),
+	initialSequential: integer('initial_sequential').notNull().default(1),
 	lastSequential: integer('last_sequential').notNull().default(0),
 	priceInclTax: boolean('price_incl_tax').notNull().default(false),
 	taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).notNull().default('18'),

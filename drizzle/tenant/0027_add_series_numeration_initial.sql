@@ -1,0 +1,1 @@
+ALTER TABLE "billing_series" ADD COLUMN "initial_sequential" integer DEFAULT 1 NOT NULL;
