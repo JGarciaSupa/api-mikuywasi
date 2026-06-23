@@ -1116,7 +1116,7 @@ export interface CreateNotaCreditoInput {
  * Emite una Nota de Crédito electrónica (tipo_doc 07) vinculada a un documento
  * previo (factura o boleta). Usa el mismo endpoint en el facturador para ambos tipos;
  * la diferencia es la serie (FC-xxx → factura, BC-xxx → boleta) y
- * documento_afectado.tipo_doc ('01' o '03').
+ * doc_afectado.tipo_doc ('01' o '03').
  */
 export async function createNotaCredito(input: CreateNotaCreditoInput) {
   const db = getTenantDb();
@@ -1273,10 +1273,9 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
         fecha_emision: new Date(savedNC.issuedAt!).toISOString().replace('Z', '-05:00'),
         moneda: savedNC.currency,
       },
-      documento_afectado: {
+      doc_afectado: {
         tipo_doc: tipoDocOriginal,
-        serie: originalDoc.series,
-        correlativo: String(originalDoc.sequential).padStart(8, '0'),
+        numero: `${originalDoc.series}-${String(originalDoc.sequential).padStart(8, '0')}`,
       },
       motivo: {
         codigo: input.motivo,

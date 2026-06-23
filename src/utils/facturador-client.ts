@@ -553,7 +553,7 @@ export async function diagnosticarEmision(ruc: string): Promise<DiagnoseResult> 
 
 // ── Nota de Crédito (tipo_doc 07) ────────────────────────────────────────────
 // Un solo endpoint para factura Y boleta. La diferencia está en:
-//   - documento_afectado.tipo_doc: '01' = factura, '03' = boleta
+//   - doc_afectado.tipo_doc: '01' = factura, '03' = boleta
 //   - serie: FC-xxx para facturas, BC-xxx para boletas
 
 export type CodigoMotivoNC =
@@ -583,10 +583,9 @@ export interface NotaCreditoPayload {
     fecha_emision: string;    // ISO 8601 con zona Lima: -05:00
     moneda: string;
   };
-  documento_afectado: {
+  doc_afectado: {
     tipo_doc: '01' | '03';   // tipo del doc original
-    serie: string;
-    correlativo: string;
+    numero: string;           // formato "SERIE-CORRELATIVO" ej: "F001-00000001"
   };
   motivo: {
     codigo: CodigoMotivoNC;
@@ -613,7 +612,7 @@ export interface NotaCreditoPayload {
 export async function emitirNotaCredito(
   payload: NotaCreditoPayload,
 ): Promise<{ success: boolean; data: ComprobanteResponse }> {
-  const endpoint = '/api/v1/comprobantes/nota-credito';
+  const endpoint = '/api/v1/note/send';
   const url = `${BASE_URL}${endpoint}`;
   const init: RequestInit = {
     method: 'POST',
