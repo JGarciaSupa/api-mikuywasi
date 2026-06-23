@@ -10,6 +10,7 @@ import {
   deleteCategoryController,
   getAllCategoriesController,
   getCategoryByIdController,
+  getSubcategoriesController,
   reorderCategoriesController,
   updateCategoryController
 } from '../../../../controllers/admin/config-local/categories.controller';
@@ -24,5 +25,6 @@ routes.get('/:id', getCategoryByIdController);
 routes.patch('/:id', validateUpdateCategory, updateCategoryController);
 routes.delete('/:id', deleteCategoryController);
 routes.post('/reorder', validateReorderCategories, reorderCategoriesController);
+routes.get('/:parentId/subcategories', getSubcategoriesController);
 
 export default routes;

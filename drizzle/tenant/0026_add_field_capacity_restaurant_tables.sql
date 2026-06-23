@@ -1,0 +1,1 @@
+ALTER TABLE "restaurant_tables" ADD COLUMN "capacity" integer DEFAULT 1;

@@ -1,14 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
-
-export const tablaLobitoPrueba = pgTable('lobito_prueba', {
-	id: serial('id').primaryKey(),
-	nombre: varchar('nombre', { length: 100 }).notNull(),
-	edad: integer('edad').notNull(),
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-	deletedAt: timestamp('deleted_at', { withTimezone: true }),
-})
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // ==========================================
 // 🏪 SUCURSALES
@@ -153,6 +144,7 @@ export const tables = pgTable('restaurant_tables', {
 	branchId: integer('branch_id').notNull().references(() => branches.id),
 	name: varchar('name', { length: 50 }).notNull(), // Ej: 'Mesa 1'
 	slug: varchar('slug', { length: 8 }).notNull().unique(), // URL única del QR de la mesa
+	capacity: integer('capacity').default(1),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -169,6 +161,7 @@ export const tables = pgTable('restaurant_tables', {
 export const categories = pgTable('categories', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').references(() => branches.id),
+	parentId: integer('parent_id').references((): AnyPgColumn => categories.id, { onDelete: 'cascade' }),
 	name: varchar('name', { length: 50 }).notNull(),
 	order: integer('order').default(0),
 	isActive: boolean('is_active').default(true).notNull(),
@@ -179,6 +172,7 @@ export const categories = pgTable('categories', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('categories_branch_idx').on(table.branchId),
+	parentIdx: index('categories_parent_idx').on(table.parentId),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({

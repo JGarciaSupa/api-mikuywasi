@@ -33,6 +33,7 @@ export interface CreateDocumentInput {
 export interface ListDocumentsFilters {
   page?: number;
   limit?: number;
+  branchId?: number;
   documentType?: string;
   status?: string;
   orderId?: string;
@@ -578,6 +579,7 @@ export async function listDocuments(filters: ListDocumentsFilters) {
 
   const conditions: any[] = [];
 
+  if (filters.branchId) conditions.push(eq(billingDocuments.branchId, filters.branchId));
   if (filters.documentType) conditions.push(eq(billingDocuments.documentType, filters.documentType as any));
   if (filters.status) conditions.push(eq(billingDocuments.status, filters.status as any));
   if (filters.orderId) conditions.push(eq(billingDocuments.orderId, filters.orderId));

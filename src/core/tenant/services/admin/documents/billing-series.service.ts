@@ -20,8 +20,15 @@ export interface UpdateSeriesInput {
   isActive?: boolean;
 }
 
-export async function listSeries() {
+export async function listSeries(branchId?: number) {
   const db = getTenantDb();
+  if (branchId) {
+    return db
+      .select()
+      .from(billingSeries)
+      .where(eq(billingSeries.branchId, branchId))
+      .orderBy(asc(billingSeries.documentType), asc(billingSeries.series));
+  }
   return db.select().from(billingSeries).orderBy(asc(billingSeries.documentType), asc(billingSeries.series));
 }
 

@@ -4,6 +4,7 @@ import {
   deleteCategory,
   getAllCategories,
   getCategoryById,
+  getSubcategoriesByParentId,
   reorderCategories,
   updateCategory
 } from '../../../services/admin/config-local/categories.service';
@@ -145,5 +146,32 @@ export const reorderCategoriesController = async (c: Context) => {
       success: false,
       message: error.message || 'Error al reordenar las categorías'
     }, 400);
+  }
+};
+
+export const getSubcategoriesController = async (c: Context) => {
+  try {
+    const parentIdParam = c.req.param('parentId');
+    if (!parentIdParam) {
+      return c.json({ success: false, message: 'ID de categoría padre requerido' }, 400);
+    }
+    const parentId = parseInt(parentIdParam, 10);
+    if (isNaN(parentId)) {
+      return c.json({ success: false, message: 'ID de categoría padre inválido' }, 400);
+    }
+
+    const branchIdQuery = c.req.query('branchId');
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+
+    const results = await getSubcategoriesByParentId(parentId, branchId);
+    return c.json({
+      success: true,
+      data: results
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener las subcategorías'
+    }, 500);
   }
 };

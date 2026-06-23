@@ -7,7 +7,9 @@ import { convertirCertificado } from '../../../../../utils/facturador-client';
 
 export const listSeriesController = async (c: Context) => {
   try {
-    const data = await billingSeriesService.listSeries();
+    const branchIdStr = c.req.query('branchId');
+    const branchId = branchIdStr && !isNaN(Number(branchIdStr)) ? Number(branchIdStr) : undefined;
+    const data = await billingSeriesService.listSeries(branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, message: error.message || 'Error al listar series' }, 500);
@@ -59,6 +61,7 @@ export const listDocumentsController = async (c: Context) => {
     const result = await billingService.listDocuments({
       page: q.page ? Number(q.page) : undefined,
       limit: q.limit ? Number(q.limit) : undefined,
+      branchId: q.branchId ? Number(q.branchId) : undefined,
       documentType: q.documentType,
       status: q.status,
       orderId: q.orderId,

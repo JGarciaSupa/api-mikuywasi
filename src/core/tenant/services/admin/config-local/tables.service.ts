@@ -30,7 +30,7 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string; branchId?: number }) {
+export async function createTable(data: { name: string; branchId?: number; capacity?: number }) {
   const db = getTenantDb();
   const branchId = data.branchId || 1;
 
@@ -52,6 +52,7 @@ export async function createTable(data: { name: string; branchId?: number }) {
         name: data.name,
         branchId,
         slug,
+        capacity: data.capacity ?? 1,
       }).returning();
 
       return newTable;
@@ -72,7 +73,7 @@ export async function createTable(data: { name: string; branchId?: number }) {
 /**
  * Actualizar una mesa existente
  */
-export async function updateTable(id: number, data: { name: string }) {
+export async function updateTable(id: number, data: { name: string; capacity?: number }) {
   const db = getTenantDb();
   const [updatedTable] = await db
     .update(tables)
