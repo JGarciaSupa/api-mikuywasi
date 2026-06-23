@@ -9,6 +9,7 @@ function toNum(v: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+const roundMoney = (val: number) => Number(val.toFixed(2));
 const roundQty = (val: number) => Number(val.toFixed(3));
 
 /**
@@ -176,6 +177,15 @@ export const getPaymentMethods = async () => {
 export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
   const db = getTenantDb();
   const { items } = orderData;
+  const subtotal = roundMoney(toNum(orderData.subtotal));
+  const deliveryFee = roundMoney(toNum(orderData.deliveryFee));
+  const retentionPercentage = roundMoney(toNum(orderData.retentionPercentage));
+  const retentionAmount = roundMoney(
+    orderData.retentionAmount !== undefined
+      ? toNum(orderData.retentionAmount)
+      : ((subtotal + deliveryFee) * retentionPercentage) / 100
+  );
+  const total = roundMoney(subtotal + deliveryFee + retentionAmount);
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -197,9 +207,11 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           tableName: orderData.tableName,
           paymentMethod: orderData.paymentMethod,
           notes: orderData.notes,
-          subtotal: orderData.subtotal.toString(),
-          deliveryFee: (orderData.deliveryFee || 0).toString(),
-          total: orderData.total.toString(),
+          subtotal: subtotal.toFixed(2),
+          deliveryFee: deliveryFee.toFixed(2),
+          retentionPercentage: retentionPercentage.toFixed(2),
+          retentionAmount: retentionAmount.toFixed(2),
+          total: total.toFixed(2),
           trackingCode,
           status: initialStatus,
           paymentStatus: 'unpaid',

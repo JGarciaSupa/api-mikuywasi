@@ -4,6 +4,9 @@ import * as splitsService from '../../../services/admin/documents/order-splits.s
 export const listSplitsController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const splits = await splitsService.listSplits(orderId);
     return c.json({ success: true, data: splits });
   } catch (error: any) {
@@ -14,6 +17,9 @@ export const listSplitsController = async (c: Context) => {
 export const createSplitController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const { label } = await c.req.json();
     const split = await splitsService.createSplit({ orderId, label: label || 'Cuenta' });
     return c.json({ success: true, data: split }, 201);
@@ -28,6 +34,9 @@ export const createSplitController = async (c: Context) => {
 export const updateSplitLabelController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const splitId = Number(c.req.param('splitId'));
     const { label } = await c.req.json();
     const split = await splitsService.updateSplitLabel(splitId, orderId, label);
@@ -41,6 +50,9 @@ export const updateSplitLabelController = async (c: Context) => {
 export const assignItemsController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const body = await c.req.json();
     const itemIds: number[] = body.itemIds;
     const splitId: number | null = body.splitId ?? null;
@@ -62,14 +74,21 @@ export const assignItemsController = async (c: Context) => {
 export const updateSplitPaymentController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const splitId = Number(c.req.param('splitId'));
-    const { paymentStatus, paymentMethod } = await c.req.json();
+    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
 
     if (!['unpaid', 'paid', 'review_pending'].includes(paymentStatus)) {
       return c.json({ success: false, message: 'Estado de pago inválido' }, 400);
     }
 
-    const split = await splitsService.updateSplitPayment(splitId, orderId, { paymentStatus, paymentMethod });
+    const split = await splitsService.updateSplitPayment(splitId, orderId, {
+      paymentStatus,
+      paymentMethod,
+      retentionPercentage,
+    });
     return c.json({ success: true, data: split });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404 : 500;
@@ -80,6 +99,9 @@ export const updateSplitPaymentController = async (c: Context) => {
 export const splitItemQtyController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const { itemId, qty, splitId } = await c.req.json();
 
     if (!itemId || !qty) {
@@ -100,6 +122,9 @@ export const splitItemQtyController = async (c: Context) => {
 export const deleteSplitController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
     const splitId = Number(c.req.param('splitId'));
     await splitsService.deleteSplit(splitId, orderId);
     return c.json({ success: true });

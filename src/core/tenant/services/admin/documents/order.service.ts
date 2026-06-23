@@ -2,6 +2,13 @@ import { orders, orderItems, orderItemExtras, productExtras } from '../../../../
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 
+const toNum = (value: unknown) => {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
 export interface GetOrdersFilters {
   page?: number;
   limit?: number;
@@ -170,12 +177,33 @@ export const updateOrderStatus = async (id: string, status: string) => {
 /**
  * Actualizar estado de pago
  */
-export const updateOrderPaymentStatus = async (id: string, paymentStatus: string) => {
+export const updateOrderPaymentStatus = async (
+  id: string,
+  paymentStatus: string,
+  paymentMethod?: string,
+  retentionPercentage?: number,
+) => {
   const db = getTenantDb();
+  const [order] = await db.select().from(orders).where(and(eq(orders.id, id)));
+  if (!order) return null;
+
+  const nextRetentionPercentage = paymentStatus === 'paid'
+    ? roundMoney(retentionPercentage ?? toNum(order.retentionPercentage))
+    : 0;
+  const baseAmount = toNum(order.subtotal) + toNum(order.deliveryFee);
+  const retentionAmount = paymentStatus === 'paid'
+    ? roundMoney((baseAmount * nextRetentionPercentage) / 100)
+    : 0;
+  const total = roundMoney(baseAmount + retentionAmount);
+
   const [updated] = await db
     .update(orders)
     .set({
       paymentStatus: paymentStatus as any,
+      ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+      retentionPercentage: nextRetentionPercentage.toFixed(2),
+      retentionAmount: retentionAmount.toFixed(2),
+      total: total.toFixed(2),
       updatedAt: new Date()
     })
     .where(and(eq(orders.id, id)))

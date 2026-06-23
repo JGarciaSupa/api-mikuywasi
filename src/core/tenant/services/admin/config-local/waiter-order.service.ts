@@ -2,6 +2,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import {
   orders,
   orderItems,
+  orderSplits,
   products,
   salesDischarge,
   salesDischargeLines,
@@ -107,11 +108,20 @@ async function recalcOrderTotals(
   const subtotal = ois.reduce((s, i) => s + toNum(i.totalPrice), 0);
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   const deliveryFee = toNum((order as any)?.deliveryFee ?? '0');
-  const total = roundMoney(subtotal + deliveryFee);
+  const splits = await db.select({ retentionAmount: orderSplits.retentionAmount }).from(orderSplits).where(eq(orderSplits.orderId, orderId));
+  const retentionAmount = splits.length > 0
+    ? roundMoney(splits.reduce((sum, split) => sum + toNum(split.retentionAmount), 0))
+    : roundMoney(((subtotal + deliveryFee) * toNum((order as any)?.retentionPercentage ?? '0')) / 100);
+  const total = roundMoney(subtotal + deliveryFee + retentionAmount);
 
   await db
     .update(orders)
-    .set({ subtotal: String(roundMoney(subtotal)), total: String(total), updatedAt: new Date() })
+    .set({
+      subtotal: String(roundMoney(subtotal)),
+      retentionAmount: String(retentionAmount),
+      total: String(total),
+      updatedAt: new Date(),
+    })
     .where(eq(orders.id, orderId));
 }
 

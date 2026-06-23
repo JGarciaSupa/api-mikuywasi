@@ -34,6 +34,7 @@ export async function createPaymentMethod(data: any) {
   const db = getTenantDb();
   const [newPaymentMethod] = await db.insert(paymentMethods).values({
     ...data,
+    retentionPercentage: (data.retentionPercentage ?? 0).toFixed(2),
     branchId: data.branchId ?? null,
   }).returning();
   return newPaymentMethod;
@@ -46,7 +47,13 @@ export async function updatePaymentMethod(id: number, data: any) {
   const db = getTenantDb();
   const [updatedPaymentMethod] = await db
     .update(paymentMethods)
-    .set({ ...data, updatedAt: new Date() })
+    .set({
+      ...data,
+      ...(data.retentionPercentage !== undefined
+        ? { retentionPercentage: Number(data.retentionPercentage).toFixed(2) }
+        : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(paymentMethods.id, id))
     .returning();
   return updatedPaymentMethod;

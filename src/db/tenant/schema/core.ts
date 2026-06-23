@@ -140,6 +140,7 @@ export const paymentMethods = pgTable('payment_methods', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 100 }).notNull(), // Ej: 'Yape', 'Efectivo', 'Visa'
 	branchId: integer('branch_id').references(() => branches.id), // null = disponible en todas las sedes
+	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -239,6 +240,8 @@ export const orders = pgTable('orders', {
 
 	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
 	deliveryFee: decimal('delivery_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
+	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
+	retentionAmount: decimal('retention_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	total: decimal('total', { precision: 10, scale: 2 }).notNull(),
 
 	status: text('status', {
@@ -269,6 +272,8 @@ export const orderSplits = pgTable('order_splits', {
 	}).default('unpaid').notNull(),
 	paymentMethod: text('payment_method'),
 	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull().default('0.00'),
+	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
+	retentionAmount: decimal('retention_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	total: decimal('total', { precision: 10, scale: 2 }).notNull().default('0.00'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

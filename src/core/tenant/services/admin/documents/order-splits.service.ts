@@ -17,6 +17,7 @@ export interface AssignItemsInput {
 export interface UpdateSplitPaymentInput {
   paymentStatus: 'unpaid' | 'paid' | 'review_pending';
   paymentMethod?: string;
+  retentionPercentage?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -28,12 +29,19 @@ async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: nu
     .where(eq(orderItems.splitId, splitId));
 
   const total = items.reduce((s, i) => s + parseFloat(i.totalPrice), 0);
+  const [split] = await db
+    .select({ retentionPercentage: orderSplits.retentionPercentage })
+    .from(orderSplits)
+    .where(eq(orderSplits.id, splitId));
+  const retentionPercentage = Number(split?.retentionPercentage ?? 0);
+  const retentionAmount = (total * retentionPercentage) / 100;
 
   await db
     .update(orderSplits)
     .set({
       subtotal: String(total.toFixed(2)),
-      total: String(total.toFixed(2)),
+      retentionAmount: String(retentionAmount.toFixed(2)),
+      total: String((total + retentionAmount).toFixed(2)),
       updatedAt: new Date(),
     })
     .where(eq(orderSplits.id, splitId));
@@ -61,6 +69,7 @@ export async function createSplit(input: CreateSplitInput) {
     })
     .returning();
 
+  await syncOrderPaymentStatus(db, input.orderId);
   return split;
 }
 
@@ -162,6 +171,7 @@ export async function assignItems(orderId: string, input: AssignItemsInput) {
     await recalcSplitTotals(db, sid);
   }
 
+  await syncOrderPaymentStatus(db, orderId);
   return listSplits(orderId);
 }
 
@@ -169,11 +179,33 @@ export async function assignItems(orderId: string, input: AssignItemsInput) {
 
 async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderId: string) {
   const splits = await db
-    .select({ paymentStatus: orderSplits.paymentStatus })
+    .select({
+      paymentStatus: orderSplits.paymentStatus,
+      retentionAmount: orderSplits.retentionAmount,
+    })
     .from(orderSplits)
     .where(eq(orderSplits.orderId, orderId));
 
-  if (splits.length === 0) return;
+  if (splits.length === 0) {
+    const [order] = await db
+      .select({
+        subtotal: orders.subtotal,
+        deliveryFee: orders.deliveryFee,
+      })
+      .from(orders)
+      .where(eq(orders.id, orderId));
+    const baseAmount = Number(order?.subtotal ?? 0) + Number(order?.deliveryFee ?? 0);
+    await db
+      .update(orders)
+      .set({
+        paymentStatus: 'unpaid',
+        retentionAmount: '0.00',
+        total: baseAmount.toFixed(2),
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId));
+    return;
+  }
 
   const allPaid  = splits.every((s) => s.paymentStatus === 'paid');
   const somePaid = splits.some((s)  => s.paymentStatus === 'paid');
@@ -183,9 +215,25 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
     somePaid ? 'review_pending' :
                'unpaid';
 
+  const [order] = await db
+    .select({
+      subtotal: orders.subtotal,
+      deliveryFee: orders.deliveryFee,
+    })
+    .from(orders)
+    .where(eq(orders.id, orderId));
+  const baseAmount = Number(order?.subtotal ?? 0) + Number(order?.deliveryFee ?? 0);
+  const retentionAmount = splits.reduce((sum, split) => sum + Number(split.retentionAmount ?? 0), 0);
+  const total = baseAmount + retentionAmount;
+
   await db
     .update(orders)
-    .set({ paymentStatus: newStatus, updatedAt: new Date() })
+    .set({
+      paymentStatus: newStatus,
+      retentionAmount: retentionAmount.toFixed(2),
+      total: total.toFixed(2),
+      updatedAt: new Date(),
+    })
     .where(eq(orders.id, orderId));
 }
 
@@ -201,11 +249,22 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
 
   if (!split) throw new Error('Cuenta no encontrada');
 
+  const baseAmount = Number(split.subtotal ?? 0);
+  const retentionPercentage = input.paymentStatus === 'paid'
+    ? Number((input.retentionPercentage ?? split.retentionPercentage ?? 0))
+    : 0;
+  const retentionAmount = input.paymentStatus === 'paid'
+    ? (baseAmount * retentionPercentage) / 100
+    : 0;
+
   const [updated] = await db
     .update(orderSplits)
     .set({
       paymentStatus: input.paymentStatus,
       ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
+      retentionPercentage: retentionPercentage.toFixed(2),
+      retentionAmount: retentionAmount.toFixed(2),
+      total: (baseAmount + retentionAmount).toFixed(2),
       updatedAt: new Date(),
     })
     .where(eq(orderSplits.id, splitId))
@@ -244,6 +303,7 @@ export async function deleteSplit(splitId: number, orderId: string) {
   await db.update(orderItems).set({ splitId: null }).where(eq(orderItems.splitId, splitId));
 
   await db.delete(orderSplits).where(eq(orderSplits.id, splitId));
+  await syncOrderPaymentStatus(db, orderId);
 }
 
 // ── Split item quantity (creates a new item with the given qty, reduces original) ─
@@ -302,6 +362,7 @@ export async function splitItemQuantity(
   if (targetSplitId !== null) splitsToRecalc.add(targetSplitId);
   for (const sid of splitsToRecalc) await recalcSplitTotals(db, sid);
 
+  await syncOrderPaymentStatus(db, orderId);
   return listSplits(orderId);
 }
 

@@ -178,11 +178,16 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const { paymentStatus } = await c.req.json();
+    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
     if (!paymentStatus) {
       return c.json({ success: false, message: 'El campo paymentStatus es requerido' }, 400);
     }
-    const updated = await orderService.updateOrderPaymentStatus(orderId, paymentStatus);
+    const updated = await orderService.updateOrderPaymentStatus(
+      orderId,
+      paymentStatus,
+      paymentMethod,
+      retentionPercentage,
+    );
     if (!updated) {
       return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
     }

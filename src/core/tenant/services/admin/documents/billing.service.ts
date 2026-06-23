@@ -798,6 +798,53 @@ export async function getDocumentReceipt(id: number) {
   // Emisor siempre desde el microservicio facturador (empresa SUNAT configurada)
   const emisor = await resolveEmisor(db, doc.branchId);
 
+  let paymentSummary: {
+    paymentMethod: string | null;
+    retentionPercentage: string;
+    retentionAmount: string;
+    chargedTotal: string;
+  } | null = null;
+
+  if (doc.splitId != null) {
+    const [split] = await db
+      .select({
+        paymentMethod: orderSplits.paymentMethod,
+        retentionPercentage: orderSplits.retentionPercentage,
+        retentionAmount: orderSplits.retentionAmount,
+        total: orderSplits.total,
+      })
+      .from(orderSplits)
+      .where(and(eq(orderSplits.id, doc.splitId), eq(orderSplits.orderId, doc.orderId)));
+
+    if (split) {
+      paymentSummary = {
+        paymentMethod: split.paymentMethod ?? null,
+        retentionPercentage: split.retentionPercentage ?? '0.00',
+        retentionAmount: split.retentionAmount ?? '0.00',
+        chargedTotal: split.total ?? doc.total,
+      };
+    }
+  } else {
+    const [order] = await db
+      .select({
+        paymentMethod: orders.paymentMethod,
+        retentionPercentage: orders.retentionPercentage,
+        retentionAmount: orders.retentionAmount,
+        total: orders.total,
+      })
+      .from(orders)
+      .where(eq(orders.id, doc.orderId));
+
+    if (order) {
+      paymentSummary = {
+        paymentMethod: order.paymentMethod ?? null,
+        retentionPercentage: order.retentionPercentage ?? '0.00',
+        retentionAmount: order.retentionAmount ?? '0.00',
+        chargedTotal: order.total ?? doc.total,
+      };
+    }
+  }
+
   return {
     document: doc,
     lines,
@@ -808,6 +855,7 @@ export async function getDocumentReceipt(id: number) {
       email: branch?.email ?? null,
       address: branch?.address?.fullAddress ?? null,
     },
+    paymentSummary,
   };
 }
 

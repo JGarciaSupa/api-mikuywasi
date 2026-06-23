@@ -169,6 +169,13 @@
       "when": 1781924968958,
       "tag": "0023_roles_old_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1782180940125,
+      "tag": "0024_add_retention",
+      "breakpoints": true
     }
   ]
 }

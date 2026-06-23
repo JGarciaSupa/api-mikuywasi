@@ -120,7 +120,7 @@ export const updateOrderStatusController = async (c: Context) => {
 export const updateOrderPaymentStatusController = async (c: Context) => {
   try {
     const id = c.req.param('id');
-    const { paymentStatus } = await c.req.json();
+    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
@@ -130,7 +130,12 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
       return c.json({ success: false, message: 'El estado de pago es requerido' }, 400);
     }
 
-    const result = await orderService.updateOrderPaymentStatus(id, paymentStatus);
+    const result = await orderService.updateOrderPaymentStatus(
+      id,
+      paymentStatus,
+      paymentMethod,
+      retentionPercentage,
+    );
 
     return c.json({
       success: true,

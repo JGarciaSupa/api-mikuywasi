@@ -21,6 +21,8 @@ export const createOrderSchema = z.object({
 
   subtotal: z.number({ error: 'Subtotal es requerido' }),
   deliveryFee: z.number().default(0),
+  retentionPercentage: z.number().min(0).max(100).default(0),
+  retentionAmount: z.number().min(0).default(0),
   total: z.number({ error: 'Total es requerido' }),
 
   items: z.array(z.object({
