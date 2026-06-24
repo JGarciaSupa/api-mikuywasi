@@ -269,3 +269,58 @@ export const getDocumentPdfController = async (c: Context) => {
     return c.json({ success: false, message: error.message || 'Error al obtener PDF' }, status as any);
   }
 };
+
+export const createNotaCreditoDirectaController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const { motivo, motivoDescripcion, notes } = body;
+
+    if (!motivo || !motivoDescripcion) {
+      return c.json({ success: false, message: 'El motivo y su descripción son requeridos' }, 400);
+    }
+
+    const result = await billingService.emitirNotaCreditoDirecta(
+      id,
+      motivo,
+      motivoDescripcion,
+      notes,
+      (c as any).get?.('user')?.username,
+    );
+
+    if (result.document.sunatStatus !== 'ACEPTADO') {
+      return c.json(
+        {
+          success: false,
+          message: `SUNAT no aceptó la Nota de Crédito: ${result.document.sunatMessage ?? 'sin detalle'}`,
+          data: result,
+        },
+        422 as any,
+      );
+    }
+
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+      error.message?.includes('anulado') || error.message?.includes('aceptado') || error.message?.includes('Solo') ? 422 :
+      500;
+    return c.json({ success: false, message: error.message || 'Error al emitir Nota de Crédito' }, status as any);
+  }
+};
+
+export const createNotaCreditoExternaController = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    const result = await billingService.emitirNotaCreditoExterna(body);
+    if (!result.success) {
+      return c.json(
+        { success: false, message: result.data?.responseMessage ?? 'Facturador rechazó la Nota de Crédito', data: result },
+        422 as any,
+      );
+    }
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al emitir Nota de Crédito externa' }, 500);
+  }
+};

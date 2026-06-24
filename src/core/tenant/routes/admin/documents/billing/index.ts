@@ -19,6 +19,8 @@ import {
   getDocumentPdfController,
   convertCertificateController,
   diagnoseDocumentController,
+  createNotaCreditoDirectaController,
+  createNotaCreditoExternaController,
 } from '../../../../controllers/admin/documents/billing.controller';
 
 const routes = new Hono();
@@ -48,5 +50,7 @@ routes.post('/documents/:id/void-retry', retryVoidSunatController);
 routes.post('/documents/:id/void', voidDocumentController);
 routes.post('/documents/:id/retry', retryDocumentController);
 routes.get('/documents/:id/diagnose', diagnoseDocumentController);
+routes.post('/documents/:id/credit-note', createNotaCreditoDirectaController);
+routes.post('/credit-note/external', createNotaCreditoExternaController);
 
 export default routes;

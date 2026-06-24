@@ -1467,3 +1467,144 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
 
   return { document: final, lines: finalLines };
 }
+
+// ── Nota de Crédito directa (con motivo elegible, sin pasar por void) ─────────
+
+export async function emitirNotaCreditoDirecta(
+  referencedDocumentId: number,
+  motivo: CodigoMotivoNC,
+  motivoDescripcion: string,
+  notes?: string,
+  createdBy?: string,
+) {
+  const db = getTenantDb();
+
+  const [originalDoc] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, referencedDocumentId));
+
+  if (!originalDoc) throw new Error('Documento original no encontrado');
+  if (originalDoc.documentType !== 'factura' && originalDoc.documentType !== 'boleta') {
+    throw new Error('Solo se puede emitir Nota de Crédito sobre facturas o boletas');
+  }
+  if (originalDoc.status === 'voided') throw new Error('El documento original ya está anulado');
+  if (originalDoc.sunatStatus !== 'ACEPTADO') {
+    throw new Error('Solo se puede emitir NC sobre documentos aceptados por SUNAT');
+  }
+
+  const seriesId = await ensureCreditNoteSeries(db, originalDoc);
+
+  return createNotaCredito({
+    referencedDocumentId,
+    seriesId,
+    motivo,
+    motivoDescripcion,
+    notes,
+    createdBy,
+  });
+}
+
+// ── Nota de Crédito externa (para documentos de sistemas anteriores) ──────────
+
+export interface CreateNotaCreditoExternaInput {
+  branchId?: number;
+  docAfectadoTipo: '01' | '03';
+  docAfectadoNumero: string;
+  serieNC: string;
+  correlativoNC: string;
+  motivo: CodigoMotivoNC;
+  motivoDescripcion: string;
+  buyerTipoDoc: string;
+  buyerNumeroDoc: string;
+  buyerNombre: string;
+  buyerDireccion?: string;
+  moneda: string;
+  gravadas: number;
+  igv: number;
+  total: number;
+  detalles: {
+    codigo: string;
+    descripcion: string;
+    cantidad: number;
+    valorUnitario: number;
+    igv: number;
+    precioUnitario: number;
+  }[];
+}
+
+export async function emitirNotaCreditoExterna(input: CreateNotaCreditoExternaInput) {
+  const db = getTenantDb();
+  if (!input.branchId) throw new Error('Se requiere seleccionar una sucursal con facturador configurado');
+  const { ruc } = await resolveFacturadorConfig(db, input.branchId);
+
+  const detalles = input.detalles.map((d) => ({
+    codigo: d.codigo,
+    unidad_medida: 'NIU',
+    descripcion: d.descripcion,
+    cantidad: d.cantidad,
+    valor_unitario: roundMoney(d.valorUnitario),
+    valor_venta: roundMoney(d.valorUnitario * d.cantidad),
+    base_igv: roundMoney(d.valorUnitario * d.cantidad),
+    porcentaje_igv: 18,
+    igv: roundMoney(d.igv),
+    tipo_afectacion: '10',
+    total_impuestos: roundMoney(d.igv),
+    precio_unitario: roundMoney(d.precioUnitario),
+  }));
+
+  const res = await emitirNotaCredito({
+    emisor: { ruc },
+    cliente: {
+      tipo_documento: input.buyerTipoDoc,
+      numero_documento: input.buyerNumeroDoc,
+      razon_social: input.buyerNombre,
+      ...(input.buyerDireccion ? { direccion: input.buyerDireccion } : {}),
+    },
+    comprobante: {
+      tipo_doc: '07',
+      serie: input.serieNC,
+      correlativo: input.correlativoNC.padStart(8, '0'),
+      fecha_emision: new Date().toISOString().replace('Z', '-05:00'),
+      moneda: input.moneda,
+    },
+    doc_afectado: {
+      tipo_doc: input.docAfectadoTipo,
+      numero: input.docAfectadoNumero,
+    },
+    motivo: {
+      codigo: input.motivo,
+      descripcion: input.motivoDescripcion,
+    },
+    totales: {
+      gravadas: input.gravadas,
+      igv: input.igv,
+      total_impuestos: input.igv,
+      valor_venta: input.gravadas,
+      subtotal: input.total,
+      total: input.total,
+    },
+    detalles,
+    leyenda: montoEnLetras(input.total, input.moneda === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
+  });
+
+  // Actualizar el last_sequential de la serie NC si fue aceptada
+  if (res.success) {
+    const [serie] = await db
+      .select()
+      .from(billingSeries)
+      .where(eq(billingSeries.series, input.serieNC))
+      .limit(1);
+    if (serie) {
+      const correlativo = parseInt(input.correlativoNC, 10);
+      if (correlativo > serie.lastSequential) {
+        await db
+          .update(billingSeries)
+          .set({ lastSequential: correlativo, updatedAt: new Date() })
+          .where(eq(billingSeries.id, serie.id));
+      }
+    }
+  }
+
+  return res;
+}
