@@ -35,6 +35,7 @@ export interface ListDocumentsFilters {
   limit?: number;
   branchId?: number;
   documentType?: string;
+  includeRelated?: boolean;
   status?: string;
   orderId?: string;
   startDate?: string;
@@ -580,6 +581,9 @@ export async function listDocuments(filters: ListDocumentsFilters) {
   const conditions: any[] = [];
 
   if (filters.branchId) conditions.push(eq(billingDocuments.branchId, filters.branchId));
+  if (!filters.includeRelated && !filters.documentType) {
+    conditions.push(sql`${billingDocuments.documentType} != 'nota_de_credito'`);
+  }
   if (filters.documentType) conditions.push(eq(billingDocuments.documentType, filters.documentType as any));
   if (filters.status) conditions.push(eq(billingDocuments.status, filters.status as any));
   if (filters.orderId) conditions.push(eq(billingDocuments.orderId, filters.orderId));
@@ -615,6 +619,42 @@ export async function listDocuments(filters: ListDocumentsFilters) {
   return {
     data,
     pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+  };
+}
+
+export async function getRelatedDocuments(id: number) {
+  const db = getTenantDb();
+
+  const [current] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, id));
+
+  if (!current) throw new Error('Documento no encontrado');
+
+  const baseDocumentId = current.referencedDocumentId ?? current.id;
+
+  const [baseDocument] = await db
+    .select()
+    .from(billingDocuments)
+    .where(eq(billingDocuments.id, baseDocumentId));
+
+  if (!baseDocument) throw new Error('Documento base no encontrado');
+
+  const relatedDocuments = await db
+    .select()
+    .from(billingDocuments)
+    .where(
+      and(
+        eq(billingDocuments.referencedDocumentId, baseDocumentId),
+        sql`${billingDocuments.documentType} = 'nota_de_credito'`
+      )
+    )
+    .orderBy(desc(billingDocuments.issuedAt));
+
+  return {
+    baseDocument,
+    relatedDocuments,
   };
 }
 
@@ -869,6 +909,21 @@ function limaDateStr(d: Date): string {
   return lima.toISOString().slice(0, 10);
 }
 
+function resolveParentSunatStateAfterVoid(
+  creditNoteStatus: 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null,
+  creditNoteNumber: string | null,
+) {
+  if (creditNoteStatus !== 'ACEPTADO') return {};
+
+  return {
+    sunatStatus: 'RECHAZADO' as const,
+    sunatCode: null,
+    sunatMessage: creditNoteNumber
+      ? `Comprobante anulado mediante Nota de Crédito ${creditNoteNumber} aceptada por SUNAT`
+      : 'Comprobante anulado mediante Nota de Crédito aceptada por SUNAT',
+  };
+}
+
 export async function voidDocument(id: number, reason: string, cancelOrder = false) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
@@ -899,6 +954,7 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
       voidedReason: reason.trim(),
       voidedTicket: creditNoteNumber,
       voidedSunatStatus: creditNoteStatus,
+      ...resolveParentSunatStateAfterVoid(creditNoteStatus, creditNoteNumber),
       updatedAt: new Date(),
     })
     .where(eq(billingDocuments.id, id));
@@ -976,6 +1032,121 @@ async function ensureCreditNoteSeries(
   return created.id;
 }
 
+async function emitAndUpdateCreditNote(
+  db: TenantDb,
+  savedNC: typeof billingDocuments.$inferSelect,
+  originalDoc: typeof billingDocuments.$inferSelect,
+  lines: typeof billingDocumentLines.$inferSelect[],
+  motivo: CodigoMotivoNC,
+  motivoDescripcion: string,
+) {
+  const taxRate = toNum(savedNC.taxRate);
+  let sunatUpdate: Record<string, unknown>;
+
+  try {
+    const { ruc } = await resolveFacturadorConfig(db, savedNC.branchId);
+
+    const tipoDocOriginal = originalDoc.documentType === 'factura' ? '01' : '03';
+    const buyerTipoDoc = savedNC.buyerDocType === 'RUC' ? '6' : savedNC.buyerDocType === 'DNI' ? '1' : '0';
+
+    const lineCalcs = lines.map((l) => {
+      const subtotal = toNum(l.subtotal);
+      const taxAmount = toNum(l.taxAmount);
+      const lineTotal = toNum(l.lineTotal);
+      const qty = l.quantity;
+      return {
+        codigo: String(l.productId ?? l.id),
+        unidad_medida: 'NIU',
+        descripcion: l.alternativesDesc ? `${l.productName} (${l.alternativesDesc})` : l.productName,
+        cantidad: qty,
+        valor_unitario: roundMoney(subtotal / qty),
+        valor_venta: subtotal,
+        base_igv: subtotal,
+        porcentaje_igv: taxRate,
+        igv: taxAmount,
+        tipo_afectacion: '10',
+        total_impuestos: taxAmount,
+        precio_unitario: roundMoney(lineTotal / qty),
+      };
+    });
+
+    const res = await emitirNotaCredito({
+      emisor: { ruc },
+      cliente: {
+        tipo_documento: buyerTipoDoc,
+        numero_documento: savedNC.buyerDocNumber ?? '00000000',
+        razon_social: savedNC.buyerName ?? 'CLIENTE FINAL',
+        ...(savedNC.buyerAddress ? { direccion: savedNC.buyerAddress } : {}),
+      },
+      comprobante: {
+        tipo_doc: '07',
+        serie: savedNC.series,
+        correlativo: String(savedNC.sequential).padStart(8, '0'),
+        fecha_emision: new Date(savedNC.issuedAt!).toISOString().replace('Z', '-05:00'),
+        moneda: savedNC.currency,
+      },
+      doc_afectado: {
+        tipo_doc: tipoDocOriginal,
+        numero: `${originalDoc.series}-${String(originalDoc.sequential).padStart(8, '0')}`,
+      },
+      motivo: {
+        codigo: motivo,
+        descripcion: motivoDescripcion,
+      },
+      totales: {
+        gravadas: toNum(savedNC.subtotal),
+        igv: toNum(savedNC.taxAmount),
+        total_impuestos: toNum(savedNC.taxAmount),
+        valor_venta: toNum(savedNC.subtotal),
+        subtotal: toNum(savedNC.total),
+        total: toNum(savedNC.total),
+      },
+      detalles: lineCalcs,
+      leyenda: montoEnLetras(toNum(savedNC.total), savedNC.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
+    });
+
+    let sunatMsg = res.data.responseMessage ?? null;
+    if (!res.success && res.data.tipo_error) {
+      const parts = [`[${res.data.tipo_error}]`];
+      if (sunatMsg) parts.push(sunatMsg);
+      if (res.data.error_detalle?.message && res.data.error_detalle.message !== sunatMsg) {
+        parts.push(`Detalle: ${res.data.error_detalle.message}`);
+      }
+      sunatMsg = parts.join(' — ');
+    }
+
+    sunatUpdate = {
+      sunat_status: res.success ? 'ACEPTADO' : 'RECHAZADO',
+      sunat_code: res.data.responseCode ?? null,
+      sunat_message: sunatMsg,
+      xml_hash: res.data.hash ?? null,
+      xml_filename: res.data.xmlFilename ?? null,
+      facturador_comprobante_id: res.data.id ?? null,
+    };
+  } catch (err: any) {
+    sunatUpdate = {
+      sunat_status: 'ERROR',
+      sunat_message: err?.message ?? 'Error al conectar con el facturador',
+    };
+  }
+
+  await db
+    .update(billingDocuments)
+    .set({
+      sunatStatus: sunatUpdate['sunat_status'] as string,
+      sunatCode: sunatUpdate['sunat_code'] as string | null,
+      sunatMessage: sunatUpdate['sunat_message'] as string | null,
+      xmlHash: sunatUpdate['xml_hash'] as string | null,
+      xmlFilename: sunatUpdate['xml_filename'] as string | null,
+      facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
+      updatedAt: new Date(),
+    })
+    .where(eq(billingDocuments.id, savedNC.id));
+
+  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, savedNC.id));
+  return final;
+}
+
 // ── Retry SUNAT void communication ────────────────────────────────────────────
 
 export async function retryVoidSunat(id: number) {
@@ -983,21 +1154,49 @@ export async function retryVoidSunat(id: number) {
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
   if (doc.status !== 'voided') throw new Error('Solo se puede reintentar la baja de documentos anulados');
-  if (doc.sunatStatus !== 'ACEPTADO') throw new Error('El documento no fue aceptado por SUNAT, no requiere comunicación de baja');
   if (doc.voidedSunatStatus === 'ACEPTADO') {
     throw new Error('La Nota de Crédito de anulación ya fue aceptada por SUNAT');
   }
+  if (doc.documentType !== 'factura' && doc.documentType !== 'boleta') {
+    throw new Error('Solo facturas o boletas anuladas pueden reintentar su Nota de Crédito');
+  }
 
   const reason = doc.voidedReason ?? 'ANULACION';
+  const [existingNC] = await db
+    .select()
+    .from(billingDocuments)
+    .where(
+      and(
+        eq(billingDocuments.referencedDocumentId, doc.id),
+        eq(billingDocuments.documentType, 'nota_de_credito')
+      )
+    )
+    .orderBy(desc(billingDocuments.issuedAt))
+    .limit(1);
 
-  const originalForNc = { ...doc, status: 'issued' as const };
-  const nc = await createCreditNoteForVoid(db, originalForNc, reason);
+  if (!existingNC) {
+    throw new Error('El documento no tiene una Nota de Crédito generada para reintentar');
+  }
+  if (existingNC.sunatStatus === 'ACEPTADO') {
+    throw new Error('La Nota de Crédito de anulación ya fue aceptada por SUNAT');
+  }
+
+  const lines = await db
+    .select()
+    .from(billingDocumentLines)
+    .where(eq(billingDocumentLines.documentId, existingNC.id));
+
+  const nc = await emitAndUpdateCreditNote(db, existingNC, doc, lines, '01', reason);
 
   await db
     .update(billingDocuments)
     .set({
-      voidedTicket: nc.document?.documentNumber ?? null,
-      voidedSunatStatus: nc.document?.sunatStatus as string,
+      voidedTicket: nc.documentNumber ?? null,
+      voidedSunatStatus: nc.sunatStatus as string,
+      ...resolveParentSunatStateAfterVoid(
+        nc.sunatStatus as 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null,
+        nc.documentNumber ?? null,
+      ),
       updatedAt: new Date(),
     })
     .where(eq(billingDocuments.id, id));
@@ -1073,6 +1272,17 @@ export async function checkVoidStatus(id: number) {
 
   // Si la NC ya tiene un estado terminal, no hay nada que consultar en SUNAT.
   if (doc.voidedSunatStatus === 'ACEPTADO' || doc.voidedSunatStatus === 'RECHAZADO') {
+    if (doc.voidedSunatStatus === 'ACEPTADO' && doc.sunatStatus !== 'RECHAZADO') {
+      const [synced] = await db
+        .update(billingDocuments)
+        .set({
+          ...resolveParentSunatStateAfterVoid(doc.voidedSunatStatus, doc.voidedTicket),
+          updatedAt: new Date(),
+        })
+        .where(eq(billingDocuments.id, id))
+        .returning();
+      return synced;
+    }
     return doc;
   }
 
@@ -1093,6 +1303,10 @@ export async function checkVoidStatus(id: number) {
     .set({
       voidedTicket: nc.document?.documentNumber ?? null,
       voidedSunatStatus: nc.document?.sunatStatus as string,
+      ...resolveParentSunatStateAfterVoid(
+        nc.document?.sunatStatus as 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null,
+        nc.document?.documentNumber ?? null,
+      ),
       updatedAt: new Date(),
     })
     .where(eq(billingDocuments.id, id))
@@ -1154,8 +1368,6 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
     .select()
     .from(billingDocumentLines)
     .where(eq(billingDocumentLines.documentId, input.referencedDocumentId));
-
-  const taxRate = toNum(originalDoc.taxRate);
 
   // Transacción: reservar correlativo + insertar NC
   const { docId } = await db.transaction(async (tx) => {
@@ -1228,110 +1440,14 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
 
   // Emitir NC en el facturador (fuera de la TX)
   const [savedNC] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, docId));
-
-  let sunatUpdate: Record<string, unknown>;
-
-  try {
-    const { ruc } = await resolveFacturadorConfig(db, savedNC.branchId);
-
-    const tipoDocOriginal = originalDoc.documentType === 'factura' ? '01' : '03';
-    const buyerTipoDoc = savedNC.buyerDocType === 'RUC' ? '6' : savedNC.buyerDocType === 'DNI' ? '1' : '0';
-
-    const lineCalcs = lines.map((l) => {
-      const subtotal = toNum(l.subtotal);
-      const taxAmount = toNum(l.taxAmount);
-      const lineTotal = toNum(l.lineTotal);
-      const qty = l.quantity;
-      return {
-        codigo: String(l.productId ?? l.id),
-        unidad_medida: 'NIU',
-        descripcion: l.alternativesDesc ? `${l.productName} (${l.alternativesDesc})` : l.productName,
-        cantidad: qty,
-        valor_unitario: roundMoney(subtotal / qty),
-        valor_venta: subtotal,
-        base_igv: subtotal,
-        porcentaje_igv: taxRate,
-        igv: taxAmount,
-        tipo_afectacion: '10',
-        total_impuestos: taxAmount,
-        precio_unitario: roundMoney(lineTotal / qty),
-      };
-    });
-
-    const res = await emitirNotaCredito({
-      emisor: { ruc },
-      cliente: {
-        tipo_documento: buyerTipoDoc,
-        numero_documento: savedNC.buyerDocNumber ?? '00000000',
-        razon_social: savedNC.buyerName ?? 'CLIENTE FINAL',
-        ...(savedNC.buyerAddress ? { direccion: savedNC.buyerAddress } : {}),
-      },
-      comprobante: {
-        tipo_doc: '07',
-        serie: savedNC.series,
-        correlativo: String(savedNC.sequential).padStart(8, '0'),
-        fecha_emision: new Date(savedNC.issuedAt!).toISOString().replace('Z', '-05:00'),
-        moneda: savedNC.currency,
-      },
-      doc_afectado: {
-        tipo_doc: tipoDocOriginal,
-        numero: `${originalDoc.series}-${String(originalDoc.sequential).padStart(8, '0')}`,
-      },
-      motivo: {
-        codigo: input.motivo,
-        descripcion: input.motivoDescripcion,
-      },
-      totales: {
-        gravadas: toNum(savedNC.subtotal),
-        igv: toNum(savedNC.taxAmount),
-        total_impuestos: toNum(savedNC.taxAmount),
-        valor_venta: toNum(savedNC.subtotal),
-        subtotal: toNum(savedNC.total),
-        total: toNum(savedNC.total),
-      },
-      detalles: lineCalcs,
-      leyenda: montoEnLetras(toNum(savedNC.total), savedNC.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
-    });
-
-    let sunatMsg = res.data.responseMessage ?? null;
-    if (!res.success && res.data.tipo_error) {
-      const parts = [`[${res.data.tipo_error}]`];
-      if (sunatMsg) parts.push(sunatMsg);
-      if (res.data.error_detalle?.message && res.data.error_detalle.message !== sunatMsg) {
-        parts.push(`Detalle: ${res.data.error_detalle.message}`);
-      }
-      sunatMsg = parts.join(' — ');
-    }
-
-    sunatUpdate = {
-      sunat_status: res.success ? 'ACEPTADO' : 'RECHAZADO',
-      sunat_code: res.data.responseCode ?? null,
-      sunat_message: sunatMsg,
-      xml_hash: res.data.hash ?? null,
-      xml_filename: res.data.xmlFilename ?? null,
-      facturador_comprobante_id: res.data.id ?? null,
-    };
-  } catch (err: any) {
-    sunatUpdate = {
-      sunat_status: 'ERROR',
-      sunat_message: err?.message ?? 'Error al conectar con el facturador',
-    };
-  }
-
-  await db
-    .update(billingDocuments)
-    .set({
-      sunatStatus: sunatUpdate['sunat_status'] as string,
-      sunatCode: sunatUpdate['sunat_code'] as string | null,
-      sunatMessage: sunatUpdate['sunat_message'] as string | null,
-      xmlHash: sunatUpdate['xml_hash'] as string | null,
-      xmlFilename: sunatUpdate['xml_filename'] as string | null,
-      facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
-      updatedAt: new Date(),
-    })
-    .where(eq(billingDocuments.id, docId));
-
-  const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, docId));
+  const final = await emitAndUpdateCreditNote(
+    db,
+    savedNC,
+    originalDoc,
+    lines,
+    input.motivo,
+    input.motivoDescripcion,
+  );
   const finalLines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, docId));
 
   return { document: final, lines: finalLines };

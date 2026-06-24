@@ -63,6 +63,7 @@ export const listDocumentsController = async (c: Context) => {
       limit: q.limit ? Number(q.limit) : undefined,
       branchId: q.branchId ? Number(q.branchId) : undefined,
       documentType: q.documentType,
+      includeRelated: q.includeRelated === 'true',
       status: q.status,
       orderId: q.orderId,
       startDate: q.startDate,
@@ -84,6 +85,17 @@ export const getDocumentController = async (c: Context) => {
     return c.json({ success: true, data: doc });
   } catch (error: any) {
     return c.json({ success: false, message: error.message || 'Error al obtener documento' }, 500);
+  }
+};
+
+export const getRelatedDocumentsController = async (c: Context) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const data = await billingService.getRelatedDocuments(id);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrado') ? 404 : 500;
+    return c.json({ success: false, message: error.message || 'Error al obtener documentos relacionados' }, status as any);
   }
 };
 

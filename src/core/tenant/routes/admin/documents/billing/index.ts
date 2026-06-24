@@ -7,6 +7,7 @@ import {
   deleteSeriesController,
   listDocumentsController,
   getDocumentController,
+  getRelatedDocumentsController,
   getDocumentReceiptController,
   previewDocumentController,
   createDocumentController,
@@ -36,6 +37,7 @@ routes.post('/certificate/convert', convertCertificateController);
 // Documents
 routes.get('/documents', listDocumentsController);
 routes.get('/documents/:id', getDocumentController);
+routes.get('/documents/:id/related', getRelatedDocumentsController);
 routes.get('/documents/:id/receipt', getDocumentReceiptController);
 routes.put('/documents/:id/correct', correctAndRetryController);
 routes.get('/documents/:id/pdf', getDocumentPdfController);
