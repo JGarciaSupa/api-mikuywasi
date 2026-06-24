@@ -1448,6 +1448,21 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
     input.motivo,
     input.motivoDescripcion,
   );
+
+  // Si el facturador/SUNAT no aceptó la NC, voidarla automáticamente para que
+  // el siguiente intento pueda usar un número nuevo sin bloqueo.
+  if (final.sunatStatus !== 'ACEPTADO') {
+    await db
+      .update(billingDocuments)
+      .set({
+        status: 'voided',
+        voidedAt: new Date(),
+        voidedReason: `Auto-anulada por fallo en emisión: ${final.sunatMessage ?? 'sin detalle'}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(billingDocuments.id, docId));
+  }
+
   const finalLines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, docId));
 
   return { document: final, lines: finalLines };
