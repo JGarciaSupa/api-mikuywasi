@@ -23,6 +23,7 @@ routes.put('/actions/:id', validateUpdateAction, rbac.updateAction);
 routes.get('/sub-actions', rbac.listSubActions);            // ?actionId=1
 routes.post('/sub-actions', validateCreateSubAction, rbac.createSubAction);
 routes.put('/sub-actions/:id', validateUpdateSubAction, rbac.updateSubAction);
+routes.post('/sub-actions/:id/grant-all-tenants', rbac.grantSubActionToAllTenants);
 
 // ── Roles Base (Plantillas globales) ─────────────────────────────────────────
 routes.get('/base-roles', rbac.listBaseRoles);

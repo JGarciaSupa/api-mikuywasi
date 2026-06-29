@@ -15,6 +15,8 @@ import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
 import { applyStockExit, applyStockEntry } from './../warehouse/shared/stock-movement.service';
 import { reverseDischargeForOrder } from './../warehouse/sales-discharge.service';
+import { reverseOrderSaleMovement } from './../documents/cash.service';
+import type { AuditActor } from './../warehouse/types';
 
 const EDITABLE_STATUSES = ['pending', 'confirmed', 'preparing'] as const;
 type EditableStatus = (typeof EDITABLE_STATUSES)[number];
@@ -356,7 +358,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
 // ── Cancel order ───────────────────────────────────────────────────────────────
 
-export async function cancelOrder(orderId: string) {
+export async function cancelOrder(orderId: string, actor?: AuditActor) {
   const db = getTenantDb();
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
@@ -366,6 +368,13 @@ export async function cancelOrder(orderId: string) {
   if (order.status === 'completed') throw new Error('No se puede cancelar un pedido completado');
 
   await reverseDischargeForOrder(orderId);
+
+  // Revertir el ingreso de caja si el pedido estaba cobrado. No bloquea la cancelación.
+  try {
+    await reverseOrderSaleMovement(orderId, actor);
+  } catch (e) {
+    console.error('No se pudo revertir el ingreso de caja del pedido', orderId, e);
+  }
 
   const [updated] = await db
     .update(orders)

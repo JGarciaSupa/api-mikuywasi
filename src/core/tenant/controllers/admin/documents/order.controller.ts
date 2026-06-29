@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import * as orderService from '../../../services/admin/documents/order.service';
+import { getAuditActor } from '@/utils/helpers';
 
 /**
  * Listado paginado de órdenes
@@ -120,7 +121,7 @@ export const updateOrderStatusController = async (c: Context) => {
 export const updateOrderPaymentStatusController = async (c: Context) => {
   try {
     const id = c.req.param('id');
-    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage } = await c.req.json();
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
@@ -135,6 +136,8 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
       paymentStatus,
       paymentMethod,
       retentionPercentage,
+      paymentMethodId ?? null,
+      getAuditActor(c),
     );
 
     return c.json({

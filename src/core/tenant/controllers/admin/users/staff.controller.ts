@@ -43,6 +43,10 @@ export const deleteStaffController = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') ?? '');
     if (isNaN(id)) return c.json({ success: false, message: 'ID de usuario inválido' }, 400);
+    const { userId } = c.get('jwtPayload');
+    if (id === userId) {
+      return c.json({ success: false, message: 'No puedes eliminar tu propio usuario' }, 400);
+    }
     const result = await staffService.deleteStaff(id);
     return c.json({ success: true, message: 'Usuario eliminado con éxito', data: result });
   } catch (error: any) {

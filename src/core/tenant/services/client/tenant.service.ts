@@ -3,6 +3,7 @@ import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
+import { findPaymentMethodByName } from '../admin/config-local/payment-method.service';
 
 function toNum(v: unknown) {
   const n = Number(v ?? 0);
@@ -186,6 +187,11 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
       : ((subtotal + deliveryFee) * retentionPercentage) / 100
   );
   const total = roundMoney(subtotal + deliveryFee + retentionAmount);
+
+  // Método de pago: en interno (POS) no se envía → null (se elige al cobrar).
+  // En web el cliente sí envía su método previsto → se guarda + resuelve su id (relación estable).
+  const pm = orderData.paymentMethod ? await findPaymentMethodByName(orderData.paymentMethod) : null;
+
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -205,8 +211,10 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           deliveryInfo: orderData.deliveryInfo,
           tableId: orderData.tableId,
           tableName: orderData.tableName,
-          paymentMethod: orderData.paymentMethod,
+          paymentMethod: orderData.paymentMethod ?? null, // null en interno; previsto en web
+          paymentMethodId: pm?.id ?? null,
           notes: orderData.notes,
+          cashSessionId: orderData.cashSessionId ?? null, // turno de caja (null en pedidos de cliente web)
           subtotal: subtotal.toFixed(2),
           deliveryFee: deliveryFee.toFixed(2),
           retentionPercentage: retentionPercentage.toFixed(2),

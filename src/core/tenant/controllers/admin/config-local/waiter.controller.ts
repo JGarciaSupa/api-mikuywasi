@@ -2,6 +2,8 @@ import type { Context } from 'hono';
 import * as tenantService from '../../../services/client/tenant.service';
 import * as waiterOrderService from '../../../services/admin/config-local/waiter-order.service';
 import * as orderService from '../../../services/admin/documents/order.service';
+import * as cashService from '../../../services/admin/documents/cash.service';
+import { getAuditActor } from '@/utils/helpers';
 
 /**
  * GET /api/admin/waiter/menu
@@ -34,9 +36,23 @@ export const getWaiterMenuController = async (c: Context) => {
  */
 export const createWaiterOrderController = async (c: Context) => {
   try {
+    // Regla: el usuario no puede registrar pedidos si no tiene una caja aperturada asociada a él.
+    const { userId } = c.get('jwtPayload') ?? {};
+    const activeSession = await cashService.getActiveSessionForUser(userId);
+    if (!activeSession) {
+      return c.json(
+        {
+          success: false,
+          message: 'No puedes registrar pedidos: no tienes un turno de caja abierto. Abre tu turno para continuar.',
+        },
+        409,
+      );
+    }
+
     const body = await c.req.json();
     await tenantService.validateOrderStockBeforeCreate(body);
-    const result = await tenantService.createOrder(body, 'confirmed');
+    // Vincular el pedido al turno abierto del usuario (de ahí salen caja + cajero para el ingreso)
+    const result = await tenantService.createOrder({ ...body, cashSessionId: activeSession.id }, 'confirmed');
 
     const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);
 
@@ -114,7 +130,7 @@ export const cancelOrderController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const result = await waiterOrderService.cancelOrder(orderId);
+    const result = await waiterOrderService.cancelOrder(orderId, getAuditActor(c));
     return c.json({ success: true, data: result });
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') ? 404
@@ -178,7 +194,7 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage } = await c.req.json();
     if (!paymentStatus) {
       return c.json({ success: false, message: 'El campo paymentStatus es requerido' }, 400);
     }
@@ -187,6 +203,8 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
       paymentStatus,
       paymentMethod,
       retentionPercentage,
+      paymentMethodId ?? null,
+      getAuditActor(c),
     );
     if (!updated) {
       return c.json({ success: false, message: 'Pedido no encontrado' }, 404);

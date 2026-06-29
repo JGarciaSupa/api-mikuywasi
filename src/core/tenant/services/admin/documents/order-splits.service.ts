@@ -1,6 +1,9 @@
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { orders, orderItems, orderSplits } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
+import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUser } from './cash.service';
+import { findPaymentMethodByName } from '../config-local/payment-method.service';
+import type { AuditActor } from '../warehouse/types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -17,6 +20,7 @@ export interface AssignItemsInput {
 export interface UpdateSplitPaymentInput {
   paymentStatus: 'unpaid' | 'paid' | 'review_pending';
   paymentMethod?: string;
+  paymentMethodId?: number | null;
   retentionPercentage?: number;
 }
 
@@ -182,6 +186,7 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
     .select({
       paymentStatus: orderSplits.paymentStatus,
       retentionAmount: orderSplits.retentionAmount,
+      paymentMethod: orderSplits.paymentMethod,
     })
     .from(orderSplits)
     .where(eq(orderSplits.orderId, orderId));
@@ -235,11 +240,14 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
       updatedAt: new Date(),
     })
     .where(eq(orders.id, orderId));
+
+  // El ingreso a caja se registra POR CADA cuenta/split al marcarse pagada
+  // (ver updateSplitPayment → recordSplitSaleIncome), no de forma consolidada aquí.
 }
 
 // ── Update split payment status ────────────────────────────────────────────────
 
-export async function updateSplitPayment(splitId: number, orderId: string, input: UpdateSplitPaymentInput) {
+export async function updateSplitPayment(splitId: number, orderId: string, input: UpdateSplitPaymentInput, actor?: AuditActor) {
   const db = getTenantDb();
 
   const [split] = await db
@@ -257,11 +265,18 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
     ? (baseAmount * retentionPercentage) / 100
     : 0;
 
+  // Preferir el id enviado (preciso); si no, resolver por nombre (fallback legacy).
+  const resolvedMethodId = input.paymentMethodId ?? (
+    input.paymentMethod !== undefined ? (await findPaymentMethodByName(input.paymentMethod))?.id ?? null : null
+  );
+
   const [updated] = await db
     .update(orderSplits)
     .set({
       paymentStatus: input.paymentStatus,
-      ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
+      ...(input.paymentMethod !== undefined || input.paymentMethodId !== undefined
+        ? { paymentMethod: input.paymentMethod ?? null, paymentMethodId: resolvedMethodId }
+        : {}),
       retentionPercentage: retentionPercentage.toFixed(2),
       retentionAmount: retentionAmount.toFixed(2),
       total: (baseAmount + retentionAmount).toFixed(2),
@@ -271,6 +286,22 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
     .returning();
 
   await syncOrderPaymentStatus(db, orderId);
+
+  // #5: ingreso a caja por cuenta/split. Al pagar registra; al desmarcar revierte.
+  // El ingreso va al turno del cajero que cobra (actor), no al del mozo que creó el pedido.
+  try {
+    if (input.paymentStatus === 'paid') {
+      const cajeraSession = await getActiveSessionForUser(actor?.userId);
+      if (!cajeraSession) throw new Error('Necesitas un turno de caja abierto para cobrar esta cuenta');
+      await recordSplitSaleIncome(splitId, actor, cajeraSession.id);
+    } else {
+      await reverseSplitSaleIncome(splitId, actor);
+    }
+  } catch (e: any) {
+    // Relanzar errores de guard (turno cerrado); silenciar errores internos de registro.
+    if (e?.message?.includes('turno de caja')) throw e;
+    console.error('No se pudo registrar/revertir el ingreso de caja de la cuenta', splitId, e);
+  }
 
   return updated;
 }

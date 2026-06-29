@@ -14,9 +14,11 @@ import kitchen from "./config-local/kitchen";
 import warehouse from "./warehouse";
 import dashboard from "./config-local/dashboard";
 import cash from "./documents/cash";
+import audit from "./documents/audit";
 import rbac from "./users/rbac";
 import billing from "./documents/billing";
 import branches from "./config-local/branches";
+import sunat from "./documents/sunat";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
@@ -41,8 +43,10 @@ routes.route('/kitchen', kitchen);
 routes.route('/warehouse', warehouse);
 routes.route('/dashboard', dashboard);
 routes.route('/cash', cash);
+routes.route('/audit', audit);
 routes.route('/rbac', rbac);
 routes.route('/billing', billing);
 routes.route('/branches', branches);
+routes.route('/sunat', sunat);
 
 export default routes;

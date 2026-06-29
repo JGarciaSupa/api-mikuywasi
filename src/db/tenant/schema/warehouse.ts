@@ -1,6 +1,6 @@
 import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, jsonb, uniqueIndex, date, bigserial } from 'drizzle-orm/pg-core';
-import { users, products, orders, branches } from './core';
+import { users, products, orders, branches, orderSplits } from './core';
 
 // ==========================================
 // 🏬 WAREHOUSE — CATALOGUE
@@ -593,19 +593,30 @@ export const salesDischargeLines = pgTable('sales_discharge_lines', {
 export const cashRegisters = pgTable('cash_registers', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id),
+	// Dueño/creador de la caja (se asigna automáticamente al usuario que la crea).
+	userId: integer('user_id').references(() => users.id),
 	name: varchar('name', { length: 100 }).notNull(),
+	// Tipo de cambio de la caja, registrado por quien la crea (editable).
+	exchangeRate: decimal('exchange_rate', { precision: 8, scale: 4 }).notNull().default('1'),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
 }, (table) => ({
 	branchIdx: index('cash_registers_branch_idx').on(table.branchId),
+	userIdx: index('cash_registers_user_idx').on(table.userId),
 }));
 
 export const cashSessions = pgTable('cash_sessions', {
 	id: serial('id').primaryKey(),
 	registerId: integer('register_id').references(() => cashRegisters.id),
 	branchId: integer('branch_id').notNull().references(() => branches.id),
-	code: varchar('code', { length: 30 }).notNull().unique(),
+	// Cajero del turno, capturado al abrir (denormalizado desde cash_registers.userId para histórico)
+	userId: integer('user_id').references(() => users.id),
+	// Correlativo del turno: YY + 7 dígitos (ej: '260000001'), reiniciado cada año por sucursal.
+	// El código NO es único global (se repite entre sucursales); la unicidad es por (branchId, code).
+	code: varchar('code', { length: 30 }).notNull(),
+	year: integer('year'), // año del correlativo (para el reinicio anual)
+	sequence: integer('sequence'), // secuencia cruda por (sucursal, año)
 	openedBy: varchar('opened_by', { length: 100 }).notNull(),
 	closedBy: varchar('closed_by', { length: 100 }),
 	openingBalance: decimal('opening_balance', { precision: 12, scale: 2 }).notNull().default('0'),
@@ -623,8 +634,11 @@ export const cashSessions = pgTable('cash_sessions', {
 	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow(),
 	closedAt: timestamp('closed_at', { withTimezone: true }),
 }, (table) => ({
+	branchCodeUnique: uniqueIndex('cash_sessions_branch_code_idx').on(table.branchId, table.code),
+	branchYearSeqUnique: uniqueIndex('cash_sessions_branch_year_seq_idx').on(table.branchId, table.year, table.sequence),
 	branchIdx: index('cash_sessions_branch_idx').on(table.branchId),
 	registerIdx: index('cash_sessions_register_idx').on(table.registerId),
+	userIdx: index('cash_sessions_user_idx').on(table.userId),
 	statusIdx: index('cash_sessions_status_idx').on(table.status),
 	openedAtIdx: index('cash_sessions_opened_at_idx').on(table.openedAt),
 }));
@@ -637,7 +651,11 @@ export const cashMovements = pgTable('cash_movements', {
 	concept: varchar('concept', { length: 200 }).notNull(),
 	amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
 	paymentMethod: varchar('payment_method', { length: 100 }),
+	// Congelado al crear: ¿este movimiento afecta el efectivo físico? (resuelto desde payment_methods.isCash)
+	// Nullable: en movimientos antiguos (null) el arqueo cae al reconocimiento por texto.
+	isCash: boolean('is_cash'),
 	orderId: varchar('order_id', { length: 12 }).references(() => orders.id),
+	splitId: integer('split_id').references(() => orderSplits.id), // cuenta/split del pedido (ingreso por split)
 	reference: varchar('reference', { length: 100 }),
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -645,6 +663,18 @@ export const cashMovements = pgTable('cash_movements', {
 	sessionIdx: index('cash_movements_session_idx').on(table.sessionId),
 	typeIdx: index('cash_movements_type_idx').on(table.movementType),
 	orderIdx: index('cash_movements_order_idx').on(table.orderId),
+}));
+
+// Contador atómico del correlativo de turnos de caja por (sucursal, año).
+// Se incrementa dentro de la transacción de apertura para evitar duplicados/huecos.
+// El correlativo se reinicia cada año por sucursal.
+export const cashSessionSequences = pgTable('cash_session_sequences', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	year: integer('year').notNull(),
+	lastSequence: integer('last_sequence').notNull().default(0),
+}, (table) => ({
+	branchYearUnique: uniqueIndex('cash_session_sequences_branch_year_idx').on(table.branchId, table.year),
 }));
 
 // ==========================================
@@ -815,12 +845,14 @@ export const salesDischargeLinesRelations = relations(salesDischargeLines, ({ on
 
 export const cashRegistersRelations = relations(cashRegisters, ({ one, many }) => ({
 	branch: one(branches, { fields: [cashRegisters.branchId], references: [branches.id] }),
+	user: one(users, { fields: [cashRegisters.userId], references: [users.id] }),
 	sessions: many(cashSessions),
 }));
 
 export const cashSessionsRelations = relations(cashSessions, ({ one, many }) => ({
 	register: one(cashRegisters, { fields: [cashSessions.registerId], references: [cashRegisters.id] }),
 	branch: one(branches, { fields: [cashSessions.branchId], references: [branches.id] }),
+	user: one(users, { fields: [cashSessions.userId], references: [users.id] }),
 	movements: many(cashMovements),
 }));
 

@@ -1,6 +1,9 @@
 import type { Context } from 'hono';
 import * as rbac from '../services/rbac.service';
-import { syncPermissionsCatalog, syncBaseRolesToTenant, fullSyncTenant } from '../services/rbac-sync.service';
+import {
+  syncPermissionsCatalog, syncBaseRolesToTenant, fullSyncTenant,
+  grantAndSyncToAllTenants, syncToAllGrantedTenants,
+} from '../services/rbac-sync.service';
 
 function jsonError(c: Context, e: unknown, msg: string) {
   console.error(msg, e);
@@ -63,10 +66,29 @@ export const createSubAction = async (c: Context) => {
 export const updateSubAction = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id'));
-    const body = c.req.valid('json' as never);
+    const body = c.req.valid('json' as never) as Partial<{
+      code: string; name: string; description: string; order: number; isActive: boolean;
+    }>;
     const data = await rbac.updateSubAction(id, body);
+    // Si cambia el código, propagar a todos los tenants que tienen esta sub-acción
+    if (body.code) {
+      await syncToAllGrantedTenants(id);
+    }
     return c.json({ success: true, data });
   } catch (e) { return jsonError(c, e, 'Error al actualizar sub-acción'); }
+};
+
+export const grantSubActionToAllTenants = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id'));
+    const userId = c.get('masterPayload' as never)?.id;
+    const result = await grantAndSyncToAllTenants(id, userId);
+    return c.json({
+      success: true,
+      message: `Sub-acción habilitada en ${result.granted} empresa(s). Errores de sync: ${result.errors}.`,
+      data: result,
+    });
+  } catch (e) { return jsonError(c, e, 'Error al habilitar sub-acción en todas las empresas'); }
 };
 
 // ── Base Roles ────────────────────────────────────────────────────────────────

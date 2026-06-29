@@ -197,6 +197,41 @@
       "when": 1782226566632,
       "tag": "0027_add_series_numeration_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782575202538,
+      "tag": "0028_cash_session_user_and_correlative",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782679237690,
+      "tag": "0029_cash_session_user_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1782686961299,
+      "tag": "0030_cash_session_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1782690612557,
+      "tag": "0031_order_payment_method",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782697753059,
+      "tag": "0032_collected_session_id",
+      "breakpoints": true
     }
   ]
 }

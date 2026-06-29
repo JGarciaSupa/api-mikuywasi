@@ -1,5 +1,5 @@
 import { users, userRoles, roles } from '@/db/tenant/schema';
-import { eq, and, like, ne, desc, count } from 'drizzle-orm';
+import { eq, and, like, desc, count } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
 import type { CreateStaffInput, UpdateStaffInput, StaffQueryInput } from '../../../validations/admin/users/staff.validation';
@@ -40,7 +40,6 @@ export async function getStaffList(currentUserId: number, params: StaffQueryInpu
   const offset = (params.page - 1) * params.limit;
 
   const whereClause = and(
-    ne(users.id, currentUserId),
     params.name ? like(users.name, `%${params.name}%`) : undefined
   );
 

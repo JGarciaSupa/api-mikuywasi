@@ -1,6 +1,9 @@
 import { orders, orderItems, orderItemExtras, productExtras } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
+import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
+import { findPaymentMethodByName } from '../config-local/payment-method.service';
+import type { AuditActor } from '../warehouse/types';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -182,10 +185,14 @@ export const updateOrderPaymentStatus = async (
   paymentStatus: string,
   paymentMethod?: string,
   retentionPercentage?: number,
+  paymentMethodId?: number | null,
+  actor?: AuditActor,
 ) => {
   const db = getTenantDb();
   const [order] = await db.select().from(orders).where(and(eq(orders.id, id)));
   if (!order) return null;
+
+  const wasPaid = order.paymentStatus === 'paid';
 
   const nextRetentionPercentage = paymentStatus === 'paid'
     ? roundMoney(retentionPercentage ?? toNum(order.retentionPercentage))
@@ -196,11 +203,30 @@ export const updateOrderPaymentStatus = async (
     : 0;
   const total = roundMoney(baseAmount + retentionAmount);
 
+  // Al cobrar, el cajero debe tener un turno de caja abierto.
+  // El ingreso irá a ese turno (collectedSessionId), no al del mozo (cashSessionId).
+  let collectedSessionId: number | undefined;
+  if (!wasPaid && paymentStatus === 'paid') {
+    const cajeraSession = await getActiveSessionForUser(actor?.userId);
+    if (!cajeraSession) {
+      throw new Error('Necesitas un turno de caja abierto para cobrar este pedido');
+    }
+    collectedSessionId = cajeraSession.id;
+  }
+
+  // Preferir el id enviado (preciso); si no, resolver por nombre (fallback legacy).
+  const resolvedMethodId = paymentMethodId ?? (
+    paymentMethod !== undefined ? (await findPaymentMethodByName(paymentMethod))?.id ?? null : null
+  );
+
   const [updated] = await db
     .update(orders)
     .set({
       paymentStatus: paymentStatus as any,
-      ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+      ...(paymentMethod !== undefined || paymentMethodId !== undefined
+        ? { paymentMethod: paymentMethod ?? null, paymentMethodId: resolvedMethodId }
+        : {}),
+      ...(collectedSessionId !== undefined ? { collectedSessionId } : {}),
       retentionPercentage: nextRetentionPercentage.toFixed(2),
       retentionAmount: retentionAmount.toFixed(2),
       total: total.toFixed(2),
@@ -208,6 +234,19 @@ export const updateOrderPaymentStatus = async (
     })
     .where(and(eq(orders.id, id)))
     .returning();
+
+  // Al pasar a PAGADO registrar el ingreso en el turno del cajero (collectedSessionId).
+  if (!wasPaid && paymentStatus === 'paid') {
+    try {
+      await recordOrderSaleIncome(
+        id,
+        { amount: total, paymentMethod: paymentMethod ?? order.paymentMethod ?? null },
+        actor,
+      );
+    } catch (e) {
+      console.error('No se pudo registrar el ingreso de caja para el pedido', id, e);
+    }
+  }
 
   return updated;
 };

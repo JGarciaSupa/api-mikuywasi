@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import * as splitsService from '../../../services/admin/documents/order-splits.service';
+import { getAuditActor } from '@/utils/helpers';
 
 export const listSplitsController = async (c: Context) => {
   try {
@@ -78,7 +79,7 @@ export const updateSplitPaymentController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
     const splitId = Number(c.req.param('splitId'));
-    const { paymentStatus, paymentMethod, retentionPercentage } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage } = await c.req.json();
 
     if (!['unpaid', 'paid', 'review_pending'].includes(paymentStatus)) {
       return c.json({ success: false, message: 'Estado de pago inválido' }, 400);
@@ -87,8 +88,9 @@ export const updateSplitPaymentController = async (c: Context) => {
     const split = await splitsService.updateSplitPayment(splitId, orderId, {
       paymentStatus,
       paymentMethod,
+      paymentMethodId: paymentMethodId ?? null,
       retentionPercentage,
-    });
+    }, getAuditActor(c));
     return c.json({ success: true, data: split });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404 : 500;

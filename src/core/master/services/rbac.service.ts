@@ -137,6 +137,7 @@ export async function createBaseRole(data: {
   code: string;
   name: string;
   description?: string;
+  isActive?: boolean;
   subActionIds: number[];
 }) {
   const existing = await masterDb.query.baseRoles.findFirst({ where: eq(baseRoles.code, data.code) });
@@ -147,6 +148,7 @@ export async function createBaseRole(data: {
       code: data.code,
       name: data.name,
       description: data.description,
+      isActive: data.isActive ?? true,
     }).returning();
 
     if (data.subActionIds.length > 0) {

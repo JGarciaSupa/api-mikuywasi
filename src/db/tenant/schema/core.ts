@@ -132,6 +132,8 @@ export const paymentMethods = pgTable('payment_methods', {
 	name: varchar('name', { length: 100 }).notNull(), // Ej: 'Yape', 'Efectivo', 'Visa'
 	branchId: integer('branch_id').references(() => branches.id), // null = disponible en todas las sedes
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
+	// true = este método es EFECTIVO físico y cuenta en el arqueo de la caja
+	isCash: boolean('is_cash').default(false).notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -229,7 +231,8 @@ export const orders = pgTable('orders', {
 	tableId: integer('table_id').references(() => tables.id),
 	tableName: varchar('table_name', { length: 50 }),
 
-	paymentMethod: text('payment_method').notNull(),
+	paymentMethod: text('payment_method'), // método: null al crear (interno); web guarda el previsto; se define al cobrar
+	paymentMethodId: integer('payment_method_id').references(() => paymentMethods.id), // relación estable (rename-proof)
 	notes: varchar('notes', { length: 100 }),
 
 	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
@@ -248,12 +251,19 @@ export const orders = pgTable('orders', {
 
 	trackingCode: varchar('tracking_code', { length: 20 }).unique(),
 	driverId: integer('driver_id').references(() => users.id), // Repartidor de esta sede
+	// Turno del mozo que generó el pedido (para trazabilidad de ventas por vendedor).
+	cashSessionId: integer('cash_session_id'), // FK lógica a cash_sessions (warehouse.ts)
+	// Turno del cajero que cobró el pedido (para atribución del ingreso en caja).
+	// Se setea al marcar como pagado; el ingreso va a este turno, no al del mozo.
+	collectedSessionId: integer('collected_session_id'), // FK lógica a cash_sessions
 
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('orders_branch_idx').on(table.branchId),
 	statusIdx: index('orders_status_idx').on(table.status),
+	cashSessionIdx: index('orders_cash_session_idx').on(table.cashSessionId),
+	collectedSessionIdx: index('orders_collected_session_idx').on(table.collectedSessionId),
 }));
 
 // Cuentas separadas dentro de un pedido (para dividir la facturación)
@@ -264,7 +274,8 @@ export const orderSplits = pgTable('order_splits', {
 	paymentStatus: text('payment_status', {
 		enum: ['unpaid', 'paid', 'review_pending']
 	}).default('unpaid').notNull(),
-	paymentMethod: text('payment_method'),
+	paymentMethod: text('payment_method'), // snapshot del nombre
+	paymentMethodId: integer('payment_method_id').references(() => paymentMethods.id), // relación estable
 	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull().default('0.00'),
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),

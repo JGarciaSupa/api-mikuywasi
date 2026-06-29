@@ -1,6 +1,18 @@
 import { paymentMethods } from '@/db/tenant/schema';
-import { eq, asc, or, isNull } from 'drizzle-orm';
+import { eq, asc, or, isNull, ilike } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '@/utils/tenant-context';
+
+/**
+ * Busca un método de pago por nombre (case-insensitive). Devuelve la fila o null.
+ * Se usa para resolver paymentMethodId + isCash al momento de cobrar.
+ */
+export async function findPaymentMethodByName(name?: string | null) {
+  const n = (name ?? '').trim();
+  if (!n) return null;
+  const db = getTenantDb();
+  const [pm] = await db.select().from(paymentMethods).where(ilike(paymentMethods.name, n)).limit(1);
+  return pm ?? null;
+}
 
 /**
  * Obtener todos los métodos de pago de un tenant

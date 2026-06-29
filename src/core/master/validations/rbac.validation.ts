@@ -38,6 +38,7 @@ export const validateCreateBaseRole = zValidator('json', z.object({
   code: z.string().min(2).max(50).regex(/^[a-z_]+$/, 'Solo letras minúsculas y guiones bajos'),
   name: z.string().min(2).max(100),
   description: z.string().max(255).optional(),
+  isActive: z.boolean().optional(),
   subActionIds: z.array(z.number().int().positive()).min(0).default([]),
 }));
 

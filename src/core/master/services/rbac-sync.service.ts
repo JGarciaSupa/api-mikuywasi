@@ -254,3 +254,45 @@ export async function fullSyncTenant(tenantId: number): Promise<void> {
   await syncPermissionsCatalog(tenantId);
   await syncBaseRolesToTenant(tenantId);
 }
+
+/**
+ * Concede una sub-acción a TODOS los tenants activos y sincroniza el catálogo
+ * local de cada uno. Usar al crear una nueva sub-acción con "habilitar en todas
+ * las empresas" activado.
+ */
+export async function grantAndSyncToAllTenants(
+  subActionId: number,
+  grantedBy?: number,
+): Promise<{ granted: number; errors: number }> {
+  const allTenants = await masterDb.select({ id: tenantsTable.id }).from(tenantsTable);
+  if (!allTenants.length) return { granted: 0, errors: 0 };
+
+  // Upsert grants en master DB (seguro con onConflictDoNothing)
+  await masterDb.insert(tenantFeatureGrants)
+    .values(allTenants.map((t) => ({ tenantId: t.id, subActionId, grantedBy: grantedBy ?? null })))
+    .onConflictDoNothing();
+
+  // Sincronizar catálogo local de cada tenant en paralelo
+  const results = await Promise.allSettled(allTenants.map((t) => syncPermissionsCatalog(t.id)));
+  const errors = results.filter((r) => r.status === 'rejected').length;
+  return { granted: allTenants.length, errors };
+}
+
+/**
+ * Sincroniza TODOS los tenants que tengan concedida esta sub-acción.
+ * Usar cuando cambia el code de una sub-acción para propagar el cambio.
+ */
+export async function syncToAllGrantedTenants(
+  subActionId: number,
+): Promise<{ synced: number; errors: number }> {
+  const grants = await masterDb
+    .select({ tenantId: tenantFeatureGrants.tenantId })
+    .from(tenantFeatureGrants)
+    .where(eq(tenantFeatureGrants.subActionId, subActionId));
+
+  if (!grants.length) return { synced: 0, errors: 0 };
+
+  const results = await Promise.allSettled(grants.map((g) => fullSyncTenant(g.tenantId)));
+  const errors = results.filter((r) => r.status === 'rejected').length;
+  return { synced: grants.length - errors, errors };
+}

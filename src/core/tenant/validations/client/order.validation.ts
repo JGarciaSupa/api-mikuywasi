@@ -16,7 +16,7 @@ export const createOrderSchema = z.object({
   tableId: z.number().optional().nullable(),
   tableName: z.string().optional().nullable(),
 
-  paymentMethod: z.string({ error: 'Método de pago es requerido' }),
+  paymentMethod: z.string().optional().nullable(), // interno: se elige al cobrar; web: método previsto
   notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),
 
   subtotal: z.number({ error: 'Subtotal es requerido' }),

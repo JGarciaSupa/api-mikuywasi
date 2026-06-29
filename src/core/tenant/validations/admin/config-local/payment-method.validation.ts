@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 export const createPaymentMethodSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   isActive: z.boolean().default(true),
+  isCash: z.boolean().default(false), // true = cuenta como efectivo en el arqueo
   retentionPercentage: z.number().min(0, 'La retención no puede ser negativa').max(100, 'La retención no puede exceder 100%').default(0),
   branchId: z.number().optional(),
 });
@@ -11,6 +12,7 @@ export const createPaymentMethodSchema = z.object({
 export const updatePaymentMethodSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres').optional(),
   isActive: z.boolean().optional(),
+  isCash: z.boolean().optional(),
   retentionPercentage: z.number().min(0, 'La retención no puede ser negativa').max(100, 'La retención no puede exceder 100%').optional(),
 });
 

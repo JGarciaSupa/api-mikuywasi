@@ -83,11 +83,12 @@ const RBAC_ACTIONS: SeedAction[] = [
     icon: 'Landmark',
     order: 4,
     subActions: [
-      { code: 'caja.ver_sesiones',        name: 'Ver sesiones de caja',     description: 'Listar sesiones y su historial.',             order: 1 },
-      { code: 'caja.abrir_sesion',        name: 'Abrir sesión de caja',     description: 'Iniciar una nueva sesión de caja.',           order: 2 },
-      { code: 'caja.cerrar_sesion',       name: 'Cerrar sesión de caja',    description: 'Cerrar y cuadrar la sesión activa.',          order: 3 },
-      { code: 'caja.registrar_movimiento',name: 'Registrar movimiento',      description: 'Registrar entrada o salida de dinero.',       order: 4 },
-      { code: 'caja.gestionar_cajas',     name: 'Gestionar cajas',          description: 'Crear y editar cajas registradoras.',         order: 5 },
+      { code: 'caja.ver_sesiones',        name: 'Ver sesiones de caja',     description: 'Listar sesiones y su historial.',                          order: 1 },
+      { code: 'caja.abrir_sesion',        name: 'Abrir sesión de caja',     description: 'Iniciar una nueva sesión de caja.',                        order: 2 },
+      { code: 'caja.cerrar_sesion',       name: 'Cerrar sesión de caja',    description: 'Cerrar y cuadrar la sesión activa.',                       order: 3 },
+      { code: 'caja.registrar_movimiento',name: 'Registrar movimiento',      description: 'Registrar entrada o salida de dinero.',                    order: 4 },
+      { code: 'caja.gestionar_cajas',     name: 'Gestionar cajas',          description: 'Crear y editar cajas registradoras.',                      order: 5 },
+      { code: 'caja.ver_contabilidad',    name: 'Ver datos contables',      description: 'Ver totales, saldos, movimientos y arqueo de caja.',        order: 6 },
     ],
   },
   {
@@ -183,6 +184,7 @@ const RBAC_ROLES: SeedRole[] = [
       'caja.abrir_sesion',
       'caja.cerrar_sesion',
       'caja.registrar_movimiento',
+      'caja.ver_contabilidad',
       'facturacion.ver_documentos',
       'facturacion.emitir',
       'facturacion.ver_pdf',
@@ -209,6 +211,11 @@ const RBAC_ROLES: SeedRole[] = [
       'mozo.cancelar_pedido',
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
+      // Caja: el mozo puede abrir/cerrar su propio turno (obligatorio para crear pedidos).
+      // Sin caja.ver_contabilidad: no ve saldos, totales ni movimientos.
+      'caja.ver_sesiones',
+      'caja.abrir_sesion',
+      'caja.cerrar_sesion',
     ],
   },
   {
