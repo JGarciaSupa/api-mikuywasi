@@ -18,6 +18,32 @@ export const users = pgTable('users', {
 });
 
 // ==========================================
+// 💱 CONFIGURACIÓN DE MONEDAS
+// ==========================================
+
+export const currencies = pgTable('currencies', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  isoCode: varchar('iso_code', { length: 3 }).notNull().unique(), // Ej: USD, PEN
+  symbol: varchar('symbol', { length: 10 }).notNull(),            // Ej: $, S/
+  isActive: boolean('is_active').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+
+export const countries = pgTable('countries', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  isoCode: varchar('iso_code', { length: 3 }).notNull().unique(), // Ej: PER, MEX
+  dialCode: varchar('dial_code', { length: 10 }).notNull(),       // Ej: +51, +52
+  isActive: boolean('is_active').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+
+// ==========================================
 // 💳 PLANES Y MONETIZACIÓN GLOBAL
 // ==========================================
 
@@ -344,4 +370,4 @@ export const tenantRoleGrantsRelations = relations(tenantRoleGrants, ({ one }) =
   tenant: one(tenants, { fields: [tenantRoleGrants.tenantId], references: [tenants.id] }),
   baseRole: one(baseRoles, { fields: [tenantRoleGrants.baseRoleId], references: [baseRoles.id] }),
   grantedByUser: one(users, { fields: [tenantRoleGrants.grantedBy], references: [users.id] }),
-}));
+}));

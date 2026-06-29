@@ -232,6 +232,13 @@
       "when": 1782697753059,
       "tag": "0032_collected_session_id",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1782764198011,
+      "tag": "0033_coins_tables",
+      "breakpoints": true
     }
   ]
 }
