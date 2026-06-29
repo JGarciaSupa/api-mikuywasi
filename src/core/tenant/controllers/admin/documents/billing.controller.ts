@@ -127,6 +127,7 @@ export const createDocumentController = async (c: Context) => {
       ...body,
       splitId: body.splitId ?? null,
       createdBy: payload?.username ?? null,
+      actor: payload?.userId ? { userId: payload.userId, userName: payload.username ?? null } : undefined,
     });
     return c.json({ success: true, data: result }, 201);
   } catch (error: any) {
