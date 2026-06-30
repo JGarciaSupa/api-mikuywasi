@@ -44,20 +44,87 @@ async function createTenantDatabase(server: any, dbName: string) {
 }
 
 // Helper to seed initial data on a fresh tenant database
-async function seedTenantData(server: any, dbName: string) {
+async function seedTenantData(server: any, dbName: string, tenantName: string, tenantSlug: string) {
   const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
   const tempPool = new Pool({ connectionString, max: 1 });
   const tempDb = drizzle(tempPool, { schema: tenantSchema });
 
   try {
-    // 1. tenant_configs (singleton)
-    const [existing] = await tempDb.select().from(tenantSchema.tenantConfigs);
-    if (!existing) {
-      await tempDb.insert(tenantSchema.tenantConfigs).values({});
-    }
+    const brandCode = tenantSlug.toUpperCase().replace(/-/g, '-').slice(0, 20);
+    const branchCode = (tenantSlug.slice(0, 17).toUpperCase() + '-01').slice(0, 20);
+    const warehouseCode = ('ALM-' + tenantSlug.slice(0, 15).toUpperCase()).slice(0, 20);
 
-    // 2. Unidades de medida por defecto
+    // 1. Marca por defecto
+    // Las migraciones pueden haber creado un registro placeholder ("MARCA-01").
+    // Si existe, lo actualizamos con los datos reales en lugar de insertar uno nuevo.
+    const existingBrands = await tempDb.select({ id: tenantSchema.brands.id }).from(tenantSchema.brands).limit(1);
+    let brand: { id: number };
+    if (existingBrands.length > 0) {
+      const [updated] = await tempDb
+        .update(tenantSchema.brands)
+        .set({ name: tenantName, code: brandCode })
+        .where(eq(tenantSchema.brands.id, existingBrands[0].id))
+        .returning({ id: tenantSchema.brands.id });
+      brand = updated;
+    } else {
+      const [inserted] = await tempDb
+        .insert(tenantSchema.brands)
+        .values({ name: tenantName, code: brandCode })
+        .returning({ id: tenantSchema.brands.id });
+      brand = inserted;
+    }
+    if (!brand) throw new Error('No se pudo crear la marca por defecto');
+
+    // 2. Sucursal principal
+    // La migración 0009 crea "MAIN-01" como placeholder para DBs nuevas. Reutilizamos.
+    const existingBranches = await tempDb.select({ id: tenantSchema.branches.id }).from(tenantSchema.branches).limit(1);
+    let branch: { id: number };
+    if (existingBranches.length > 0) {
+      const [updated] = await tempDb
+        .update(tenantSchema.branches)
+        .set({ brandId: brand.id, name: 'Sede Principal', code: branchCode, isMain: true })
+        .where(eq(tenantSchema.branches.id, existingBranches[0].id))
+        .returning({ id: tenantSchema.branches.id });
+      branch = updated;
+    } else {
+      const [inserted] = await tempDb
+        .insert(tenantSchema.branches)
+        .values({ brandId: brand.id, name: 'Sede Principal', code: branchCode, isMain: true })
+        .returning({ id: tenantSchema.branches.id });
+      branch = inserted;
+    }
+    if (!branch) throw new Error('No se pudo crear la sucursal por defecto');
+
+    // 3. Almacén principal
+    // La migración 0009 crea "ALM-MAIN" como placeholder. Reutilizamos.
+    const existingWarehouses = await tempDb.select({ id: tenantSchema.warehouses.id }).from(tenantSchema.warehouses).limit(1);
+    let warehouse: { id: number };
+    if (existingWarehouses.length > 0) {
+      const [updated] = await tempDb
+        .update(tenantSchema.warehouses)
+        .set({ branchId: branch.id, name: 'Almacén Principal', code: warehouseCode })
+        .where(eq(tenantSchema.warehouses.id, existingWarehouses[0].id))
+        .returning({ id: tenantSchema.warehouses.id });
+      warehouse = updated;
+    } else {
+      const [inserted] = await tempDb
+        .insert(tenantSchema.warehouses)
+        .values({ branchId: branch.id, name: 'Almacén Principal', code: warehouseCode, isCentral: false })
+        .returning({ id: tenantSchema.warehouses.id });
+      warehouse = inserted;
+    }
+    if (!warehouse) throw new Error('No se pudo crear el almacén por defecto');
+
+    // 4. Área de almacenamiento por defecto
+    await tempDb
+      .insert(tenantSchema.storageAreas)
+      .values({ warehouseId: warehouse.id, name: 'Área General', type: 'ambient' })
+      .onConflictDoNothing();
+
+    console.log(`[Seed] Jerarquía inicial creada en "${dbName}": marca → sucursal → almacén.`);
+
+    // 5. Unidades de medida por defecto
     const defaultUnits = [
       { code: 'KG', name: 'Kilogramo', dimension: 'mass', baseFactor: '1.000000' },
       { code: 'LT', name: 'Litro', dimension: 'volume', baseFactor: '1.000000' },
@@ -300,8 +367,8 @@ export const createTenant = async (data: CreateTenantInput) => {
     // 3. Ejecutar las migraciones en la nueva base de datos
     await runTenantMigrations(server, data.dbName);
 
-    // 4. Insertar datos iniciales (tenant_configs singleton, etc.)
-    await seedTenantData(server, data.dbName);
+    // 4. Insertar datos iniciales (marca, sucursal, almacén por defecto)
+    await seedTenantData(server, data.dbName, data.name, data.slug);
 
     // 5. Otorgar automáticamente todos los módulos y roles activos al nuevo tenant
     try {

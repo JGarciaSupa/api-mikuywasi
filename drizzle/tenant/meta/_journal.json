@@ -239,6 +239,13 @@
       "when": 1782764198011,
       "tag": "0033_coins_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1782864000000,
+      "tag": "0034_brands_table",
+      "breakpoints": true
     }
   ]
 }

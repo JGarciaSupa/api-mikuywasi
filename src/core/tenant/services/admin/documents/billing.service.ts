@@ -4,7 +4,7 @@ import {
   billingDocumentLines,
   billingSeries,
   branches,
-  tenantConfigs,
+  brands,
   orders,
   orderItems,
   orderSplits,
@@ -164,24 +164,19 @@ interface EmisorSnapshot {
 }
 
 async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: number): Promise<EmisorSnapshot> {
-  // Logo desde nuestra propia DB (tenantConfigs.logo)
-  const [config] = await db
-    .select({ logo: tenantConfigs.logo })
-    .from(tenantConfigs);
+  const [brand] = await db.select({ logo: brands.logo }).from(brands).limit(1);
 
   try {
-    // Empresa del facturador: Caso B (propia de la sucursal) o Caso A (tenant fallback)
     const { empresaId } = await resolveFacturadorConfig(db, branchId);
     const empresa = await obtenerEmpresa(empresaId);
     return {
       ruc: empresa.ruc,
       name: empresa.legalName,
       address: empresa.address ?? '',
-      logoUrl: config?.logo ?? null,
+      logoUrl: brand?.logo ?? null,
     };
   } catch {
-    // Si la empresa aún no está configurada o el facturador no responde, retornar vacío
-    return { ruc: '', name: '', address: '', logoUrl: config?.logo ?? null };
+    return { ruc: '', name: '', address: '', logoUrl: brand?.logo ?? null };
   }
 }
 

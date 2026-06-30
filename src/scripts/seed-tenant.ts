@@ -54,9 +54,24 @@ async function main() {
   const db = drizzle(pool, { schema: s });
 
   try {
+    // ── brand principal ─────────────────────────────────────────────────────
+    section('brands');
+    const brandCode = tenant.slug.toUpperCase().replace(/-/g, '-').slice(0, 20);
+    const [brand] = await db.insert(s.brands).values({
+      name: tenant.name,
+      code: brandCode,
+      email: 'contacto@restaurante.com',
+      category: 'Restaurante',
+    }).returning().onConflictDoNothing();
+    const allBrands = await db.select().from(s.brands);
+    const mainBrand = brand ?? allBrands[0];
+    if (!mainBrand) { console.error('❌ No se pudo crear la marca'); process.exit(1); }
+    log(`Marca principal: ${mainBrand.name} (ID: ${mainBrand.id})`);
+
     // ── branch principal ────────────────────────────────────────────────────
     section('branches');
     const [branch] = await db.insert(s.branches).values({
+      brandId: mainBrand.id,
       name: 'Sede Principal',
       code: 'MAIN-01',
       isMain: true,
@@ -89,25 +104,6 @@ async function main() {
     if (!mainBranch) { console.error('❌ No se pudo crear la sucursal'); process.exit(1); }
     log(`Sucursal principal: ${mainBranch.name} (ID: ${mainBranch.id})`);
     const branchId = mainBranch.id;
-
-    // ── tenant_configs (datos globales de marca) ─────────────────────────────
-    section('tenant_configs');
-    const [existing] = await db.select().from(s.tenantConfigs);
-    if (existing) {
-      await db.update(s.tenantConfigs)
-        .set({
-          email: 'contacto@restaurante.com',
-          category: 'Restaurante',
-        })
-        .where(eq(s.tenantConfigs.id, existing.id));
-      log('tenant_configs actualizado');
-    } else {
-      await db.insert(s.tenantConfigs).values({
-        email: 'contacto@restaurante.com',
-        category: 'Restaurante',
-      });
-      log('tenant_configs creado');
-    }
 
     // ── payment_methods ─────────────────────────────────────────────────────
     section('payment_methods');
@@ -479,9 +475,9 @@ async function main() {
     const waiterPassword = await Bun.password.hash('mozo123', { algorithm: 'bcrypt', cost: 10 });
     const kitchenPassword = await Bun.password.hash('cocina123', { algorithm: 'bcrypt', cost: 10 });
     const insertedUsers = await db.insert(s.users).values([
-      { username: 'admin', password: adminPassword, name: 'Administrador', role: 'admin' },
-      { username: 'mozo1', password: waiterPassword, name: 'Mozo Demo', role: 'waiter' },
-      { username: 'cocina', password: kitchenPassword, name: 'Cocinero Demo', role: 'kitchen' },
+      { username: 'admin', password: adminPassword, name: 'Administrador' },
+      { username: 'mozo1', password: waiterPassword, name: 'Mozo Demo' },
+      { username: 'cocina', password: kitchenPassword, name: 'Cocinero Demo' },
     ]).returning().onConflictDoNothing();
 
     // user_branches: asignar todos los usuarios a la sucursal principal

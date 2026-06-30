@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { branches, tenantConfigs } from '../db/tenant/schema';
+import { branches } from '../db/tenant/schema';
 import type { TenantDb } from './tenant-context';
 
 export interface FacturadorConfig {
@@ -9,12 +9,8 @@ export interface FacturadorConfig {
 
 /**
  * Resuelve qué empresa del facturador usar para una sucursal dada.
- *
- * Prioridad:
- *   1. Empresa propia de la sucursal (Caso B): branches.facturadorEmpresaId + branches.fiscalId
- *   2. Empresa del tenant (Caso A / fallback): tenantConfigs.facturadorEmpresaId + tenantConfigs.facturadorRuc
- *
- * Lanza un error 422 si ninguna configuración está completa.
+ * Cada sucursal debe tener configurada su propia empresa (branches.facturadorEmpresaId + branches.fiscalId).
+ * Lanza un error 422 si la sucursal no tiene la configuración completa.
  */
 export async function resolveFacturadorConfig(
   db: TenantDb,
@@ -32,20 +28,9 @@ export async function resolveFacturadorConfig(
     return { empresaId: branch.facturadorEmpresaId, ruc: branch.fiscalId };
   }
 
-  const [config] = await db
-    .select({
-      facturadorEmpresaId: tenantConfigs.facturadorEmpresaId,
-      facturadorRuc: tenantConfigs.facturadorRuc,
-    })
-    .from(tenantConfigs);
-
-  if (config?.facturadorEmpresaId && config?.facturadorRuc) {
-    return { empresaId: config.facturadorEmpresaId, ruc: config.facturadorRuc };
-  }
-
   const detail = branch?.facturadorEmpresaId
     ? 'La sucursal tiene empresaId pero le falta el RUC fiscal (fiscalId).'
-    : 'Configure una empresa de facturación en la sucursal o en la configuración general del tenant.';
+    : 'Configure una empresa de facturación en la sucursal.';
 
   const err = new Error(`Facturación electrónica no configurada para sucursal ${branchId}. ${detail}`);
   (err as any).status = 422;

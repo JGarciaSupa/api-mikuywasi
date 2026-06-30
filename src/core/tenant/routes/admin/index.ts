@@ -18,6 +18,7 @@ import audit from "./documents/audit";
 import rbac from "./users/rbac";
 import billing from "./documents/billing";
 import branches from "./config-local/branches";
+import brands from "./config-local/brands";
 import sunat from "./documents/sunat";
 
 import { adminLimiter } from "../limiter";
@@ -47,6 +48,7 @@ routes.route('/audit', audit);
 routes.route('/rbac', rbac);
 routes.route('/billing', billing);
 routes.route('/branches', branches);
+routes.route('/brands', brands);
 routes.route('/sunat', sunat);
 
 export default routes;

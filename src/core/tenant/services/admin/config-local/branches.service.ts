@@ -26,6 +26,7 @@ export async function getBranchById(id: number) {
 // ────────────────────────────────────────────
 
 export interface CreateBranchInput {
+  brandId: number;
   name: string;
   code: string;
   isMain?: boolean;
@@ -92,6 +93,7 @@ export async function createBranch(data: CreateBranchInput) {
     }
 
     const [newBranch] = await tx.insert(branches).values({
+      brandId: data.brandId,
       name: data.name,
       code: data.code,
       isMain: isMain,

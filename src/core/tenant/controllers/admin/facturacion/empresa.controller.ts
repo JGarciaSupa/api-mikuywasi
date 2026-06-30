@@ -1,30 +1,7 @@
 import type { Context } from 'hono';
 import * as empresaService from '../../../services/admin/facturacion/empresa.service';
 
-// ── Tenant-level (Caso A) ──────────────────────────────────────────────────────
-
-export const getTenantEmpresaController = async (c: Context) => {
-  try {
-    const data = await empresaService.getTenantEmpresa();
-    if (!data) return c.json({ success: true, data: null, message: 'Sin empresa configurada a nivel tenant' });
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener empresa' }, 500);
-  }
-};
-
-export const upsertTenantEmpresaController = async (c: Context) => {
-  try {
-    const body = await c.req.json();
-    const data = await empresaService.upsertTenantEmpresa(body);
-    return c.json({ success: true, data });
-  } catch (error: any) {
-    const status = error.message?.includes('no encontrad') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al guardar empresa' }, status as any);
-  }
-};
-
-// ── Branch-level (Caso B) ──────────────────────────────────────────────────────
+// ── Branch-level ─────────────────────────────────────────────────────────────
 
 export const getBranchEmpresaController = async (c: Context) => {
   try {
@@ -68,7 +45,7 @@ export const deleteBranchEmpresaController = async (c: Context) => {
   try {
     const branchId = Number(c.req.param('id'));
     await empresaService.deleteBranchEmpresa(branchId);
-    return c.json({ success: true, message: 'Empresa de sucursal eliminada. La sucursal usará la empresa del tenant.' });
+    return c.json({ success: true, message: 'Empresa de facturación de la sucursal eliminada.' });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 500;
     return c.json({ success: false, message: error.message || 'Error al eliminar empresa de sucursal' }, status as any);

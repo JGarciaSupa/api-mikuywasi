@@ -1,4 +1,4 @@
-import { tenantConfigs, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -21,7 +21,7 @@ const roundQty = (val: number) => Number(val.toFixed(3));
 export const getTenantInfo = async () => {
   const db = getTenantDb();
 
-  const [config] = await db.select().from(tenantConfigs);
+  const [config] = await db.select().from(brands).limit(1);
 
   const tenantBanners = await db.select().from(banners)
     .orderBy(banners.order);

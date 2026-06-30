@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { branches, tenantConfigs } from '../../../../../db/tenant/schema';
+import { branches } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import {
   crearEmpresa,
@@ -13,55 +13,7 @@ function isDuplicateRucError(err: unknown): boolean {
   return /23000|duplicate key|duplicate entry/i.test(msg);
 }
 
-// ── Tenant-level empresa (Caso A) ─────────────────────────────────────────────
-
-export async function getTenantEmpresa() {
-  const db = getTenantDb();
-  const [config] = await db
-    .select({
-      facturadorEmpresaId: tenantConfigs.facturadorEmpresaId,
-      facturadorRuc: tenantConfigs.facturadorRuc,
-    })
-    .from(tenantConfigs);
-
-  if (!config?.facturadorEmpresaId) {
-    return null;
-  }
-
-  const empresa = await obtenerEmpresa(config.facturadorEmpresaId);
-  return { ...empresa, facturadorEmpresaId: config.facturadorEmpresaId };
-}
-
-export async function upsertTenantEmpresa(data: FacturadorEmpresaInput) {
-  const db = getTenantDb();
-  const [config] = await db
-    .select({ facturadorEmpresaId: tenantConfigs.facturadorEmpresaId })
-    .from(tenantConfigs);
-
-  let empresaId = config?.facturadorEmpresaId ?? null;
-
-  if (empresaId) {
-    await actualizarEmpresa(empresaId, data);
-  } else {
-    try {
-      const created = await crearEmpresa(data);
-      empresaId = created.id;
-    } catch (err: any) {
-      if (isDuplicateRucError(err)) {
-        throw new Error(`El RUC ${data.ruc} ya está registrado en el sistema de facturación. Si eliminaste la empresa anteriormente, contacta a soporte para reconectar el registro existente.`);
-      }
-      throw err;
-    }
-  }
-
-  await db
-    .update(tenantConfigs)
-    .set({ facturadorEmpresaId: empresaId, facturadorRuc: data.ruc, updatedAt: new Date() });
-
-  return obtenerEmpresa(empresaId);
-}
-
-// ── Branch-level empresa (Caso B) ─────────────────────────────────────────────
+// ── Branch-level empresa ──────────────────────────────────────────────────────
 
 export async function getBranchEmpresa(branchId: number) {
   const db = getTenantDb();

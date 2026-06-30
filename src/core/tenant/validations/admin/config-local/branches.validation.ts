@@ -15,6 +15,7 @@ const addressSchema = z.object({
 }).nullable().optional();
 
 export const createBranchSchema = z.object({
+  brandId: z.number().int().positive('El ID de marca es requerido'),
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   code: z.string().min(1, 'El código es requerido').max(20, 'El código no puede exceder los 20 caracteres'),
   isMain: z.boolean().optional(),

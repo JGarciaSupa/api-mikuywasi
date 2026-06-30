@@ -2,16 +2,39 @@ import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // ==========================================
+// 🏷️ MARCAS
+// ==========================================
+
+// Cada marca agrupa un conjunto de sucursales bajo una identidad visual común.
+// La corporación (tenant) puede tener múltiples marcas.
+export const brands = pgTable('brands', {
+	id: serial('id').primaryKey(),
+	name: varchar('name', { length: 100 }).notNull(),
+	code: varchar('code', { length: 20 }).notNull().unique(), // Ej: 'LOBITO', 'PIZZA-CO'
+	logo: varchar('logo', { length: 255 }),
+	primaryColor: varchar('primary_color', { length: 255 }).default('#000000'),
+	email: varchar('email', { length: 255 }),
+	category: varchar('category', { length: 255 }),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	codeIdx: index('brands_code_idx').on(table.code),
+	activeIdx: index('brands_active_idx').on(table.isActive),
+}));
+
+// ==========================================
 // 🏪 SUCURSALES
 // ==========================================
 
 export const branches = pgTable('branches', {
 	id: serial('id').primaryKey(),
+	brandId: integer('brand_id').notNull().references(() => brands.id, { onDelete: 'restrict' }),
 	name: varchar('name', { length: 100 }).notNull(),
 	code: varchar('code', { length: 20 }).notNull().unique(), // Ej: 'MFL-01', 'SJM-01'
-	isMain: boolean('is_main').default(false).notNull(),      // true = sucursal principal
+	isMain: boolean('is_main').default(false).notNull(),      // true = sucursal principal de la marca
 
-	// Ubicación y canales propios de esta sede (antes estaban en tenant_configs)
+	// Ubicación y canales propios de esta sede
 	address: jsonb('address').$type<{
 		fullAddress: string;
 		lat: number;
@@ -47,8 +70,7 @@ export const branches = pgTable('branches', {
 	fiscalId: varchar('fiscal_id', { length: 30 }),
 	fiscalName: varchar('fiscal_name', { length: 200 }),
 
-	// Facturación electrónica: empresa propia en el facturador (Caso B).
-	// NULL → hereda la empresa del tenantConfigs (Caso A).
+	// Facturación electrónica: empresa de la sede en el facturador
 	facturadorEmpresaId: integer('facturador_empresa_id'),
 
 	isActive: boolean('is_active').default(true).notNull(),
@@ -56,30 +78,10 @@ export const branches = pgTable('branches', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
+	brandIdx: index('branches_brand_idx').on(table.brandId),
 	codeIdx: index('branches_code_idx').on(table.code),
 	activeIdx: index('branches_active_idx').on(table.isActive),
 }));
-
-// ==========================================
-// 🏢 CONFIGURACIÓN GLOBAL DE MARCA
-// ==========================================
-
-// Un único registro (ID: 1) con datos de marca globales del restaurante.
-// Los datos de ubicación/canales/fiscales ahora viven en branches.
-export const tenantConfigs = pgTable('tenant_configs', {
-	id: serial('id').primaryKey(),
-	logo: varchar('logo', { length: 255 }),
-	primaryColor: varchar('primary_color', { length: 255 }).default("#000000"),
-	email: varchar('email', { length: 255 }),
-	category: varchar('category', { length: 255 }),
-
-	// Facturación electrónica: empresa por defecto del tenant (Caso A / fallback mixto).
-	// Todas las sucursales sin facturadorEmpresaId propio heredan este valor.
-	facturadorEmpresaId: integer('facturador_empresa_id'),
-	facturadorRuc: varchar('facturador_ruc', { length: 20 }),
-
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
 
 // ==========================================
 // 👥 USUARIOS OPERATIVOS Y CONTROL DE ACCESO
@@ -330,7 +332,12 @@ export const socialLinks = pgTable('social_links', {
 // 🔗 RELATIONS — CORE
 // ==========================================
 
-export const branchesRelations = relations(branches, ({ many }) => ({
+export const brandsRelations = relations(brands, ({ many }) => ({
+	branches: many(branches),
+}));
+
+export const branchesRelations = relations(branches, ({ one, many }) => ({
+	brand: one(brands, { fields: [branches.brandId], references: [brands.id] }),
 	userBranches: many(userBranches),
 	tables: many(tables),
 	orders: many(orders),

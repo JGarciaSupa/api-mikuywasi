@@ -1,20 +1,23 @@
-import { tenantConfigs } from '@/db/tenant/schema';
+import { brands } from '@/db/tenant/schema';
 import { eq } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
-import { UpdateSettingsInput } from '@/core/tenant/validations/admin/config-local/settings.validation';
+import type { UpdateSettingsInput } from '@/core/tenant/validations/admin/config-local/settings.validation';
 import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
 import { redis } from '@/utils/redis';
+
+async function getFirstBrand(db: ReturnType<typeof getTenantDb>) {
+  const [brand] = await db.select().from(brands).limit(1);
+  if (!brand) throw new Error('No hay marca configurada para este tenant');
+  return brand;
+}
 
 export async function getSettings() {
   const db = getTenantDb();
   const tenantId = getTenantId();
 
-  let [config] = await db.select().from(tenantConfigs);
-  if (!config) {
-    [config] = await db.insert(tenantConfigs).values({}).returning();
-  }
+  const config = await getFirstBrand(db);
 
   const tenantMaster = await masterDb.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
@@ -42,12 +45,9 @@ export async function updateSettings(data: UpdateSettingsInput) {
   const db = getTenantDb();
   const tenantId = getTenantId();
 
-  let [existing] = await db.select().from(tenantConfigs);
-  if (!existing) {
-    [existing] = await db.insert(tenantConfigs).values({}).returning();
-  }
+  const existing = await getFirstBrand(db);
 
-  const { ownerName, ownerPhone, name, internalNotes, ...tenantConfigData } = data as any;
+  const { ownerName, ownerPhone, name, internalNotes, ...brandData } = data as any;
 
   // Actualizar Master DB si corresponde
   const masterUpdateData: any = {};
@@ -62,7 +62,6 @@ export async function updateSettings(data: UpdateSettingsInput) {
       .set({ ...masterUpdateData, updatedAt: new Date() })
       .where(eq(tenants.id, tenantId));
 
-    // Si se actualizó el nombre, invalidar el cache en Redis
     if (name !== undefined) {
       const tenantMaster = await masterDb.query.tenants.findFirst({
         where: eq(tenants.id, tenantId),
@@ -73,13 +72,18 @@ export async function updateSettings(data: UpdateSettingsInput) {
     }
   }
 
-  // Actualizar Tenant DB (tenantConfigs) con el resto de campos si los hay
+  // Solo actualizar campos que existen en brands
+  const brandUpdateFields: Record<string, any> = {};
+  if (brandData.email !== undefined) brandUpdateFields.email = brandData.email;
+  if (brandData.category !== undefined) brandUpdateFields.category = brandData.category;
+  if (brandData.primaryColor !== undefined) brandUpdateFields.primaryColor = brandData.primaryColor;
+
   let updated = existing;
-  if (Object.keys(tenantConfigData).length > 0) {
+  if (Object.keys(brandUpdateFields).length > 0) {
     const [newUpdated] = await db
-      .update(tenantConfigs)
-      .set({ ...tenantConfigData, updatedAt: new Date() })
-      .where(eq(tenantConfigs.id, existing.id))
+      .update(brands)
+      .set({ ...brandUpdateFields, updatedAt: new Date() })
+      .where(eq(brands.id, existing.id))
       .returning();
     updated = newUpdated;
   }
@@ -110,42 +114,29 @@ export async function updateLogo(file: File) {
   const db = getTenantDb();
   const tenantId = getTenantId();
 
-  // Obtener el slug del tenant desde la base de datos master
   const tenantMaster = await masterDb.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
   });
 
   const slug = tenantMaster?.slug!;
-
-  let [existing] = await db.select().from(tenantConfigs);
-  if (!existing) {
-    [existing] = await db.insert(tenantConfigs).values({}).returning();
-  }
-
+  const existing = await getFirstBrand(db);
   const oldLogo = existing.logo;
 
-  // 1. Subir la nueva imagen a R2 organizada por su slug
   const logoKey = await uploadToR2(file, `${slug}/logos`, 256);
 
   try {
-    // 2. Actualizar la base de datos
     const [updated] = await db
-      .update(tenantConfigs)
+      .update(brands)
       .set({ logo: logoKey, updatedAt: new Date() })
-      .where(eq(tenantConfigs.id, existing.id))
+      .where(eq(brands.id, existing.id))
       .returning();
 
-    // 3. Eliminar el archivo antiguo de R2 sólo si la base de datos se actualizó correctamente
     if (oldLogo) {
       await deleteFromR2(oldLogo);
     }
 
-    return {
-      ...updated,
-      logo: getImageUrl(updated.logo)
-    };
+    return { ...updated, logo: getImageUrl(updated.logo) };
   } catch (error) {
-    // Rollback: si falla la actualización de la BD, borrar la imagen recién subida
     await deleteFromR2(logoKey);
     throw error;
   }
@@ -153,27 +144,18 @@ export async function updateLogo(file: File) {
 
 export async function deleteLogo() {
   const db = getTenantDb();
-  let [existing] = await db.select().from(tenantConfigs);
-  if (!existing) {
-    [existing] = await db.insert(tenantConfigs).values({}).returning();
-  }
-
+  const existing = await getFirstBrand(db);
   const oldLogo = existing.logo;
 
-  // 1. Actualizar la base de datos primero
   const [updated] = await db
-    .update(tenantConfigs)
+    .update(brands)
     .set({ logo: null, updatedAt: new Date() })
-    .where(eq(tenantConfigs.id, existing.id))
+    .where(eq(brands.id, existing.id))
     .returning();
 
-  // 2. Eliminar de R2 sólo si la base de datos se actualizó correctamente
   if (oldLogo) {
     await deleteFromR2(oldLogo);
   }
 
-  return {
-    ...updated,
-    logo: getImageUrl(updated.logo)
-  };
+  return { ...updated, logo: getImageUrl(updated.logo) };
 }
