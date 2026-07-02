@@ -1,47 +1,82 @@
+import { eq } from 'drizzle-orm';
 import { masterDb } from '../../../db';
 import { countries } from '../../../db/master/schema';
-import { eq } from 'drizzle-orm';
 import type { CreateCountryInput, UpdateCountryInput } from '../validations/countries.validation';
 
-export const getAllCountries = async (includeInactive = false) => {
-  const result = await masterDb.query.countries.findMany({
-    where: includeInactive ? undefined : eq(countries.isActive, true),
-    orderBy: (countries, { asc }) => [asc(countries.name)],
+export const getCountries = async () => {
+  return await masterDb.query.countries.findMany({
+    orderBy: (c, { asc }) => [asc(c.name)],
   });
-  return result;
 };
 
 export const getCountryById = async (id: number) => {
-  const country = await masterDb.query.countries.findFirst({
-    where: eq(countries.id, id),
-  });
+  const [country] = await masterDb
+    .select()
+    .from(countries)
+    .where(eq(countries.id, id));
+
   if (!country) throw new Error('País no encontrado');
   return country;
 };
 
 export const createCountry = async (data: CreateCountryInput) => {
-  const [newCountry] = await masterDb.insert(countries).values({
-    ...data,
-    updatedAt: new Date(),
-  }).returning();
+  const [existingIsoCode] = await masterDb
+    .select()
+    .from(countries)
+    .where(eq(countries.isoCode, data.isoCode));
+
+  if (existingIsoCode) {
+    throw new Error('El código ISO ya está registrado en otro país');
+  }
+
+  const [newCountry] = await masterDb
+    .insert(countries)
+    .values(data)
+    .returning();
+
   return newCountry;
 };
 
 export const updateCountry = async (id: number, data: UpdateCountryInput) => {
-  const [updated] = await masterDb.update(countries)
-    .set({ ...data, updatedAt: new Date() })
+  const [existing] = await masterDb
+    .select()
+    .from(countries)
+    .where(eq(countries.id, id));
+
+  if (!existing) throw new Error('País no encontrado');
+
+  if (data.isoCode && data.isoCode !== existing.isoCode) {
+    const [existingIso] = await masterDb
+      .select()
+      .from(countries)
+      .where(eq(countries.isoCode, data.isoCode));
+
+    if (existingIso) throw new Error('El código ISO ya está registrado en otro país');
+  }
+
+  const [updatedCountry] = await masterDb
+    .update(countries)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
     .where(eq(countries.id, id))
     .returning();
 
-  if (!updated) throw new Error('País no encontrado');
-  return updated;
+  return updatedCountry;
 };
 
 export const deleteCountry = async (id: number) => {
-  const [deleted] = await masterDb.delete(countries)
-    .where(eq(countries.id, id))
-    .returning();
+  const [existing] = await masterDb
+    .select()
+    .from(countries)
+    .where(eq(countries.id, id));
 
-  if (!deleted) throw new Error('País no encontrado');
+  if (!existing) throw new Error('País no encontrado');
+
+  await masterDb
+    .delete(countries)
+    .where(eq(countries.id, id));
+
   return { message: 'País eliminado correctamente' };
 };

@@ -3,6 +3,7 @@ import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'dri
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
+import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 
 const toNum = (value: unknown) => {
@@ -246,6 +247,16 @@ export const updateOrderPaymentStatus = async (
     } catch (e) {
       console.error('No se pudo registrar el ingreso de caja para el pedido', id, e);
     }
+    await writeAuditLog({
+      tableName: 'orders',
+      operation: 'PROCESS',
+      recordId: null,
+      afterData: { id: updated.id, paymentStatus: updated.paymentStatus, total: updated.total, paymentMethod: updated.paymentMethod },
+      userId: actor?.userId,
+      userName: actor?.userName,
+      module: 'pedidos',
+      description: `Pedido #${id} cobrado${updated.paymentMethod ? ` — ${updated.paymentMethod}` : ''} — S/ ${updated.total}`,
+    });
   }
 
   return updated;

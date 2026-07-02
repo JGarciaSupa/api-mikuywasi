@@ -12,6 +12,8 @@ import {
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
+import { writeAuditLog } from '../warehouse/shared/audit.service';
+import type { AuditActor } from '../warehouse/types';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -28,6 +30,7 @@ export interface CreateDocumentInput {
   buyerEmail?: string;
   notes?: string;
   createdBy?: string;
+  actor?: AuditActor;
 }
 
 export interface ListDocumentsFilters {
@@ -437,6 +440,20 @@ export async function createDocument(input: CreateDocumentInput) {
     .select()
     .from(billingDocumentLines)
     .where(eq(billingDocumentLines.documentId, docId));
+
+  if (finalDoc) {
+    const typeLabel = finalDoc.documentType === 'factura' ? 'Factura' : finalDoc.documentType === 'boleta' ? 'Boleta' : 'Nota de venta';
+    await writeAuditLog({
+      tableName: 'billing_documents',
+      operation: 'INSERT',
+      recordId: finalDoc.id,
+      afterData: { id: finalDoc.id, documentNumber: finalDoc.documentNumber, documentType: finalDoc.documentType, total: finalDoc.total, orderId: finalDoc.orderId },
+      userId: input.actor?.userId,
+      userName: input.actor?.userName ?? input.createdBy ?? null,
+      module: 'facturacion',
+      description: `${typeLabel} ${finalDoc.documentNumber} emitida${finalDoc.buyerName ? ` — ${finalDoc.buyerName}` : ''} — S/ ${finalDoc.total} (pedido #${finalDoc.orderId})`,
+    });
+  }
 
   return { document: finalDoc, lines: finalLines };
 }

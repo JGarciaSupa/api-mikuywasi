@@ -146,7 +146,7 @@ export async function listCashRegisters(branchId?: number) {
 }
 
 export async function createCashRegister(data: {
-  branchId: number; name: string; userId?: number | null; exchangeRate?: number;
+  branchId: number; name: string; userId?: number | null;
 }) {
   const db = getTenantDb();
   const [reg] = await db
@@ -154,8 +154,7 @@ export async function createCashRegister(data: {
     .values({
       branchId: data.branchId,
       name: data.name,
-      userId: data.userId ?? null, // dueño/creador de la caja
-      exchangeRate: data.exchangeRate != null && data.exchangeRate > 0 ? data.exchangeRate.toFixed(4) : '1',
+      userId: data.userId ?? null,
       isActive: true,
     })
     .returning();
@@ -164,14 +163,13 @@ export async function createCashRegister(data: {
 
 export async function updateCashRegister(
   id: number,
-  data: { name?: string; isActive?: boolean; userId?: number | null; exchangeRate?: number }
+  data: { name?: string; isActive?: boolean; userId?: number | null }
 ) {
   const db = getTenantDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) patch.name = data.name;
   if (data.isActive !== undefined) patch.isActive = data.isActive;
   if (data.userId !== undefined) patch.userId = data.userId;
-  if (data.exchangeRate !== undefined && data.exchangeRate > 0) patch.exchangeRate = data.exchangeRate.toFixed(4);
 
   const [reg] = await db
     .update(cashRegisters)
@@ -307,7 +305,7 @@ function round2ToNum(n: number): number {
 // ─── mutations ────────────────────────────────────────────────────────────────
 
 export async function openCashSession(
-  data: { registerId: number; openingBalance: number; userId?: number; notes?: string },
+  data: { registerId: number; openingBalance: number; exchangeRate?: number; userId?: number; notes?: string },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -330,6 +328,10 @@ export async function openCashSession(
   const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, cashierId)).limit(1);
   if (u?.name) openedByName = u.name;
 
+  const rate = data.exchangeRate != null && data.exchangeRate > 0
+    ? data.exchangeRate.toFixed(4)
+    : '1';
+
   const year = new Date().getFullYear();
 
   return db.transaction(async (tx) => {
@@ -347,6 +349,7 @@ export async function openCashSession(
         openedBy: openedByName,
         openingBalance: round2(data.openingBalance),
         expectedBalance: round2(data.openingBalance),
+        exchangeRate: rate,
         notes: data.notes,
         status: 'open',
       })

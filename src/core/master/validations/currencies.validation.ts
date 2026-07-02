@@ -3,10 +3,10 @@ import { zValidator } from '@hono/zod-validator';
 import { validationHook } from '@/core/tenant/validations/hook';
 
 export const createCurrencySchema = z.object({
-  name: z.string().min(1, 'El nombre es obligatorio').max(100),
-  isoCode: z.string().length(3, 'El código ISO 4217 debe tener 3 letras').toUpperCase(),
-  symbol: z.string().min(1, 'El símbolo es obligatorio').max(5),
-  isActive: z.boolean().default(true),
+  name: z.string().min(1, 'El nombre es obligatorio').max(255),
+  isoCode: z.string().length(3, 'El código ISO debe tener 3 caracteres').toUpperCase(),
+  symbol: z.string().min(1, 'El símbolo es obligatorio').max(10),
+  isActive: z.boolean().optional().default(false),
 });
 
 export const updateCurrencySchema = createCurrencySchema.partial();

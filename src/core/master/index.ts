@@ -20,6 +20,8 @@ master.route('/db-servers', dbServersRoutes);  // Infraestructura de servidores
 master.route('/tenants', tenantsRoutes);       // Directorio de tenants
 master.route('/subscriptions', subscriptionsRoutes); // Historial de facturación
 master.route('/rbac', rbacRoutes);             // RBAC: acciones, sub-acciones, roles, grants
+master.route('/currencies', currenciesRoutes); // Monedas globales
+master.route('/countries', countriesRoutes);   // Países globales
 
 // ── SIGG: Corporación (Tenant) > Marca > Local ────────────────────────────────
 master.route('/countries', countriesRoutes);   // Catálogo maestro de países (Fase 1.1)
