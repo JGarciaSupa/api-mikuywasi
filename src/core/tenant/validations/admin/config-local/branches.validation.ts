@@ -33,6 +33,13 @@ export const createBranchSchema = z.object({
   freeDeliveryThreshold: z.string().nullable().optional(),
   fiscalId: z.string().max(30).nullable().optional(),
   fiscalName: z.string().max(200).nullable().optional(),
+  sunatAnexoCode: z.string().max(10).optional(),
+  appliesTax1: z.boolean().optional(),
+  appliesTax2: z.boolean().optional(),
+  appliesTax3: z.boolean().optional(),
+  appliesIcbper: z.boolean().optional(),
+  baseCurrency: z.string().length(3, 'La moneda base debe ser un código ISO 4217 de 3 letras').optional(),
+  foreignCurrency: z.string().length(3, 'La moneda extranjera debe ser un código ISO 4217 de 3 letras').nullable().optional(),
   schedules: z.array(scheduleSchema).optional(),
   deliveryZone: z.object({
     type: z.literal('Polygon'),

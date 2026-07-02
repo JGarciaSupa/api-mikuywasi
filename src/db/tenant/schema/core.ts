@@ -47,6 +47,17 @@ export const branches = pgTable('branches', {
 	fiscalId: varchar('fiscal_id', { length: 30 }),
 	fiscalName: varchar('fiscal_name', { length: 200 }),
 
+	// SIGG US 1.2 — Código anexo SUNAT e impuestos aplicables por sede
+	sunatAnexoCode: varchar('sunat_anexo_code', { length: 10 }).default('0000').notNull(),
+	appliesTax1: boolean('applies_tax_1').default(true).notNull(),  // IGV
+	appliesTax2: boolean('applies_tax_2').default(false).notNull(),
+	appliesTax3: boolean('applies_tax_3').default(false).notNull(),
+	appliesIcbper: boolean('applies_icbper').default(false).notNull(),
+
+	// SIGG US 1.2 — Moneda base (obligatoria) y extranjera (opcional, habilita tipo de cambio en turno)
+	baseCurrency: varchar('base_currency', { length: 3 }).default('PEN').notNull(), // ISO 4217
+	foreignCurrency: varchar('foreign_currency', { length: 3 }),                    // ISO 4217, null = no soporta pago en moneda extranjera
+
 	// Facturación electrónica: empresa propia en el facturador (Caso B).
 	// NULL → hereda la empresa del tenantConfigs (Caso A).
 	facturadorEmpresaId: integer('facturador_empresa_id'),
