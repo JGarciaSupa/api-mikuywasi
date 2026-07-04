@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, desc, count, ilike, sql } from 'drizzle-orm';
-import { auditLog, users } from '../../../../../db/tenant/schema';
+import { auditLog } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 export interface AuditLogFilters {
@@ -34,31 +34,16 @@ export async function listAuditLogs(filters: AuditLogFilters = {}) {
   const [totalRow] = await db.select({ total: count() }).from(auditLog).where(where);
   const total = totalRow?.total ?? 0;
 
-  // LEFT JOIN con users para rellenar userName en registros viejos que solo tienen userId
-  const rows = await db
-    .select({
-      id: auditLog.id,
-      tableName: auditLog.tableName,
-      operation: auditLog.operation,
-      recordId: auditLog.recordId,
-      beforeData: auditLog.beforeData,
-      afterData: auditLog.afterData,
-      userId: auditLog.userId,
-      userName: sql<string | null>`COALESCE(${auditLog.userName}, ${users.name})`,
-      module: auditLog.module,
-      description: auditLog.description,
-      ipAddress: auditLog.ipAddress,
-      createdAt: auditLog.createdAt,
-    })
+  const items = await db
+    .select()
     .from(auditLog)
-    .leftJoin(users, eq(auditLog.userId, users.id))
     .where(where)
     .orderBy(desc(auditLog.createdAt))
     .limit(limit)
     .offset(offset);
 
   return {
-    items: rows,
+    items,
     total,
     page,
     limit,
@@ -66,8 +51,7 @@ export async function listAuditLogs(filters: AuditLogFilters = {}) {
   };
 }
 
-// Lista todos los usuarios activos del sistema para poblar el filtro de auditoría.
-// Módulos: solo los que ya tienen entradas en audit_logs.
+// Valores disponibles para poblar los filtros (módulos y usuarios presentes en la auditoría).
 export async function getAuditFacets() {
   const db = getTenantDb();
 
@@ -76,13 +60,15 @@ export async function getAuditFacets() {
     .from(auditLog)
     .orderBy(auditLog.module);
 
-  const allUsers = await db
-    .select({ userId: users.id, userName: users.name })
-    .from(users)
-    .orderBy(users.name);
+  const users = await db
+    .selectDistinct({ userId: auditLog.userId, userName: auditLog.userName })
+    .from(auditLog)
+    .where(sql`${auditLog.userId} is not null`);
 
   return {
-    modules: modules.map((m) => m.module).filter(Boolean) as string[],
-    users: allUsers.map((u) => ({ userId: u.userId, userName: u.userName })),
+    modules: modules.map((m) => m.module).filter(Boolean),
+    users: users
+      .filter((u) => u.userId != null)
+      .map((u) => ({ userId: u.userId as number, userName: u.userName ?? `Usuario ${u.userId}` })),
   };
 }

@@ -43,27 +43,6 @@
       "when": 1779555371296,
       "tag": "0005_reflective_nuke",
       "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1782764798263,
-      "tag": "0006_sad_spencer_smythe",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1782767471151,
-      "tag": "0007_misty_invaders",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1782770999887,
-      "tag": "0008_long_vampiro",
-      "breakpoints": true
     }
   ]
 }

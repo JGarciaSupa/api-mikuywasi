@@ -1,6 +1,5 @@
 import type { Context } from 'hono';
 import * as tenantService from '../../services/client/tenant.service';
-import { getAuditActor } from '@/utils/helpers';
 
 /**
  * POST /api/client/orders
@@ -14,8 +13,7 @@ export const createOrderController = async (c: Context) => {
     await tenantService.validateOrderStockBeforeCreate(body);
     
     // Call service to create the order
-    const actor = getAuditActor(c);
-    const result = await tenantService.createOrder(body, undefined, actor);
+    const result = await tenantService.createOrder(body);
 
     // Trigger stock discharge immediately
     const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);

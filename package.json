@@ -7,9 +7,7 @@
     "master:seed-rbac": "bun run src/scripts/seed-master-rbac.ts",
     "tenants:migrate": "bun run src/scripts/migrate-tenants.ts",
     "tenants:seed": "bun run src/scripts/seed-tenant.ts",
-    "tenants:clear-sessions": "bun run src/scripts/clear-sessions.ts",
-    "tenants:seed-currencies": "bun run src/scripts/seed-currencies.ts",
-    "tenants:seed-countries": "bun run src/scripts/seed-countries.ts"
+    "tenants:clear-sessions": "bun run src/scripts/clear-sessions.ts"
   },
   "dependencies": {
     "@aws-sdk/s3-request-presigner": "^3.1063.0",
