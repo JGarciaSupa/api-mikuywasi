@@ -344,7 +344,6 @@ export const tenantRoleGrantsRelations = relations(tenantRoleGrants, ({ one }) =
   tenant: one(tenants, { fields: [tenantRoleGrants.tenantId], references: [tenants.id] }),
   baseRole: one(baseRoles, { fields: [tenantRoleGrants.baseRoleId], references: [baseRoles.id] }),
   grantedByUser: one(users, { fields: [tenantRoleGrants.grantedBy], references: [users.id] }),
-<<<<<<< HEAD
 }));
 
 // ==========================================
@@ -463,6 +462,3 @@ export const localesRelations = relations(locales, ({ one }) => ({
     relationName: 'localeForeignCurrency',
   }),
 }));
-=======
-}));
->>>>>>> parent of 54348cb (US 1.2: Gestión de Locales (Sucursales) y Parámetros Fiscales)
