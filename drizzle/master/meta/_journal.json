@@ -43,13 +43,6 @@
       "when": 1779555371296,
       "tag": "0005_reflective_nuke",
       "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1783008858543,
-      "tag": "0006_tricky_prodigy",
-      "breakpoints": true
     }
   ]
 }

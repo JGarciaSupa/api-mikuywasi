@@ -5,7 +5,6 @@
     "test": "bun test",
     "master:create-user": "bun run src/scripts/master-create-user.ts",
     "master:seed-rbac": "bun run src/scripts/seed-master-rbac.ts",
-    "master:seed-catalog": "bun run src/scripts/seed-master-catalog.ts",
     "tenants:migrate": "bun run src/scripts/migrate-tenants.ts",
     "tenants:seed": "bun run src/scripts/seed-tenant.ts",
     "tenants:clear-sessions": "bun run src/scripts/clear-sessions.ts"

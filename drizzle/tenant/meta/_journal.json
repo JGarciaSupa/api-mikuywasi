@@ -232,13 +232,6 @@
       "when": 1782697753059,
       "tag": "0032_collected_session_id",
       "breakpoints": true
-    },
-    {
-      "idx": 33,
-      "version": "7",
-      "when": 1783011138784,
-      "tag": "0033_cheerful_maestro",
-      "breakpoints": true
     }
   ]
 }

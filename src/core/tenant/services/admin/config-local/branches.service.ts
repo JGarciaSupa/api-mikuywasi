@@ -47,13 +47,6 @@ export interface CreateBranchInput {
   freeDeliveryThreshold?: string | null;
   fiscalId?: string | null;
   fiscalName?: string | null;
-  sunatAnexoCode?: string;
-  appliesTax1?: boolean;
-  appliesTax2?: boolean;
-  appliesTax3?: boolean;
-  appliesIcbper?: boolean;
-  baseCurrency?: string;
-  foreignCurrency?: string | null;
   schedules?: {
     day: string;
     startTime: string;
@@ -115,13 +108,6 @@ export async function createBranch(data: CreateBranchInput) {
       freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
       fiscalId: emptyToNull(data.fiscalId),
       fiscalName: emptyToNull(data.fiscalName),
-      sunatAnexoCode: emptyToNull(data.sunatAnexoCode) ?? '0000',
-      appliesTax1: data.appliesTax1 ?? true,
-      appliesTax2: data.appliesTax2 ?? false,
-      appliesTax3: data.appliesTax3 ?? false,
-      appliesIcbper: data.appliesIcbper ?? false,
-      baseCurrency: emptyToNull(data.baseCurrency) ?? 'PEN',
-      foreignCurrency: emptyToNull(data.foreignCurrency),
       schedules: data.schedules ?? [],
       deliveryZone: data.deliveryZone ?? null,
       allowSellWithoutStock: data.allowSellWithoutStock ?? false,
@@ -168,13 +154,6 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.freeDeliveryThreshold !== undefined) updateData.freeDeliveryThreshold = emptyToNull(data.freeDeliveryThreshold);
   if (data.fiscalId !== undefined) updateData.fiscalId = emptyToNull(data.fiscalId);
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
-  if (data.sunatAnexoCode !== undefined) updateData.sunatAnexoCode = emptyToNull(data.sunatAnexoCode) ?? '0000';
-  if (data.appliesTax1 !== undefined) updateData.appliesTax1 = data.appliesTax1;
-  if (data.appliesTax2 !== undefined) updateData.appliesTax2 = data.appliesTax2;
-  if (data.appliesTax3 !== undefined) updateData.appliesTax3 = data.appliesTax3;
-  if (data.appliesIcbper !== undefined) updateData.appliesIcbper = data.appliesIcbper;
-  if (data.baseCurrency !== undefined) updateData.baseCurrency = emptyToNull(data.baseCurrency) ?? 'PEN';
-  if (data.foreignCurrency !== undefined) updateData.foreignCurrency = emptyToNull(data.foreignCurrency);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
   if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
   if (data.allowSellWithoutStock !== undefined) updateData.allowSellWithoutStock = data.allowSellWithoutStock;
