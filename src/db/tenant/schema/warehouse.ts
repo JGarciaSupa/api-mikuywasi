@@ -596,6 +596,8 @@ export const cashRegisters = pgTable('cash_registers', {
 	// Dueño/creador de la caja (se asigna automáticamente al usuario que la crea).
 	userId: integer('user_id').references(() => users.id),
 	name: varchar('name', { length: 100 }).notNull(),
+	// Tipo de cambio de la caja, registrado por quien la crea (editable).
+	exchangeRate: decimal('exchange_rate', { precision: 8, scale: 4 }).notNull().default('1'),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
@@ -627,8 +629,6 @@ export const cashSessions = pgTable('cash_sessions', {
 	expectedBalance: decimal('expected_balance', { precision: 12, scale: 2 }).notNull().default('0'),
 	// closingBalance - expectedBalance (filled on close)
 	difference: decimal('difference', { precision: 12, scale: 2 }),
-	// Tipo de cambio vigente al abrir el turno (solo modificable con caja.configurar_tipo_cambio).
-	exchangeRate: decimal('exchange_rate', { precision: 8, scale: 4 }).notNull().default('1'),
 	status: varchar('status', { length: 20, enum: ['open', 'closed'] as const }).notNull().default('open'),
 	notes: varchar('notes', { length: 300 }),
 	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow(),

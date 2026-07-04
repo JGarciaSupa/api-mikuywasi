@@ -462,4 +462,4 @@ export const localesRelations = relations(locales, ({ one }) => ({
     references: [currencies.id],
     relationName: 'localeForeignCurrency',
   }),
-}));
+}));

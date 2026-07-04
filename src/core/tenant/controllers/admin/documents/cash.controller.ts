@@ -53,7 +53,8 @@ export const createCashRegister = async (c: Context) => {
     const data = await cash.createCashRegister({
       branchId: parseInt(body.branchId),
       name: body.name.trim(),
-      userId: actor.userId ?? null,
+      userId: actor.userId ?? null, // dueño = usuario que crea la caja (automático)
+      exchangeRate: body.exchangeRate !== undefined ? parseFloat(body.exchangeRate) : undefined,
     });
     return c.json({ success: true, message: 'Caja creada', data }, 201);
   } catch (e) {
@@ -68,6 +69,7 @@ export const updateCashRegister = async (c: Context) => {
     const data = await cash.updateCashRegister(id, {
       name: body.name?.trim(),
       isActive: body.isActive !== undefined ? !!body.isActive : undefined,
+      exchangeRate: body.exchangeRate !== undefined ? parseFloat(body.exchangeRate) : undefined,
     });
     return c.json({ success: true, message: 'Caja actualizada', data });
   } catch (e) {
@@ -151,15 +153,12 @@ export const openCashSession = async (c: Context) => {
     if (!body.registerId) {
       return c.json({ success: false, message: 'Caja (registerId) es requerida' }, 400);
     }
-    const canSetRate = hasPermission(c, 'caja.configurar_tipo_cambio');
     const data = await cash.openCashSession(
       {
         registerId: parseInt(body.registerId),
         openingBalance: parseFloat(body.openingBalance) || 0,
-        // Solo usuarios con caja.configurar_tipo_cambio pueden fijar el T/C del turno.
-        exchangeRate: canSetRate && body.exchangeRate ? parseFloat(body.exchangeRate) : undefined,
         userId: body.userId !== undefined && body.userId !== null ? parseInt(body.userId) : undefined,
-        notes: body.notes,
+        notes: body.notes
       },
       getAuditActor(c)
     );

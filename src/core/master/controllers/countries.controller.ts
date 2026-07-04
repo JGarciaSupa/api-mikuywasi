@@ -1,52 +1,53 @@
 import type { Context } from 'hono';
-import * as CountriesService from '../services/countries.service';
+import * as countriesService from '../services/countries.service';
 
-export const getCountries = async (c: Context) => {
+export const getAllCountriesController = async (c: Context) => {
   try {
-    const data = await CountriesService.getCountries();
-    return c.json({ success: true, data });
+    const includeInactive = c.req.query('all') === 'true';
+    const result = await countriesService.getAllCountries(includeInactive);
+    return c.json({ success: true, message: 'Países obtenidos con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: error.message || 'Error al obtener países', data: null }, 500);
   }
 };
 
-export const getCountryById = async (c: Context) => {
+export const getCountryByIdController = async (c: Context) => {
   try {
-    const id = Number(c.req.param('id'));
-    const data = await CountriesService.getCountryById(id);
-    return c.json({ success: true, data });
+    const id = parseInt(c.req.param('id') || '0');
+    const result = await countriesService.getCountryById(id);
+    return c.json({ success: true, message: 'País obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 404);
+    return c.json({ success: false, message: error.message || 'País no encontrado', data: null }, 404);
   }
 };
 
-export const createCountry = async (c: Context) => {
+export const createCountryController = async (c: Context) => {
   try {
-    const body = await c.req.json();
-    const data = await CountriesService.createCountry(body);
-    return c.json({ success: true, data }, 201);
+    const data = c.req.valid('json' as never);
+    const result = await countriesService.createCountry(data);
+    return c.json({ success: true, message: 'País creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message || 'Error al crear el país', data: null }, 400);
   }
 };
 
-export const updateCountry = async (c: Context) => {
+export const updateCountryController = async (c: Context) => {
   try {
-    const id = Number(c.req.param('id'));
-    const body = await c.req.json();
-    const data = await CountriesService.updateCountry(id, body);
-    return c.json({ success: true, data });
+    const id = parseInt(c.req.param('id') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await countriesService.updateCountry(id, data);
+    return c.json({ success: true, message: 'País actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message || 'Error al actualizar el país', data: null }, 400);
   }
 };
 
-export const deleteCountry = async (c: Context) => {
+export const deleteCountryController = async (c: Context) => {
   try {
-    const id = Number(c.req.param('id'));
-    const data = await CountriesService.deleteCountry(id);
-    return c.json({ success: true, ...data });
+    const id = parseInt(c.req.param('id') || '0');
+    const result = await countriesService.deleteCountry(id);
+    return c.json({ success: true, message: result.message, data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message || 'Error al eliminar el país', data: null }, 400);
   }
 };

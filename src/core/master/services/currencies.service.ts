@@ -1,48 +1,47 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../../../db';
+import { masterDb } from '../../../db';
 import { currencies } from '../../../db/master/schema';
+import { eq } from 'drizzle-orm';
 import type { CreateCurrencyInput, UpdateCurrencyInput } from '../validations/currencies.validation';
 
-export const getAllCurrencies = async () => {
-  return await db.select().from(currencies).orderBy(currencies.name);
+export const getAllCurrencies = async (includeInactive = false) => {
+  const result = await masterDb.query.currencies.findMany({
+    where: includeInactive ? undefined : eq(currencies.isActive, true),
+    orderBy: (currencies, { asc }) => [asc(currencies.name)],
+  });
+  return result;
 };
 
 export const getCurrencyById = async (id: number) => {
-  const result = await db.select().from(currencies).where(eq(currencies.id, id));
-  if (result.length === 0) throw new Error('Moneda no encontrada');
-  return result[0];
+  const currency = await masterDb.query.currencies.findFirst({
+    where: eq(currencies.id, id),
+  });
+  if (!currency) throw new Error('Moneda no encontrada');
+  return currency;
 };
 
 export const createCurrency = async (data: CreateCurrencyInput) => {
-  try {
-    const [newCurrency] = await db.insert(currencies).values(data).returning();
-    return newCurrency;
-  } catch (error: any) {
-    if (error.code === '23505') {
-      throw new Error('El código ISO ya existe');
-    }
-    throw error;
-  }
+  const [newCurrency] = await masterDb.insert(currencies).values({
+    ...data,
+    updatedAt: new Date(),
+  }).returning();
+  return newCurrency;
 };
 
 export const updateCurrency = async (id: number, data: UpdateCurrencyInput) => {
-  try {
-    const [updatedCurrency] = await db.update(currencies)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(currencies.id, id))
-      .returning();
-    if (!updatedCurrency) throw new Error('Moneda no encontrada');
-    return updatedCurrency;
-  } catch (error: any) {
-    if (error.code === '23505') {
-      throw new Error('El código ISO ya existe');
-    }
-    throw error;
-  }
+  const [updated] = await masterDb.update(currencies)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(currencies.id, id))
+    .returning();
+
+  if (!updated) throw new Error('Moneda no encontrada');
+  return updated;
 };
 
 export const deleteCurrency = async (id: number) => {
-  const result = await db.delete(currencies).where(eq(currencies.id, id)).returning();
-  if (result.length === 0) throw new Error('Moneda no encontrada');
+  const [deleted] = await masterDb.delete(currencies)
+    .where(eq(currencies.id, id))
+    .returning();
+
+  if (!deleted) throw new Error('Moneda no encontrada');
   return { message: 'Moneda eliminada correctamente' };
 };

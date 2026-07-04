@@ -47,8 +47,8 @@ export async function getTenantDb(dbUrl: string): Promise<TenantDbInstance> {
   const pool = new Pool({
     connectionString: dbUrl,
     max: 5,
-    idleTimeoutMillis: 300000,
-    connectionTimeoutMillis: 20000,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
   });
 
   // Instanciar Drizzle solo una vez

@@ -4,8 +4,6 @@ import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
 import { findPaymentMethodByName } from '../admin/config-local/payment-method.service';
-import { writeAuditLog } from '../admin/warehouse/shared/audit.service';
-import type { AuditActor } from '../admin/warehouse/types';
 
 function toNum(v: unknown) {
   const n = Number(v ?? 0);
@@ -177,7 +175,7 @@ export const getPaymentMethods = async () => {
 /**
  * Crear un nuevo pedido (con NanoID y reintentos en colisión)
  */
-export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending', actor?: AuditActor) => {
+export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
   const db = getTenantDb();
   const { items } = orderData;
   const subtotal = roundMoney(toNum(orderData.subtotal));
@@ -277,17 +275,6 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
             }
           }
         }
-
-        await writeAuditLog({
-          tableName: 'orders',
-          operation: 'INSERT',
-          recordId: null,
-          afterData: { id: result.id, total: result.total, customerName: result.customerName, tableName: result.tableName, status: result.status },
-          userId: actor?.userId,
-          userName: actor?.userName,
-          module: 'pedidos',
-          description: `Pedido #${result.id} registrado${result.tableName ? ` — Mesa ${result.tableName}` : result.customerName ? ` — ${result.customerName}` : ''} — Total S/ ${result.total}`,
-        }, tx);
 
         return { ...result, items };
       });
