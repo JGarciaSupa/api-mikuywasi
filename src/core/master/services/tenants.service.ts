@@ -516,7 +516,7 @@ export const deleteTenant = async (id: number) => {
 };
 
 // ── GET TENANT DATABASE INSTANCE (HELPER) ────────────────────────────────────
-async function getTenantDatabaseInstance(tenantId: number) {
+export async function getTenantDatabaseInstance(tenantId: number) {
   const tenantData = await masterDb.query.tenants.findFirst({
     where: eq(tenants.id, tenantId),
     with: { server: true },

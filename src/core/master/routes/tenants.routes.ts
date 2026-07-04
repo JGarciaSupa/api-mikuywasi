@@ -11,6 +11,21 @@ import {
   validateUpdateTenantUserPassword,
 } from '../validations/tenant-users.validation';
 import {
+  validateCreateTenantBrand,
+  validateUpdateTenantBrand,
+  validateCreateTenantBranch,
+  validateUpdateTenantBranch,
+} from '../validations/tenant-structure.validation';
+import {
+  getTenantStructureController,
+  createTenantBrandController,
+  updateTenantBrandController,
+  deleteTenantBrandController,
+  createTenantBranchController,
+  updateTenantBranchController,
+  deleteTenantBranchController,
+} from '../controllers/tenant-structure.controller';
+import {
   getAllTenantsController,
   getTenantByIdController,
   getTenantBySlugController,
@@ -43,5 +58,14 @@ router.post('/:id/users', validateCreateTenantUser, createTenantUserController);
 router.patch('/:id/users/:userId', validateUpdateTenantUser, updateTenantUserController);
 router.patch('/:id/users/:userId/password', validateUpdateTenantUserPassword, updateTenantUserPasswordController);
 router.delete('/:id/users/:userId', deleteTenantUserController);
+
+// ESTRUCTURA: MARCAS Y SUCURSALES (Corporación → Marca → Sucursal)
+router.get('/:id/structure', getTenantStructureController);
+router.post('/:id/brands', validateCreateTenantBrand, createTenantBrandController);
+router.patch('/:id/brands/:brandId', validateUpdateTenantBrand, updateTenantBrandController);
+router.delete('/:id/brands/:brandId', deleteTenantBrandController);
+router.post('/:id/branches', validateCreateTenantBranch, createTenantBranchController);
+router.patch('/:id/branches/:branchId', validateUpdateTenantBranch, updateTenantBranchController);
+router.delete('/:id/branches/:branchId', deleteTenantBranchController);
 
 export default router;

@@ -70,7 +70,8 @@ export const branches = pgTable('branches', {
 	fiscalId: varchar('fiscal_id', { length: 30 }),
 	fiscalName: varchar('fiscal_name', { length: 200 }),
 
-	// Facturación electrónica: empresa de la sede en el facturador
+	// Facturación electrónica: empresa propia en el facturador (Caso B).
+	// NULL → hereda la empresa del tenantConfigs (Caso A).
 	facturadorEmpresaId: integer('facturador_empresa_id'),
 
 	isActive: boolean('is_active').default(true).notNull(),

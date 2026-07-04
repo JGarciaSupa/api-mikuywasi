@@ -6,8 +6,6 @@ import tenantsRoutes from './routes/tenants.routes';
 import subscriptionsRoutes from './routes/subscriptions.routes';
 import publicRoutes from './routes/public.routes';
 import rbacRoutes from './routes/rbac.routes';
-import currenciesRoutes from './routes/currencies.routes';
-import countriesRoutes from './routes/countries.routes';
 
 const master = new Hono();
 
