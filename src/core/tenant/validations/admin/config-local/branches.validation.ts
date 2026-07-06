@@ -34,6 +34,7 @@ export const createBranchSchema = z.object({
   freeDeliveryThreshold: z.string().nullable().optional(),
   fiscalId: z.string().max(30).nullable().optional(),
   fiscalName: z.string().max(200).nullable().optional(),
+  channelIds: z.array(z.number().int().positive()).optional(),
   schedules: z.array(scheduleSchema).optional(),
   deliveryZone: z.object({
     type: z.literal('Polygon'),

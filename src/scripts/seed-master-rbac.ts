@@ -147,6 +147,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'administracion.banners',             name: 'Banners',                  description: 'Gestionar banners publicitarios.',             order: 7 },
       { code: 'administracion.redes_sociales',      name: 'Redes sociales',           description: 'Administrar redes sociales del negocio.',      order: 8 },
       { code: 'administracion.rbac',                name: 'Roles y permisos',         description: 'Gestionar roles y permisos de usuarios.',      order: 9 },
+      { code: 'administracion.canales_venta',       name: 'Canales de venta',         description: 'Administrar el catálogo de canales de venta (Salón, Delivery Propio, Rappi, etc).', order: 10 },
     ],
   },
   {

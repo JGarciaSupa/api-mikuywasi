@@ -127,6 +127,39 @@ export const refreshTokens = pgTable('refresh_tokens', {
 }));
 
 // ==========================================
+// 🛎️ CANALES DE VENTA (SIGG 2.6)
+// ==========================================
+
+// Catálogo de canales por tenant (Ej: "Salón", "Delivery Propio", "Rappi", "PedidosYa").
+// Evita que cada sede tipee el nombre del canal de forma distinta.
+export const salesChannels = pgTable('sales_channels', {
+	id: serial('id').primaryKey(),
+	name: varchar('name', { length: 100 }).notNull(),
+	code: varchar('code', { length: 30 }).notNull().unique(), // Ej: 'SALON', 'DELIVERY-PROPIO', 'RAPPI'
+	type: varchar('type', { length: 20, enum: ['dine_in', 'delivery', 'pickup'] as const }).notNull(),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	codeIdx: index('sales_channels_code_idx').on(table.code),
+	activeIdx: index('sales_channels_active_idx').on(table.isActive),
+}));
+
+// Activación por sucursal: qué canales del catálogo atiende ESTA sede.
+// Reemplaza los booleanos fijos hasDineIn/hasDelivery/hasPickup de `branches`.
+// Presencia de la fila = canal activo. Sin fila = inactivo (no hace falta un booleano propio).
+export const branchChannels = pgTable('branch_channels', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	channelId: integer('channel_id').notNull().references(() => salesChannels.id, { onDelete: 'cascade' }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	branchChannelUnique: uniqueIndex('branch_channels_unique_idx').on(table.branchId, table.channelId),
+	branchIdx: index('branch_channels_branch_idx').on(table.branchId),
+	channelIdx: index('branch_channels_channel_idx').on(table.channelId),
+}));
+
+// ==========================================
 // 🍽️ INFRAESTRUCTURA DEL LOCAL
 // ==========================================
 
@@ -346,6 +379,16 @@ export const branchesRelations = relations(branches, ({ one, many }) => ({
 	banners: many(banners),
 	socialLinks: many(socialLinks),
 	categories: many(categories),
+	branchChannels: many(branchChannels),
+}));
+
+export const salesChannelsRelations = relations(salesChannels, ({ many }) => ({
+	branchChannels: many(branchChannels),
+}));
+
+export const branchChannelsRelations = relations(branchChannels, ({ one }) => ({
+	branch: one(branches, { fields: [branchChannels.branchId], references: [branches.id] }),
+	channel: one(salesChannels, { fields: [branchChannels.channelId], references: [salesChannels.id] }),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({

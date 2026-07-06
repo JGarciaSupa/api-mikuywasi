@@ -19,6 +19,7 @@ import rbac from "./users/rbac";
 import billing from "./documents/billing";
 import branches from "./config-local/branches";
 import brands from "./config-local/brands";
+import salesChannels from "./config-local/sales-channels";
 import sunat from "./documents/sunat";
 
 import { adminLimiter } from "../limiter";
@@ -49,6 +50,7 @@ routes.route('/rbac', rbac);
 routes.route('/billing', billing);
 routes.route('/branches', branches);
 routes.route('/brands', brands);
+routes.route('/sales-channels', salesChannels);
 routes.route('/sunat', sunat);
 
 export default routes;

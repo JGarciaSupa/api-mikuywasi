@@ -1,6 +1,51 @@
-import { branches, userBranches } from '@/db/tenant/schema';
-import { eq, sql, and } from 'drizzle-orm';
+import { branches, userBranches, salesChannels, branchChannels } from '@/db/tenant/schema';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
+
+// ────────────────────────────────────────────
+// CANALES DE VENTA ACTIVOS DE UNA SUCURSAL
+// ────────────────────────────────────────────
+// Trae el catálogo completo del tenant, marcando cuáles están activos en esta sede.
+// Reemplaza los booleanos fijos hasDineIn/hasDelivery/hasPickup del formulario viejo.
+
+async function getBranchChannels(branchId: number) {
+  const db = getTenantDb();
+
+  const [catalog, activeRows] = await Promise.all([
+    // Solo canales vigentes en el catálogo corporativo: si el admin lo desactivó para
+    // toda la empresa, ninguna sucursal debe poder verlo ni activarlo.
+    db.select().from(salesChannels).where(eq(salesChannels.isActive, true)).orderBy(salesChannels.name),
+    db.select({ channelId: branchChannels.channelId }).from(branchChannels).where(eq(branchChannels.branchId, branchId)),
+  ]);
+
+  const activeIds = new Set(activeRows.map((r) => r.channelId));
+
+  return catalog.map((channel) => ({
+    ...channel,
+    isActiveForBranch: activeIds.has(channel.id),
+  }));
+}
+
+// Sincroniza el pivote branch_channels con la lista de IDs recibida (reemplazo total).
+async function syncBranchChannels(tx: any, branchId: number, channelIds: number[]) {
+  await tx.delete(branchChannels).where(eq(branchChannels.branchId, branchId));
+
+  if (channelIds.length === 0) return;
+
+  // Nunca confiar en el cliente: descarta cualquier ID que no exista o esté
+  // desactivado en el catálogo corporativo, aunque el front no debería enviarlo.
+  const validChannels = await tx
+    .select({ id: salesChannels.id })
+    .from(salesChannels)
+    .where(and(inArray(salesChannels.id, channelIds), eq(salesChannels.isActive, true)));
+
+  const validIds = validChannels.map((c: { id: number }) => c.id);
+  if (validIds.length === 0) return;
+
+  await tx.insert(branchChannels).values(
+    validIds.map((channelId: number) => ({ branchId, channelId }))
+  );
+}
 
 // ────────────────────────────────────────────
 // LISTAR SUCURSALES
@@ -18,7 +63,10 @@ export async function getAllBranches() {
 export async function getBranchById(id: number) {
   const db = getTenantDb();
   const [branch] = await db.select().from(branches).where(eq(branches.id, id));
-  return branch;
+  if (!branch) return branch;
+
+  const channels = await getBranchChannels(id);
+  return { ...branch, channels };
 }
 
 // ────────────────────────────────────────────
@@ -48,6 +96,7 @@ export interface CreateBranchInput {
   freeDeliveryThreshold?: string | null;
   fiscalId?: string | null;
   fiscalName?: string | null;
+  channelIds?: number[];
   schedules?: {
     day: string;
     startTime: string;
@@ -114,6 +163,10 @@ export async function createBranch(data: CreateBranchInput) {
       deliveryZone: data.deliveryZone ?? null,
       allowSellWithoutStock: data.allowSellWithoutStock ?? false,
     }).returning();
+
+    if (data.channelIds !== undefined) {
+      await syncBranchChannels(tx, newBranch.id, data.channelIds);
+    }
 
     return newBranch;
   });
@@ -183,6 +236,10 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
       .set(updateData)
       .where(eq(branches.id, id))
       .returning();
+
+    if (data.channelIds !== undefined) {
+      await syncBranchChannels(tx, id, data.channelIds);
+    }
 
     return updated;
   });
