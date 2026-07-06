@@ -21,6 +21,31 @@ export const getKitchenOrdersController = async (c: Context) => {
   }
 };
 
+export const confirmKitchenStationController = async (c: Context) => {
+  try {
+    const id = c.req.param('id');
+    const stationId = parseInt(c.req.param('stationId') || '0');
+
+    if (!id || !stationId) {
+      return c.json({ success: false, message: 'ID de pedido o estación inválido' }, 400);
+    }
+
+    const result = await kitchenService.confirmStationForOrder(id, stationId);
+
+    return c.json({
+      success: true,
+      message: result.allConfirmed ? 'Pedido marcado como listo' : 'Estación confirmada, esperando otras estaciones',
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Error in confirmKitchenStationController:', error);
+    return c.json({
+      success: false,
+      message: error.message || 'Error al confirmar la estación'
+    }, 500);
+  }
+};
+
 export const updateKitchenStatusController = async (c: Context) => {
   try {
     const id = c.req.param('id');

@@ -240,11 +240,70 @@ export const products = pgTable('products', {
 	categoryIdIdx: index('products_category_id_idx').on(table.categoryId),
 }));
 
-export const productsRelations = relations(products, ({ one }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
 	category: one(categories, {
 		fields: [products.categoryId],
 		references: [categories.id],
 	}),
+	kitchenStationAssignments: many(productKitchenStations),
+}));
+
+// ==========================================
+// 🍳 ESTACIONES DE COCINA Y RUTEO (SIGG 2.7)
+// ==========================================
+
+// Catálogo de estaciones por tenant (Ej: "Bar", "Cocina Caliente", "Cocina Fría").
+// Distinto de `storage_areas` (warehouse.ts), que es almacén/inventario, no ruteo de pedidos.
+export const kitchenStations = pgTable('kitchen_stations', {
+	id: serial('id').primaryKey(),
+	name: varchar('name', { length: 100 }).notNull(),
+	code: varchar('code', { length: 30 }).notNull().unique(), // Ej: 'BAR', 'COCINA-CALIENTE'
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	codeIdx: index('kitchen_stations_code_idx').on(table.code),
+	activeIdx: index('kitchen_stations_active_idx').on(table.isActive),
+}));
+
+// Pivote: a qué estación(es) se despacha cada producto. El admin lo define una sola
+// vez a nivel de catálogo y todas las sucursales heredan la regla de ruteo.
+export const productKitchenStations = pgTable('product_kitchen_stations', {
+	id: serial('id').primaryKey(),
+	productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+	stationId: integer('station_id').notNull().references(() => kitchenStations.id, { onDelete: 'cascade' }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	productStationUnique: uniqueIndex('product_kitchen_stations_unique_idx').on(table.productId, table.stationId),
+	productIdx: index('product_kitchen_stations_product_idx').on(table.productId),
+	stationIdx: index('product_kitchen_stations_station_idx').on(table.stationId),
+}));
+
+export const kitchenStationsRelations = relations(kitchenStations, ({ many }) => ({
+	productAssignments: many(productKitchenStations),
+}));
+
+export const productKitchenStationsRelations = relations(productKitchenStations, ({ one }) => ({
+	product: one(products, { fields: [productKitchenStations.productId], references: [products.id] }),
+	station: one(kitchenStations, { fields: [productKitchenStations.stationId], references: [kitchenStations.id] }),
+}));
+
+// Confirmación de "listo" por estación, por pedido. El pedido completo pasa a
+// ready_for_pickup recién cuando TODAS las estaciones que tocó confirmaron —
+// evita que una estación marque como lista la parte de otra que aún no terminó.
+export const orderStationConfirmations = pgTable('order_station_confirmations', {
+	id: serial('id').primaryKey(),
+	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+	stationId: integer('station_id').notNull().references(() => kitchenStations.id, { onDelete: 'cascade' }),
+	confirmedAt: timestamp('confirmed_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	orderStationUnique: uniqueIndex('order_station_confirmations_unique_idx').on(table.orderId, table.stationId),
+	orderIdx: index('order_station_confirmations_order_idx').on(table.orderId),
+}));
+
+export const orderStationConfirmationsRelations = relations(orderStationConfirmations, ({ one }) => ({
+	order: one(orders, { fields: [orderStationConfirmations.orderId], references: [orders.id] }),
+	station: one(kitchenStations, { fields: [orderStationConfirmations.stationId], references: [kitchenStations.id] }),
 }));
 
 // ==========================================

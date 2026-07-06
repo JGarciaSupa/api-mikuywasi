@@ -12,6 +12,11 @@ import {
   updateProductController
 } from '../../../../controllers/admin/warehouse/products.controller';
 import * as extras from '../../../../controllers/admin/warehouse/extras.controller';
+import {
+  getProductKitchenStationsController,
+  assignStationToProductController,
+  unassignStationFromProductController,
+} from '../../../../controllers/admin/config-local/kitchen-station.controller';
 
 const routes = new Hono();
 
@@ -28,6 +33,11 @@ routes.delete('/:id', deleteProductController);
 routes.get('/:id/extra-groups', extras.getProductExtraGroups);
 routes.post('/:id/extra-groups', extras.assignGroupToProduct);
 routes.delete('/:id/extra-groups/:groupId', extras.unassignGroupFromProduct);
+
+// ── Estaciones de cocina asignadas a un producto (SIGG 2.7) ─────────────────
+routes.get('/:id/kitchen-stations', getProductKitchenStationsController);
+routes.post('/:id/kitchen-stations', assignStationToProductController);
+routes.delete('/:id/kitchen-stations/:stationId', unassignStationFromProductController);
 
 // ── Gestión global de grupos de extras ──────────────────────────────────────
 routes.get('/extra-groups/all', extras.listExtraGroups);

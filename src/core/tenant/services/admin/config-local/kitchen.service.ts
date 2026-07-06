@@ -1,14 +1,35 @@
-import { orders, orderItems } from '@/db/tenant/schema';
+import { orders, orderItems, productKitchenStations, orderStationConfirmations } from '@/db/tenant/schema';
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
+ * Estaciones reales (no cuenta "sin asignar") que toca un pedido, según sus ítems.
+ */
+async function getRequiredStationsForOrder(db: ReturnType<typeof getTenantDb>, orderId: string) {
+  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const productIds = [...new Set(items.map((i) => i.productId).filter((id): id is number => id != null))];
+  if (productIds.length === 0) return new Set<number>();
+
+  const assignments = await db
+    .select()
+    .from(productKitchenStations)
+    .where(inArray(productKitchenStations.productId, productIds));
+
+  return new Set(assignments.map((a) => a.stationId));
+}
+
+/**
  * Obtener órdenes activas para la cocina
  * Incluye estados: pending, confirmed, preparing
+ *
+ * Cada ítem incluye `stationIds`: a qué estaciones de cocina (SIGG 2.7) se enruta
+ * su producto. Array vacío = producto sin estación asignada todavía (fail-open:
+ * el frontend debe mostrarlo en todas las estaciones con una advertencia, nunca
+ * ocultarlo por completo).
  */
 export const getActiveKitchenOrders = async (branchId?: number) => {
   const db = getTenantDb();
-  
+
   const conditions = [inArray(orders.status, ['confirmed', 'preparing'])];
   if (branchId) {
     conditions.push(eq(orders.branchId, branchId));
@@ -29,10 +50,77 @@ export const getActiveKitchenOrders = async (branchId?: number) => {
     .from(orderItems)
     .where(inArray(orderItems.orderId, orderIds));
 
+  const productIds = [...new Set(allItems.map((i) => i.productId).filter((id): id is number => id != null))];
+
+  const assignments = productIds.length > 0
+    ? await db.select().from(productKitchenStations).where(inArray(productKitchenStations.productId, productIds))
+    : [];
+
+  const stationsByProduct = new Map<number, number[]>();
+  for (const a of assignments) {
+    const list = stationsByProduct.get(a.productId) ?? [];
+    list.push(a.stationId);
+    stationsByProduct.set(a.productId, list);
+  }
+
+  const confirmations = await db
+    .select()
+    .from(orderStationConfirmations)
+    .where(inArray(orderStationConfirmations.orderId, orderIds));
+
+  const confirmedByOrder = new Map<string, number[]>();
+  for (const c of confirmations) {
+    const list = confirmedByOrder.get(c.orderId) ?? [];
+    list.push(c.stationId);
+    confirmedByOrder.set(c.orderId, list);
+  }
+
   return activeOrders.map(order => ({
     ...order,
-    items: allItems.filter(item => item.orderId === order.id)
+    confirmedStationIds: confirmedByOrder.get(order.id) ?? [],
+    items: allItems
+      .filter(item => item.orderId === order.id)
+      .map((item) => ({
+        ...item,
+        stationIds: item.productId ? (stationsByProduct.get(item.productId) ?? []) : [],
+      })),
   }));
+};
+
+/**
+ * Una estación confirma que su parte del pedido está lista. El pedido completo
+ * solo pasa a `ready_for_pickup` cuando TODAS las estaciones reales que toca ya
+ * confirmaron — evita que una estación cierre por error el trabajo de otra.
+ */
+export const confirmStationForOrder = async (orderId: string, stationId: number) => {
+  const db = getTenantDb();
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) throw new Error('Pedido no encontrado');
+
+  await db.insert(orderStationConfirmations).values({ orderId, stationId }).onConflictDoNothing();
+
+  const requiredStations = await getRequiredStationsForOrder(db, orderId);
+
+  const confirmations = await db
+    .select()
+    .from(orderStationConfirmations)
+    .where(eq(orderStationConfirmations.orderId, orderId));
+  const confirmedStationIds = confirmations.map((c) => c.stationId);
+  const confirmedSet = new Set(confirmedStationIds);
+
+  const allConfirmed = [...requiredStations].every((s) => confirmedSet.has(s));
+
+  if (allConfirmed) {
+    const [updated] = await db
+      .update(orders)
+      .set({ status: 'ready_for_pickup', updatedAt: new Date() })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return { order: updated, confirmedStationIds, allConfirmed: true };
+  }
+
+  return { order, confirmedStationIds, allConfirmed: false };
 };
 
 /**

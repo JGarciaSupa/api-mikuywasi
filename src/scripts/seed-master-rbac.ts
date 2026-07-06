@@ -74,6 +74,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'menu.ver_mesas',           name: 'Ver mesas',              description: 'Ver las mesas del restaurante.',                 order: 5 },
       { code: 'menu.gestionar_mesas',     name: 'Gestionar mesas',        description: 'Crear, editar y eliminar mesas.',                order: 6 },
       { code: 'menu.gestionar_extras',    name: 'Gestionar extras',       description: 'Administrar grupos de extras y modificadores.',  order: 7 },
+      { code: 'menu.gestionar_estaciones', name: 'Gestionar estaciones de cocina', description: 'Administrar el catálogo de estaciones de cocina y su ruteo por producto.', order: 8 },
     ],
   },
   {
