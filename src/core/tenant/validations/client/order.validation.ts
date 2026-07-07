@@ -34,6 +34,13 @@ export const createOrderSchema = z.object({
       name: z.string(),
       extraPrice: z.number()
     })).default([]),
+    extras: z.array(z.object({
+      extraId: z.number(),
+      qty: z.number().min(1).default(1),
+    })).optional(),
+    properties: z.array(z.object({
+      propertyId: z.number(),
+    })).optional(),
     packagingFee: z.number().default(0),
     notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),
     totalPrice: z.number({ error: 'Total por item es requerido' }),

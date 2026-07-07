@@ -64,6 +64,13 @@
       "when": 1782770999887,
       "tag": "0008_long_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783368445362,
+      "tag": "0009_bitter_sersi",
+      "breakpoints": true
     }
   ]
 }

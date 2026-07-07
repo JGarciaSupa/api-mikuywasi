@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import {
   orders,
   orderItems,
@@ -10,6 +10,10 @@ import {
   recipeLines,
   branchRecipeAreas,
   items,
+  orderItemExtras,
+  productExtras,
+  orderItemProperties,
+  productProperties,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -137,6 +141,8 @@ export interface EditOrderItemInput {
   productId?: number;
   quantity?: number;
   selectedAlternatives?: { name: string; extraPrice: number }[];
+  extras?: { extraId: number; qty: number }[];
+  properties?: { propertyId: number }[];
   notes?: string;
 }
 
@@ -165,8 +171,18 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
       const alternativesExtra = (input.selectedAlternatives ?? [])
         .reduce((s: number, a: any) => s + toNum(a.extraPrice) * input.quantity!, 0);
+
+      // Extras seleccionados (adicionales con costo — ej. "Coca-Cola 500ml")
+      const extrasData = input.extras?.length
+        ? await db.select().from(productExtras).where(inArray(productExtras.id, input.extras.map((e) => e.extraId)))
+        : [];
+      const extrasTotal = (input.extras ?? []).reduce((s, sel) => {
+        const extra = extrasData.find((e) => e.id === sel.extraId);
+        return extra ? s + toNum(extra.price) * sel.qty : s;
+      }, 0);
+
       const unitPrice = toNum(product.price);
-      const totalPrice = roundMoney(unitPrice * input.quantity! + alternativesExtra);
+      const totalPrice = roundMoney(unitPrice * input.quantity! + alternativesExtra + extrasTotal);
 
       const [newItem] = await db
         .insert(orderItems)
@@ -182,6 +198,40 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
           totalPrice: String(totalPrice),
         })
         .returning();
+
+      if (input.extras?.length) {
+        const extraRows = input.extras
+          .map((sel) => {
+            const extra = extrasData.find((e) => e.id === sel.extraId);
+            if (!extra) return null;
+            const unitPriceExtra = toNum(extra.price);
+            return {
+              orderItemId: newItem.id,
+              extraId: sel.extraId,
+              qty: sel.qty,
+              unitPrice: String(unitPriceExtra),
+              totalPrice: String(roundMoney(unitPriceExtra * sel.qty)),
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null);
+        if (extraRows.length) await db.insert(orderItemExtras).values(extraRows);
+      }
+
+      // Propiedades seleccionadas (preferencias de preparación sin costo — ej. "Sin Helar")
+      if (input.properties?.length) {
+        const propertiesData = await db
+          .select()
+          .from(productProperties)
+          .where(inArray(productProperties.id, input.properties.map((p) => p.propertyId)));
+        const propertyRows = input.properties
+          .map((sel) => {
+            const property = propertiesData.find((p) => p.id === sel.propertyId);
+            if (!property) return null;
+            return { orderItemId: newItem.id, propertyId: sel.propertyId, propertyName: property.name };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null);
+        if (propertyRows.length) await db.insert(orderItemProperties).values(propertyRows);
+      }
 
       await recalcOrderTotals(db, orderId);
 

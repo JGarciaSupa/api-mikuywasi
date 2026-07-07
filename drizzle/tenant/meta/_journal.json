@@ -246,6 +246,20 @@
       "when": 1782864000000,
       "tag": "0034_brands_table",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783375541971,
+      "tag": "0035_branch_vinculation_country",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783388064338,
+      "tag": "0036_add_properties_product",
+      "breakpoints": true
     }
   ]
 }

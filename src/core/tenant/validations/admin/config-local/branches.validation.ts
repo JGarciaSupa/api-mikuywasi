@@ -18,6 +18,7 @@ export const createBranchSchema = z.object({
   brandId: z.number().int().positive('El ID de marca es requerido'),
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   code: z.string().min(1, 'El código es requerido').max(20, 'El código no puede exceder los 20 caracteres'),
+  countryCode: z.string().length(3, 'El código de país debe tener 3 caracteres (ISO 3166-1 alpha-3)').nullable().optional(),
   isMain: z.boolean().optional(),
   isActive: z.boolean().optional(),
   allowSellWithoutStock: z.boolean().optional(),
