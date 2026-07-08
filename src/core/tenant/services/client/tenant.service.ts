@@ -1,4 +1,4 @@
-import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, orderItemProperties, productProperties, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -274,35 +274,6 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
 
             if (extraRows.length) {
               await tx.insert(orderItemExtras).values(extraRows);
-            }
-          }
-
-          // Guardar propiedades seleccionadas por cada item (sin precio, snapshot de nombre)
-          for (let i = 0; i < insertedItems.length; i++) {
-            const orderItem = insertedItems[i];
-            const srcItem = items[i];
-            if (!srcItem.properties?.length) continue;
-
-            const propertyIds = srcItem.properties.map((p: any) => p.propertyId);
-            const propertiesData = await tx
-              .select()
-              .from(productProperties)
-              .where(inArray(productProperties.id, propertyIds));
-
-            const propertyRows = srcItem.properties
-              .map((sel: any) => {
-                const property = propertiesData.find((p) => p.id === sel.propertyId);
-                if (!property) return null;
-                return {
-                  orderItemId: orderItem.id,
-                  propertyId: sel.propertyId,
-                  propertyName: property.name,
-                };
-              })
-              .filter(Boolean);
-
-            if (propertyRows.length) {
-              await tx.insert(orderItemProperties).values(propertyRows);
             }
           }
         }

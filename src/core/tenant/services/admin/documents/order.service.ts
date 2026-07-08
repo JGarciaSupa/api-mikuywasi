@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras, orderItemProperties } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
@@ -148,31 +148,11 @@ export const getOrderById = async (id: string) => {
     extrasByItem.set(row.orderItemId, list);
   }
 
-  const propertiesRows = itemIds.length
-    ? await db
-        .select({
-          id: orderItemProperties.id,
-          orderItemId: orderItemProperties.orderItemId,
-          propertyId: orderItemProperties.propertyId,
-          propertyName: orderItemProperties.propertyName,
-        })
-        .from(orderItemProperties)
-        .where(inArray(orderItemProperties.orderItemId, itemIds))
-    : [];
-
-  const propertiesByItem = new Map<number, typeof propertiesRows>();
-  for (const row of propertiesRows) {
-    const list = propertiesByItem.get(row.orderItemId) ?? [];
-    list.push(row);
-    propertiesByItem.set(row.orderItemId, list);
-  }
-
   return {
     ...order,
     items: items.map((item) => ({
       ...item,
       extras: extrasByItem.get(item.id) ?? [],
-      properties: propertiesByItem.get(item.id) ?? [],
     })),
   };
 };

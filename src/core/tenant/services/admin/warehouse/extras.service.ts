@@ -7,6 +7,9 @@ import {
   items,
   recipes,
   recipeLines,
+  products,
+  categories,
+  branches,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb, type TenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundQty, roundMoney } from './shared/numbers';
@@ -14,17 +17,22 @@ import { fetchItemWithUnits } from './shared/item-select';
 
 // ─── Grupos ─────────────────────────────────────────────────────────────────
 
-export async function listExtraGroups() {
+export async function listExtraGroups(brandId: number) {
   const db = getTenantDb();
   const groups = await db
     .select()
     .from(productExtraGroups)
+    .where(eq(productExtraGroups.brandId, brandId))
     .orderBy(asc(productExtraGroups.name));
 
-  const extras = await db
-    .select()
-    .from(productExtras)
-    .orderBy(asc(productExtras.sortOrder), asc(productExtras.name));
+  const groupIds = groups.map((g) => g.id);
+  const extras = groupIds.length
+    ? await db
+        .select()
+        .from(productExtras)
+        .where(inArray(productExtras.groupId, groupIds))
+        .orderBy(asc(productExtras.sortOrder), asc(productExtras.name))
+    : [];
 
   return groups.map((g) => ({
     ...g,
@@ -45,6 +53,7 @@ export async function getExtraGroupById(id: number) {
 }
 
 export async function createExtraGroup(data: {
+  brandId: number;
   name: string;
   description?: string;
   isMultiple?: boolean;
@@ -53,6 +62,7 @@ export async function createExtraGroup(data: {
 }) {
   const db = getTenantDb();
   const [row] = await db.insert(productExtraGroups).values({
+    brandId: data.brandId,
     name: data.name,
     description: data.description,
     isMultiple: data.isMultiple ?? true,
@@ -90,7 +100,7 @@ export async function createExtra(data: {
   groupId: number;
   name: string;
   price: number;
-  sourceType: 'item' | 'recipe';
+  sourceType: 'item' | 'recipe' | 'none';
   itemId?: number | null;
   itemQty?: number;
   recipeId?: number | null;
@@ -121,7 +131,7 @@ export async function createExtra(data: {
 export async function updateExtra(id: number, data: Partial<{
   name: string;
   price: number;
-  sourceType: 'item' | 'recipe';
+  sourceType: 'item' | 'recipe' | 'none';
   itemId: number | null;
   itemQty: number;
   recipeId: number | null;
@@ -151,13 +161,14 @@ export async function getExtrasForProduct(productId: number) {
   const db = getTenantDb();
 
   const assignments = await db
-    .select({ groupId: productExtraGroupAssignments.groupId })
+    .select({ groupId: productExtraGroupAssignments.groupId, extraIds: productExtraGroupAssignments.extraIds })
     .from(productExtraGroupAssignments)
     .where(eq(productExtraGroupAssignments.productId, productId));
 
   if (!assignments.length) return [];
 
   const groupIds = assignments.map((a) => a.groupId);
+  const extraIdsByGroup = new Map(assignments.map((a) => [a.groupId, a.extraIds]));
 
   const groups = await db
     .select()
@@ -171,18 +182,71 @@ export async function getExtrasForProduct(productId: number) {
     .where(and(inArray(productExtras.groupId, groupIds), eq(productExtras.isActive, true)))
     .orderBy(asc(productExtras.sortOrder), asc(productExtras.name));
 
-  return groups.map((g) => ({
-    ...g,
-    extras: extras.filter((e) => e.groupId === g.id),
-  }));
+  return groups.map((g) => {
+    const allowedIds = extraIdsByGroup.get(g.id);
+    const groupExtras = extras.filter((e) => e.groupId === g.id);
+    return {
+      ...g,
+      extras: allowedIds ? groupExtras.filter((e) => allowedIds.includes(e.id)) : groupExtras,
+    };
+  });
 }
 
-export async function assignGroupToProduct(productId: number, groupId: number) {
+/** Lista los productos que tienen asignado un grupo de extras, para vincular/desvincular desde el propio grupo. */
+export async function getProductsForGroup(groupId: number) {
+  const db = getTenantDb();
+
+  const rows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      isActive: products.isActive,
+      extraIds: productExtraGroupAssignments.extraIds,
+    })
+    .from(productExtraGroupAssignments)
+    .innerJoin(products, eq(productExtraGroupAssignments.productId, products.id))
+    .where(eq(productExtraGroupAssignments.groupId, groupId))
+    .orderBy(asc(products.name));
+
+  return rows;
+}
+
+/** Resuelve la marca (brandId) a la que pertenece un producto vía category → branch → brand. */
+export async function getBrandIdForProduct(productId: number): Promise<number | null> {
   const db = getTenantDb();
   const [row] = await db
+    .select({ brandId: branches.brandId })
+    .from(products)
+    .innerJoin(categories, eq(products.categoryId, categories.id))
+    .innerJoin(branches, eq(categories.branchId, branches.id))
+    .where(eq(products.id, productId));
+  return row?.brandId ?? null;
+}
+
+/**
+ * Asigna un grupo de extras a un producto (o actualiza la asignación existente).
+ * extraIds = undefined/null → el producto ofrece todos los extras del grupo.
+ * extraIds = [..]           → el producto solo ofrece esos extras puntuales del grupo.
+ */
+export async function assignGroupToProduct(productId: number, groupId: number, extraIds?: number[] | null) {
+  const db = getTenantDb();
+
+  const productBrandId = await getBrandIdForProduct(productId);
+  const [group] = await db.select().from(productExtraGroups).where(eq(productExtraGroups.id, groupId));
+  if (!group) throw new Error('Grupo de extras no encontrado');
+  if (productBrandId != null && group.brandId !== productBrandId) {
+    throw new Error('El grupo de extras pertenece a otra marca y no puede asignarse a este producto');
+  }
+
+  const normalizedExtraIds = extraIds ?? null;
+
+  const [row] = await db
     .insert(productExtraGroupAssignments)
-    .values({ productId, groupId })
-    .onConflictDoNothing()
+    .values({ productId, groupId, extraIds: normalizedExtraIds })
+    .onConflictDoUpdate({
+      target: [productExtraGroupAssignments.productId, productExtraGroupAssignments.groupId],
+      set: { extraIds: normalizedExtraIds },
+    })
     .returning();
   return row;
 }

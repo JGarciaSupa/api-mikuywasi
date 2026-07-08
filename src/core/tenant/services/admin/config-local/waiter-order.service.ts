@@ -12,8 +12,6 @@ import {
   items,
   orderItemExtras,
   productExtras,
-  orderItemProperties,
-  productProperties,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -142,7 +140,6 @@ export interface EditOrderItemInput {
   quantity?: number;
   selectedAlternatives?: { name: string; extraPrice: number }[];
   extras?: { extraId: number; qty: number }[];
-  properties?: { propertyId: number }[];
   notes?: string;
 }
 
@@ -215,22 +212,6 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
           })
           .filter((r): r is NonNullable<typeof r> => r !== null);
         if (extraRows.length) await db.insert(orderItemExtras).values(extraRows);
-      }
-
-      // Propiedades seleccionadas (preferencias de preparación sin costo — ej. "Sin Helar")
-      if (input.properties?.length) {
-        const propertiesData = await db
-          .select()
-          .from(productProperties)
-          .where(inArray(productProperties.id, input.properties.map((p) => p.propertyId)));
-        const propertyRows = input.properties
-          .map((sel) => {
-            const property = propertiesData.find((p) => p.id === sel.propertyId);
-            if (!property) return null;
-            return { orderItemId: newItem.id, propertyId: sel.propertyId, propertyName: property.name };
-          })
-          .filter((r): r is NonNullable<typeof r> => r !== null);
-        if (propertyRows.length) await db.insert(orderItemProperties).values(propertyRows);
       }
 
       await recalcOrderTotals(db, orderId);

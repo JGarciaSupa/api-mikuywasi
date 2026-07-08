@@ -15,7 +15,7 @@ export interface JwtPayload {
 }
 
 export async function generateAccessToken(payload: JwtPayload): Promise<string> {
-  return jwt.sign(payload, SECRET, { expiresIn: '15m' });
+  return jwt.sign(payload, SECRET, { expiresIn: '7d' });
 }
 
 export async function verifyAccessToken(token: string): Promise<JwtPayload> {
