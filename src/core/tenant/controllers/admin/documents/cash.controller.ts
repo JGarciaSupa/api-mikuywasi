@@ -156,8 +156,10 @@ export const openCashSession = async (c: Context) => {
       {
         registerId: parseInt(body.registerId),
         openingBalance: parseFloat(body.openingBalance) || 0,
-        // Solo usuarios con caja.configurar_tipo_cambio pueden fijar el T/C del turno.
-        exchangeRate: canSetRate && body.exchangeRate ? parseFloat(body.exchangeRate) : undefined,
+        // El servicio decide si es obligatorio (sede con moneda extranjera) o si solo
+        // se respeta cuando el usuario tiene caja.configurar_tipo_cambio.
+        exchangeRate: body.exchangeRate ? parseFloat(body.exchangeRate) : undefined,
+        allowCustomRate: canSetRate,
         userId: body.userId !== undefined && body.userId !== null ? parseInt(body.userId) : undefined,
         notes: body.notes,
       },

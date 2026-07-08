@@ -1,5 +1,5 @@
 import { eq, desc, and, gte, lte, sql, ilike, isNull } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -305,7 +305,17 @@ function round2ToNum(n: number): number {
 // ─── mutations ────────────────────────────────────────────────────────────────
 
 export async function openCashSession(
-  data: { registerId: number; openingBalance: number; exchangeRate?: number; userId?: number; notes?: string },
+  data: {
+    registerId: number;
+    openingBalance: number;
+    exchangeRate?: number;
+    // Solo quien tiene el permiso caja.configurar_tipo_cambio (el cajero real, quien
+    // cobra y hace la conversión) puede/debe fijar el T/C. A un mozo u otro usuario
+    // sin el permiso no se le pide ni se le exige — el turno abre con T/C=1.
+    allowCustomRate?: boolean;
+    userId?: number;
+    notes?: string;
+  },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -328,7 +338,18 @@ export async function openCashSession(
   const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, cashierId)).limit(1);
   if (u?.name) openedByName = u.name;
 
-  const rate = data.exchangeRate != null && data.exchangeRate > 0
+  // Si la sede tiene moneda extranjera habilitada, el tipo de cambio es obligatorio
+  // para abrir turno — pero SOLO para quien tiene el permiso caja.configurar_tipo_cambio
+  // (el cajero real). Un mozo u otro usuario sin el permiso no cobra ni convierte, así
+  // que no se le pide: el turno abre igual, con T/C=1.
+  const [branch] = await db.select({ foreignCurrency: branches.foreignCurrency }).from(branches).where(eq(branches.id, reg.branchId)).limit(1);
+  const requiresExchangeRate = !!branch?.foreignCurrency && !!data.allowCustomRate;
+
+  if (requiresExchangeRate && !(data.exchangeRate != null && data.exchangeRate > 0)) {
+    throw new Error(`Esta sucursal opera con moneda extranjera (${branch!.foreignCurrency}); debes ingresar el tipo de cambio para abrir el turno.`);
+  }
+
+  const rate = data.allowCustomRate && data.exchangeRate != null && data.exchangeRate > 0
     ? data.exchangeRate.toFixed(4)
     : '1';
 

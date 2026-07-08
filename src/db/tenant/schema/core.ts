@@ -91,6 +91,14 @@ export const branches = pgTable('branches', {
 	// País al que pertenece esta sucursal (ISO 3166-1, ej. 'PE', 'CL')
 	countryCode: varchar('country_code', { length: 3 }),
 
+	// Finanzas de la sede (ISO 4217, ej. 'PEN', 'USD'). El catálogo vive en la BD
+	// master (tabla currencies) — igual que countryCode, se guarda el código suelto,
+	// sin FK real, porque son bases de datos distintas.
+	// baseCurrency: moneda principal transaccional de la sede.
+	// foreignCurrency: si no es null, la apertura de turno de caja de esta sede exige tipo de cambio.
+	baseCurrency: varchar('base_currency', { length: 3 }),
+	foreignCurrency: varchar('foreign_currency', { length: 3 }),
+
 	// Datos fiscales propios de la sede (RUC / Razón Social)
 	fiscalId: varchar('fiscal_id', { length: 30 }),
 	fiscalName: varchar('fiscal_name', { length: 200 }),
