@@ -21,6 +21,8 @@ import branches from "./config-local/branches";
 import brands from "./config-local/brands";
 import countries from "./config-local/countries";
 import currencies from "./config-local/currencies";
+import salesChannels from "./config-local/sales-channels";
+import kitchenStations from "./config-local/kitchen-stations";
 import sunat from "./documents/sunat";
 
 import { adminLimiter } from "../limiter";
@@ -53,6 +55,8 @@ routes.route('/branches', branches);
 routes.route('/brands', brands);
 routes.route('/countries', countries);
 routes.route('/currencies', currencies);
+routes.route('/sales-channels', salesChannels);
+routes.route('/kitchen-stations', kitchenStations);
 routes.route('/sunat', sunat);
 
 export default routes;

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import {
   validateCreateTable,
   validateUpdateTable
@@ -16,9 +16,9 @@ const routes = new Hono();
 
 routes.use('*', authMiddleware);
 
-routes.get('/', getAllTablesController);
-routes.post('/', validateCreateTable, createTableController);
-routes.patch('/:id', validateUpdateTable, updateTableController);
-routes.delete('/:id', deleteTableController);
+routes.get('/', requirePermission('menu', 'menu.ver_mesas'), getAllTablesController);
+routes.post('/', requirePermission('menu', 'menu.gestionar_mesas'), validateCreateTable, createTableController);
+routes.patch('/:id', requirePermission('menu', 'menu.gestionar_mesas'), validateUpdateTable, updateTableController);
+routes.delete('/:id', requirePermission('menu', 'menu.gestionar_mesas'), deleteTableController);
 
 export default routes;

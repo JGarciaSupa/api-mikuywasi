@@ -4,18 +4,14 @@ import { nanoid } from 'nanoid';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
- * Obtener todas las mesas de un tenant
+ * Obtener las mesas de UNA sucursal. branchId es obligatorio — sin esto, un
+ * tenant con varias sedes filtraría (o mezclaría) mesas de sucursales ajenas.
  */
-export async function getAllTables(branchId?: number) {
+export async function getAllTables(branchId: number) {
   const db = getTenantDb();
-  const query = db.select().from(tables);
-
-  if (branchId) {
-    return await query.where(eq(tables.branchId, branchId))
-      .orderBy(tables.createdAt);
-  }
-
-  return await query.orderBy(tables.createdAt);
+  return db.select().from(tables)
+    .where(eq(tables.branchId, branchId))
+    .orderBy(tables.createdAt);
 }
 
 /**
@@ -30,16 +26,17 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string; branchId?: number; capacity?: number }) {
+export async function createTable(data: { name: string; branchId: number; capacity?: number }) {
   const db = getTenantDb();
-  const branchId = data.branchId || 1;
+  const branchId = data.branchId;
 
-  // 1. Verificar límite de 50 mesas por tenant
+  // 1. Verificar límite de 50 mesas por sucursal
   const [totalResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(tables);
+    .from(tables)
+    .where(eq(tables.branchId, branchId));
 
   if (Number(totalResult?.count || 0) >= 50) {
-    throw new Error('Solo se permite un máximo de 50 mesas por tenant');
+    throw new Error('Solo se permite un máximo de 50 mesas por sucursal');
   }
 
   let attempts = 0;

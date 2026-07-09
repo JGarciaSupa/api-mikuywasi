@@ -8,12 +8,15 @@ import {
 } from '../../../services/admin/config-local/tables.service';
 
 /**
- * Obtener todas las mesas de un tenant
+ * Obtener las mesas de una sucursal
  */
 export const getAllTablesController = async (c: Context) => {
   try {
     const branchIdQuery = c.req.query('branchId');
-    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : NaN;
+    if (!branchIdQuery || isNaN(branchId)) {
+      return c.json({ success: false, message: 'El parámetro branchId es requerido' }, 400);
+    }
     const results = await getAllTables(branchId);
     return c.json({
       success: true,
@@ -32,7 +35,7 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { name, branchId, capacity } = c.req.valid('json' as never) as { name: string; branchId?: number; capacity?: number };
+    const { name, branchId, capacity } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number };
 
     const result = await createTable({ name, branchId, capacity });
 
