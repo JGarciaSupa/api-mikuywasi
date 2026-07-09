@@ -42,6 +42,7 @@ routes.delete('/:id/kitchen-stations/:stationId', unassignStationFromProductCont
 // ── Gestión global de grupos de extras ──────────────────────────────────────
 routes.get('/extra-groups/all', extras.listExtraGroups);
 routes.get('/extra-groups/:id', extras.getExtraGroup);
+routes.get('/extra-groups/:id/products', extras.getGroupProducts);
 routes.post('/extra-groups', extras.createExtraGroup);
 routes.patch('/extra-groups/:id', extras.updateExtraGroup);
 routes.delete('/extra-groups/:id', extras.deleteExtraGroup);

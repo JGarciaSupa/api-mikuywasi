@@ -136,6 +136,7 @@ export const createTenantBranch = async (tenantId: number, data: CreateTenantBra
       code: data.code,
       isMain,
       isActive: data.isActive ?? true,
+      countryCode: data.countryCode ?? null,
       address: data.address ?? null,
       phone: emptyToNull(data.phone),
       whatsapp: emptyToNull(data.whatsapp),
@@ -172,6 +173,7 @@ export const updateTenantBranch = async (tenantId: number, branchId: number, dat
   if (data.isMain !== undefined) updateData.isMain = data.isMain;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.address !== undefined) updateData.address = data.address ?? null;
+  if (data.countryCode !== undefined) updateData.countryCode = data.countryCode ?? null;
   if (data.phone !== undefined) updateData.phone = emptyToNull(data.phone);
   if (data.whatsapp !== undefined) updateData.whatsapp = emptyToNull(data.whatsapp);
   if (data.email !== undefined) updateData.email = emptyToNull(data.email);

@@ -19,8 +19,8 @@ import rbac from "./users/rbac";
 import billing from "./documents/billing";
 import branches from "./config-local/branches";
 import brands from "./config-local/brands";
-import salesChannels from "./config-local/sales-channels";
-import kitchenStations from "./config-local/kitchen-stations";
+import countries from "./config-local/countries";
+import currencies from "./config-local/currencies";
 import sunat from "./documents/sunat";
 
 import { adminLimiter } from "../limiter";
@@ -51,8 +51,8 @@ routes.route('/rbac', rbac);
 routes.route('/billing', billing);
 routes.route('/branches', branches);
 routes.route('/brands', brands);
-routes.route('/sales-channels', salesChannels);
-routes.route('/kitchen-stations', kitchenStations);
+routes.route('/countries', countries);
+routes.route('/currencies', currencies);
 routes.route('/sunat', sunat);
 
 export default routes;

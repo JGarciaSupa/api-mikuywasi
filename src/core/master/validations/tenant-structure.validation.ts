@@ -35,6 +35,7 @@ export const createTenantBranchSchema = z.object({
     .min(1, 'El código es obligatorio')
     .max(20, 'El código no puede exceder los 20 caracteres')
     .regex(/^[a-zA-Z0-9-]+$/, 'El código solo puede contener letras, números y guiones'),
+  countryCode: z.string().length(2).toUpperCase().optional().nullable(),
   isMain: z.boolean().optional(),
   isActive: z.boolean().optional(),
   address: branchAddressSchema.optional().nullable(),

@@ -6,6 +6,10 @@ import tenantsRoutes from './routes/tenants.routes';
 import subscriptionsRoutes from './routes/subscriptions.routes';
 import publicRoutes from './routes/public.routes';
 import rbacRoutes from './routes/rbac.routes';
+import currenciesRoutes from './routes/currencies.routes';
+import countriesRoutes from './routes/countries.routes';
+import identityDocumentTypesRoutes from './routes/identity-document-types.routes';
+import receiptTypesRoutes from './routes/receipt-types.routes';
 
 const master = new Hono();
 
@@ -16,6 +20,10 @@ master.route('/db-servers', dbServersRoutes);  // Infraestructura de servidores
 master.route('/tenants', tenantsRoutes);       // Directorio de tenants
 master.route('/subscriptions', subscriptionsRoutes); // Historial de facturación
 master.route('/rbac', rbacRoutes);             // RBAC: acciones, sub-acciones, roles, grants
+master.route('/currencies', currenciesRoutes); // Monedas globales
+master.route('/countries', countriesRoutes);   // Países globales
+master.route('/identity-document-types', identityDocumentTypesRoutes);
+master.route('/receipt-types', receiptTypesRoutes);
 
 
 // Public routes

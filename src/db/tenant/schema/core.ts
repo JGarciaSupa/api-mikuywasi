@@ -24,6 +24,28 @@ export const brands = pgTable('brands', {
 }));
 
 // ==========================================
+// 🏢 CONFIGURACIÓN GLOBAL DE MARCA
+// ==========================================
+
+// Un único registro (ID: 1) con datos de marca globales del restaurante.
+// Los datos de ubicación/canales/fiscales ahora viven en branches.
+export const tenantConfigs = pgTable('tenant_configs', {
+	id: serial('id').primaryKey(),
+	logo: varchar('logo', { length: 255 }),
+	primaryColor: varchar('primary_color', { length: 255 }).default("#000000"),
+	email: varchar('email', { length: 255 }),
+	category: varchar('category', { length: 255 }),
+
+	// Facturación electrónica: empresa por defecto del tenant (Caso A / fallback mixto).
+	// Todas las sucursales sin facturadorEmpresaId propio heredan este valor.
+	facturadorEmpresaId: integer('facturador_empresa_id'),
+	facturadorRuc: varchar('facturador_ruc', { length: 20 }),
+
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+
+// ==========================================
 // 🏪 SUCURSALES
 // ==========================================
 
@@ -65,6 +87,17 @@ export const branches = pgTable('branches', {
 	minOrderAmount: decimal('min_order_amount', { precision: 10, scale: 2 }).default('0.00'),
 	defaultDeliveryFee: decimal('default_delivery_fee', { precision: 10, scale: 2 }).default('0.00'),
 	freeDeliveryThreshold: decimal('free_delivery_threshold', { precision: 10, scale: 2 }),
+
+	// País al que pertenece esta sucursal (ISO 3166-1, ej. 'PE', 'CL')
+	countryCode: varchar('country_code', { length: 3 }),
+
+	// Finanzas de la sede (ISO 4217, ej. 'PEN', 'USD'). El catálogo vive en la BD
+	// master (tabla currencies) — igual que countryCode, se guarda el código suelto,
+	// sin FK real, porque son bases de datos distintas.
+	// baseCurrency: moneda principal transaccional de la sede.
+	// foreignCurrency: si no es null, la apertura de turno de caja de esta sede exige tipo de cambio.
+	baseCurrency: varchar('base_currency', { length: 3 }),
+	foreignCurrency: varchar('foreign_currency', { length: 3 }),
 
 	// Datos fiscales propios de la sede (RUC / Razón Social)
 	fiscalId: varchar('fiscal_id', { length: 30 }),

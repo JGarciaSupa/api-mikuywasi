@@ -1,4 +1,4 @@
-import { products, categories } from '@/db/tenant/schema';
+import { products, categories, branches } from '@/db/tenant/schema';
 import { eq, and, ilike, desc, count, inArray, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
@@ -10,7 +10,7 @@ const MAX_SIZE = 500;
 export const getAllProducts = async (
   page: number,
   limit: number,
-  filters: { name?: string; categoryId?: number; branchId?: number }
+  filters: { name?: string; categoryId?: number; branchId?: number; brandId?: number }
 ) => {
   const db = getTenantDb();
   const offset = (page - 1) * limit;
@@ -29,6 +29,25 @@ export const getAllProducts = async (
       .where(or(eq(categories.branchId, filters.branchId), isNull(categories.branchId)));
 
     const categoryIds = branchCategories.map(c => c.id);
+    if (categoryIds.length > 0) {
+      whereClauses.push(
+        or(
+          inArray(products.categoryId, categoryIds),
+          isNull(products.categoryId)
+        )
+      );
+    } else {
+      whereClauses.push(isNull(products.categoryId));
+    }
+  }
+  if (filters.brandId) {
+    const brandCategories = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .innerJoin(branches, eq(categories.branchId, branches.id))
+      .where(eq(branches.brandId, filters.brandId));
+
+    const categoryIds = brandCategories.map(c => c.id);
     if (categoryIds.length > 0) {
       whereClauses.push(
         or(

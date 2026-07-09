@@ -360,7 +360,50 @@ export const countries = pgTable('countries', {
 });
 
 export const countriesRelations = relations(countries, ({ many }) => ({
-  locales: many(locales),
+  identityDocumentTypes: many(identityDocumentTypes),
+  receiptTypes: many(receiptTypes),
+}));
+
+// ==========================================
+// 🆔 TIPOS DE DOCUMENTOS DE IDENTIDAD
+// ==========================================
+
+export const identityDocumentTypes = pgTable('identity_document_types', {
+  id: serial('id').primaryKey(),
+  countryId: integer('country_id').references(() => countries.id, { onDelete: 'cascade' }).notNull(),
+  code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (DNI), '06' (RUC)
+  name: varchar('name', { length: 100 }).notNull(), // Ej: 'DNI'
+  description: varchar('description', { length: 255 }), // Opcional
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  uniqueCodePerCountry: uniqueIndex('idt_unique_code_country').on(table.countryId, table.code)
+}));
+
+export const identityDocumentTypesRelations = relations(identityDocumentTypes, ({ one }) => ({
+  country: one(countries, { fields: [identityDocumentTypes.countryId], references: [countries.id] }),
+}));
+
+// ==========================================
+// 🧾 TIPOS DE COMPROBANTES (FACTURACIÓN)
+// ==========================================
+
+export const receiptTypes = pgTable('receipt_types', {
+  id: serial('id').primaryKey(),
+  countryId: integer('country_id').references(() => countries.id, { onDelete: 'cascade' }).notNull(),
+  code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (Factura), '03' (Boleta)
+  name: varchar('name', { length: 100 }).notNull(), // Ej: 'Factura Electrónica'
+  description: varchar('description', { length: 255 }),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  uniqueCodePerCountry: uniqueIndex('rt_unique_code_country').on(table.countryId, table.code)
+}));
+
+export const receiptTypesRelations = relations(receiptTypes, ({ one }) => ({
+  country: one(countries, { fields: [receiptTypes.countryId], references: [countries.id] }),
 }));
 
 // ==========================================
@@ -376,89 +419,3 @@ export const currencies = pgTable('currencies', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
-
-export const currenciesRelations = relations(currencies, ({ many }) => ({
-  localesAsBase: many(locales, { relationName: 'localeBaseCurrency' }),
-  localesAsForeign: many(locales, { relationName: 'localeForeignCurrency' }),
-}));
-
-// ==========================================
-// 🏷️ SIGG — MARCAS (US 1.1, anidadas bajo Corporación/Tenant)
-// ==========================================
-
-export const brands = pgTable('brands', {
-  id: serial('id').primaryKey(),
-  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
-
-  name: varchar('name', { length: 255 }).notNull(),
-  logoUrl: text('logo_url'),
-  primaryColor: varchar('primary_color', { length: 7 }), // Ej: '#FF5733'
-  isActive: boolean('is_active').default(true).notNull(),
-
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  tenantIdx: index('brands_tenant_idx').on(table.tenantId),
-}));
-
-export const brandsRelations = relations(brands, ({ one, many }) => ({
-  tenant: one(tenants, {
-    fields: [brands.tenantId],
-    references: [tenants.id],
-  }),
-  locales: many(locales),
-}));
-
-// ==========================================
-// 🏬 SIGG US 1.2 — LOCALES (SUCURSALES) Y PARÁMETROS FISCALES
-// ==========================================
-
-export const locales = pgTable('locales', {
-  id: serial('id').primaryKey(),
-  brandId: integer('brand_id').references(() => brands.id, { onDelete: 'cascade' }).notNull(),
-
-  // Tab 1: Datos Generales
-  name: varchar('name', { length: 255 }).notNull(),
-  address: varchar('address', { length: 500 }),
-  phone: varchar('phone', { length: 30 }),
-  countryId: integer('country_id').references(() => countries.id).notNull(),
-
-  // Tab 2: Configuración Tributaria
-  ruc: varchar('ruc', { length: 20 }).notNull(),
-  sunatAnexoCode: varchar('sunat_anexo_code', { length: 10 }).default('0000').notNull(),
-  appliesTax1: boolean('applies_tax_1').default(true).notNull(),  // IGV
-  appliesTax2: boolean('applies_tax_2').default(false).notNull(),
-  appliesTax3: boolean('applies_tax_3').default(false).notNull(),
-  appliesIcbper: boolean('applies_icbper').default(false).notNull(),
-
-  // Tab 3: Finanzas
-  baseCurrencyId: integer('base_currency_id').references(() => currencies.id).notNull(),
-  foreignCurrencyId: integer('foreign_currency_id').references(() => currencies.id),
-
-  isActive: boolean('is_active').default(true).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  brandIdx: index('locales_brand_idx').on(table.brandId),
-}));
-
-export const localesRelations = relations(locales, ({ one }) => ({
-  brand: one(brands, {
-    fields: [locales.brandId],
-    references: [brands.id],
-  }),
-  country: one(countries, {
-    fields: [locales.countryId],
-    references: [countries.id],
-  }),
-  baseCurrency: one(currencies, {
-    fields: [locales.baseCurrencyId],
-    references: [currencies.id],
-    relationName: 'localeBaseCurrency',
-  }),
-  foreignCurrency: one(currencies, {
-    fields: [locales.foreignCurrencyId],
-    references: [currencies.id],
-    relationName: 'localeForeignCurrency',
-  }),
-}));

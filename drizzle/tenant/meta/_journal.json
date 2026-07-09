@@ -232,6 +232,48 @@
       "when": 1782697753059,
       "tag": "0032_collected_session_id",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1782764198011,
+      "tag": "0033_coins_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1782864000000,
+      "tag": "0034_brands_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783375541971,
+      "tag": "0035_branch_vinculation_country",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783388064338,
+      "tag": "0036_add_properties_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783472741154,
+      "tag": "0037_extras_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783481411880,
+      "tag": "0038_add_branch_currency",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ async function getUserBranches(userId: number, roleCode: string | null) {
       id: branches.id,
       name: branches.name,
       code: branches.code,
+      brandId: branches.brandId,
       isMain: branches.isMain,
       isActive: branches.isActive,
       isDefault: branches.isMain,

@@ -1,4 +1,4 @@
-import { kitchenStations, productKitchenStations } from '@/db/tenant/schema';
+import { kitchenStations, productKitchenStations, categories, products } from '@/db/tenant/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
@@ -101,4 +101,39 @@ export async function unassignStationFromProduct(productId: number, stationId: n
         eq(productKitchenStations.stationId, stationId),
       )
     );
+}
+
+// ─── Asignación masiva por categoría (atajo de UX, mismo modelo de datos) ──
+//
+// No reemplaza la asignación por producto (fuente de verdad, para las excepciones
+// dentro de una categoría) — solo agiliza el caso común de "todo esto va a tal
+// estación". Si se elige una categoría con subcategorías, se asignan los productos
+// de la categoría misma Y de todas sus subcategorías directas.
+
+export async function bulkAssignStationToCategory(stationId: number, categoryId: number) {
+  const db = getTenantDb();
+
+  const children = await db
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.parentId, categoryId));
+
+  const targetCategoryIds = [categoryId, ...children.map((c) => c.id)];
+
+  const targetProducts = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(inArray(products.categoryId, targetCategoryIds));
+
+  if (targetProducts.length === 0) {
+    return { assignedCount: 0, productCount: 0 };
+  }
+
+  const result = await db
+    .insert(productKitchenStations)
+    .values(targetProducts.map((p) => ({ productId: p.id, stationId })))
+    .onConflictDoNothing()
+    .returning();
+
+  return { assignedCount: result.length, productCount: targetProducts.length };
 }

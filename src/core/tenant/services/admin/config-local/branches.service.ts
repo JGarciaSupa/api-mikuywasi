@@ -77,6 +77,9 @@ export interface CreateBranchInput {
   brandId: number;
   name: string;
   code: string;
+  countryCode?: string | null;
+  baseCurrency?: string | null;
+  foreignCurrency?: string | null;
   isMain?: boolean;
   isActive?: boolean;
   address?: {
@@ -145,6 +148,9 @@ export async function createBranch(data: CreateBranchInput) {
       brandId: data.brandId,
       name: data.name,
       code: data.code,
+      countryCode: data.countryCode ?? null,
+      baseCurrency: data.baseCurrency ?? null,
+      foreignCurrency: data.foreignCurrency ?? null,
       isMain: isMain,
       address: data.address ?? null,
       phone: emptyToNull(data.phone),
@@ -194,6 +200,9 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   const updateData: Record<string, any> = { updatedAt: new Date() };
   if (data.name !== undefined) updateData.name = data.name;
   if (data.code !== undefined) updateData.code = data.code;
+  if (data.countryCode !== undefined) updateData.countryCode = data.countryCode;
+  if (data.baseCurrency !== undefined) updateData.baseCurrency = data.baseCurrency;
+  if (data.foreignCurrency !== undefined) updateData.foreignCurrency = data.foreignCurrency;
   if (data.isMain !== undefined) updateData.isMain = data.isMain;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.address !== undefined) updateData.address = data.address ?? null;

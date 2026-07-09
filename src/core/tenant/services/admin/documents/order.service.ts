@@ -149,7 +149,10 @@ export const getOrderById = async (id: string) => {
 
   return {
     ...order,
-    items: items.map((item) => ({ ...item, extras: extrasByItem.get(item.id) ?? [] })),
+    items: items.map((item) => ({
+      ...item,
+      extras: extrasByItem.get(item.id) ?? [],
+    })),
   };
 };
 
