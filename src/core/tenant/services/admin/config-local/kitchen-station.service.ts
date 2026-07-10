@@ -1,5 +1,6 @@
 import { kitchenStations, productKitchenStations, categories, products } from '@/db/tenant/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { getTenantDb } from '@/utils/tenant-context';
 
 // ─── Catálogo de estaciones ──────────────────────────────────────────────────
@@ -103,37 +104,57 @@ export async function unassignStationFromProduct(productId: number, stationId: n
     );
 }
 
-// ─── Asignación masiva por categoría (atajo de UX, mismo modelo de datos) ──
+// ─── Resolución de estaciones efectivas (excepción de producto > categoría) ──
 //
-// No reemplaza la asignación por producto (fuente de verdad, para las excepciones
-// dentro de una categoría) — solo agiliza el caso común de "todo esto va a tal
-// estación". Si se elige una categoría con subcategorías, se asignan los productos
-// de la categoría misma Y de todas sus subcategorías directas.
+// Un producto resuelve su(s) estación(es) en cascada:
+//   1. Excepción explícita en product_kitchen_stations (puede ser varias).
+//   2. Estación de su subcategoría (categories.kitchenStationId).
+//   3. Estación de la categoría padre de esa subcategoría.
+//   4. Sin asignar (array vacío) → fail-open, se muestra en todas las pantallas.
+//
+// Centralizado acá porque kitchen.service.ts lo necesita en dos lugares
+// (getRequiredStationsForOrder y getActiveKitchenOrders) y ya tuvimos un caso
+// real donde esos dos cálculos podían divergir por estar duplicados.
+export async function resolveEffectiveStations(
+  db: ReturnType<typeof getTenantDb>,
+  productIds: number[],
+): Promise<Map<number, number[]>> {
+  const result = new Map<number, number[]>();
+  if (productIds.length === 0) return result;
 
-export async function bulkAssignStationToCategory(stationId: number, categoryId: number) {
-  const db = getTenantDb();
+  const overrides = await db
+    .select()
+    .from(productKitchenStations)
+    .where(inArray(productKitchenStations.productId, productIds));
 
-  const children = await db
-    .select({ id: categories.id })
-    .from(categories)
-    .where(eq(categories.parentId, categoryId));
-
-  const targetCategoryIds = [categoryId, ...children.map((c) => c.id)];
-
-  const targetProducts = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(inArray(products.categoryId, targetCategoryIds));
-
-  if (targetProducts.length === 0) {
-    return { assignedCount: 0, productCount: 0 };
+  const overriddenProductIds = new Set<number>();
+  for (const o of overrides) {
+    overriddenProductIds.add(o.productId);
+    const list = result.get(o.productId) ?? [];
+    list.push(o.stationId);
+    result.set(o.productId, list);
   }
 
-  const result = await db
-    .insert(productKitchenStations)
-    .values(targetProducts.map((p) => ({ productId: p.id, stationId })))
-    .onConflictDoNothing()
-    .returning();
+  const remainingIds = productIds.filter((id) => !overriddenProductIds.has(id));
+  if (remainingIds.length === 0) return result;
 
-  return { assignedCount: result.length, productCount: targetProducts.length };
+  const parentCategories = alias(categories, 'parent_categories');
+
+  const rows = await db
+    .select({
+      productId: products.id,
+      categoryStationId: categories.kitchenStationId,
+      parentStationId: parentCategories.kitchenStationId,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(parentCategories, eq(categories.parentId, parentCategories.id))
+    .where(inArray(products.id, remainingIds));
+
+  for (const row of rows) {
+    const stationId = row.categoryStationId ?? row.parentStationId ?? null;
+    result.set(row.productId, stationId ? [stationId] : []);
+  }
+
+  return result;
 }

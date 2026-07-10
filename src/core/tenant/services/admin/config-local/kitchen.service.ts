@@ -1,6 +1,7 @@
-import { orders, orderItems, productKitchenStations, orderStationConfirmations } from '@/db/tenant/schema';
+import { orders, orderItems, orderStationConfirmations } from '@/db/tenant/schema';
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
+import { resolveEffectiveStations } from './kitchen-station.service';
 
 /**
  * Estaciones reales (no cuenta "sin asignar") que toca un pedido, según sus ítems.
@@ -10,12 +11,12 @@ async function getRequiredStationsForOrder(db: ReturnType<typeof getTenantDb>, o
   const productIds = [...new Set(items.map((i) => i.productId).filter((id): id is number => id != null))];
   if (productIds.length === 0) return new Set<number>();
 
-  const assignments = await db
-    .select()
-    .from(productKitchenStations)
-    .where(inArray(productKitchenStations.productId, productIds));
-
-  return new Set(assignments.map((a) => a.stationId));
+  const resolved = await resolveEffectiveStations(db, productIds);
+  const requiredStations = new Set<number>();
+  for (const stationIds of resolved.values()) {
+    stationIds.forEach((id) => requiredStations.add(id));
+  }
+  return requiredStations;
 }
 
 /**
@@ -52,16 +53,7 @@ export const getActiveKitchenOrders = async (branchId?: number) => {
 
   const productIds = [...new Set(allItems.map((i) => i.productId).filter((id): id is number => id != null))];
 
-  const assignments = productIds.length > 0
-    ? await db.select().from(productKitchenStations).where(inArray(productKitchenStations.productId, productIds))
-    : [];
-
-  const stationsByProduct = new Map<number, number[]>();
-  for (const a of assignments) {
-    const list = stationsByProduct.get(a.productId) ?? [];
-    list.push(a.stationId);
-    stationsByProduct.set(a.productId, list);
-  }
+  const stationsByProduct = await resolveEffectiveStations(db, productIds);
 
   const confirmations = await db
     .select()

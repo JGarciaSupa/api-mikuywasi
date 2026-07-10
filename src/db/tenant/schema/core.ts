@@ -239,16 +239,22 @@ export const categories = pgTable('categories', {
 	startTime: time('start_time'),
 	endTime: time('end_time'),
 	availableDays: jsonb('available_days').default([0, 1, 2, 3, 4, 5, 6]),
+	// Estación de cocina por defecto para los productos de esta categoría (SIGG 2.7).
+	// Un producto hereda de su subcategoría, y si esta no tiene, de su categoría padre.
+	// Un producto puede seguir teniendo su propia excepción en product_kitchen_stations.
+	kitchenStationId: integer('kitchen_station_id').references((): AnyPgColumn => kitchenStations.id, { onDelete: 'set null' }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('categories_branch_idx').on(table.branchId),
 	parentIdx: index('categories_parent_idx').on(table.parentId),
+	kitchenStationIdx: index('categories_kitchen_station_idx').on(table.kitchenStationId),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
 	products: many(products),
 	branch: one(branches, { fields: [categories.branchId], references: [branches.id] }),
+	kitchenStation: one(kitchenStations, { fields: [categories.kitchenStationId], references: [kitchenStations.id] }),
 }));
 
 export const products = pgTable('products', {

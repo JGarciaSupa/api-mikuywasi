@@ -10,7 +10,6 @@ import {
   createKitchenStationController,
   updateKitchenStationController,
   deleteKitchenStationController,
-  bulkAssignStationToCategoryController,
 } from '../../../../controllers/admin/config-local/kitchen-station.controller';
 
 const routes = new Hono();
@@ -22,6 +21,5 @@ routes.get('/:id', getKitchenStationByIdController);
 routes.post('/', validateCreateKitchenStation, createKitchenStationController);
 routes.patch('/:id', validateUpdateKitchenStation, updateKitchenStationController);
 routes.delete('/:id', deleteKitchenStationController);
-routes.post('/:id/bulk-assign-category', bulkAssignStationToCategoryController);
 
 export default routes;

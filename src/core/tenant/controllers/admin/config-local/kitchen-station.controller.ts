@@ -89,28 +89,3 @@ export const unassignStationFromProductController = async (c: Context) => {
     return c.json({ success: false, message: error.message || 'Error al remover la estación' }, 400);
   }
 };
-
-// ─── Asignación masiva por categoría ──────────────────────────────────────────
-
-export const bulkAssignStationToCategoryController = async (c: Context) => {
-  try {
-    const stationId = parseInt(c.req.param('id') || '0');
-    const { categoryId } = await c.req.json();
-
-    if (!stationId || !categoryId) {
-      return c.json({ success: false, message: 'Estación o categoría inválida' }, 400);
-    }
-
-    const result = await kitchenStationService.bulkAssignStationToCategory(stationId, Number(categoryId));
-
-    return c.json({
-      success: true,
-      message: result.productCount === 0
-        ? 'Esa categoría no tiene productos'
-        : `${result.assignedCount} de ${result.productCount} productos asignados (los demás ya la tenían)`,
-      data: result,
-    });
-  } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al asignar por categoría' }, 400);
-  }
-};
