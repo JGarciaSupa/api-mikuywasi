@@ -5,6 +5,7 @@ export const createKitchenStationSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   code: z.string().min(1, 'El código es requerido').max(30, 'El código no puede exceder los 30 caracteres'),
   isActive: z.boolean().default(true),
+  branchId: z.number({ error: 'La sucursal es requerida' }).int().positive('La sucursal es requerida'),
 });
 
 export const updateKitchenStationSchema = z.object({

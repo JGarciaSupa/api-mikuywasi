@@ -239,22 +239,23 @@ export const categories = pgTable('categories', {
 	startTime: time('start_time'),
 	endTime: time('end_time'),
 	availableDays: jsonb('available_days').default([0, 1, 2, 3, 4, 5, 6]),
-	// Estación de cocina por defecto para los productos de esta categoría (SIGG 2.7).
+	// Código de estación de cocina por defecto para los productos de esta categoría
+	// (SIGG 2.7). Se guarda por CÓDIGO, no por ID: como las estaciones son por
+	// sucursal, una categoría compartida entre sedes no puede apuntar a un ID fijo
+	// de una sola sede. Se resuelve buscando ese código en la sucursal del pedido.
 	// Un producto hereda de su subcategoría, y si esta no tiene, de su categoría padre.
 	// Un producto puede seguir teniendo su propia excepción en product_kitchen_stations.
-	kitchenStationId: integer('kitchen_station_id').references((): AnyPgColumn => kitchenStations.id, { onDelete: 'set null' }),
+	kitchenStationCode: varchar('kitchen_station_code', { length: 30 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('categories_branch_idx').on(table.branchId),
 	parentIdx: index('categories_parent_idx').on(table.parentId),
-	kitchenStationIdx: index('categories_kitchen_station_idx').on(table.kitchenStationId),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
 	products: many(products),
 	branch: one(branches, { fields: [categories.branchId], references: [branches.id] }),
-	kitchenStation: one(kitchenStations, { fields: [categories.kitchenStationId], references: [kitchenStations.id] }),
 }));
 
 export const products = pgTable('products', {
@@ -291,40 +292,44 @@ export const productsRelations = relations(products, ({ one, many }) => ({
 // 🍳 ESTACIONES DE COCINA Y RUTEO (SIGG 2.7)
 // ==========================================
 
-// Catálogo de estaciones por tenant (Ej: "Bar", "Cocina Caliente", "Cocina Fría").
+// Catálogo de estaciones POR SUCURSAL (Ej: "Bar", "Cocina Caliente", "Cocina Fría").
+// Cada local tiene sus propias filas — Local 1 sin Bar no ve ni administra el
+// "Bar" de Local 3 (US 1.5: "CRUD de Áreas de Producción... utilizadas por local").
 // Distinto de `storage_areas` (warehouse.ts), que es almacén/inventario, no ruteo de pedidos.
 export const kitchenStations = pgTable('kitchen_stations', {
 	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
 	name: varchar('name', { length: 100 }).notNull(),
-	code: varchar('code', { length: 30 }).notNull().unique(), // Ej: 'BAR', 'COCINA-CALIENTE'
+	code: varchar('code', { length: 30 }).notNull(), // Ej: 'BAR', 'COCINA-CALIENTE' — único POR sucursal, no global
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-	codeIdx: index('kitchen_stations_code_idx').on(table.code),
+	branchCodeUnique: uniqueIndex('kitchen_stations_branch_code_unique_idx').on(table.branchId, table.code),
+	branchIdx: index('kitchen_stations_branch_idx').on(table.branchId),
 	activeIdx: index('kitchen_stations_active_idx').on(table.isActive),
 }));
 
-// Pivote: a qué estación(es) se despacha cada producto. El admin lo define una sola
-// vez a nivel de catálogo y todas las sucursales heredan la regla de ruteo.
+// Pivote: excepción puntual de un producto (tenant-wide, sin sucursal propia) a una
+// estación. Se guarda por CÓDIGO, no por ID: como cada sucursal tiene su propia fila
+// de "Bar" con un ID distinto, la excepción se resuelve buscando ese código dentro de
+// la sucursal del pedido en curso (ver resolveEffectiveStations).
 export const productKitchenStations = pgTable('product_kitchen_stations', {
 	id: serial('id').primaryKey(),
 	productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
-	stationId: integer('station_id').notNull().references(() => kitchenStations.id, { onDelete: 'cascade' }),
+	stationCode: varchar('station_code', { length: 30 }).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-	productStationUnique: uniqueIndex('product_kitchen_stations_unique_idx').on(table.productId, table.stationId),
+	productStationUnique: uniqueIndex('product_kitchen_stations_unique_idx').on(table.productId, table.stationCode),
 	productIdx: index('product_kitchen_stations_product_idx').on(table.productId),
-	stationIdx: index('product_kitchen_stations_station_idx').on(table.stationId),
 }));
 
-export const kitchenStationsRelations = relations(kitchenStations, ({ many }) => ({
-	productAssignments: many(productKitchenStations),
+export const kitchenStationsRelations = relations(kitchenStations, ({ one }) => ({
+	branch: one(branches, { fields: [kitchenStations.branchId], references: [branches.id] }),
 }));
 
 export const productKitchenStationsRelations = relations(productKitchenStations, ({ one }) => ({
 	product: one(products, { fields: [productKitchenStations.productId], references: [products.id] }),
-	station: one(kitchenStations, { fields: [productKitchenStations.stationId], references: [kitchenStations.id] }),
 }));
 
 // Confirmación de "listo" por estación, por pedido. El pedido completo pasa a

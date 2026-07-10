@@ -4,7 +4,10 @@ import * as kitchenService from '../../../services/admin/config-local/kitchen.se
 export const getKitchenOrdersController = async (c: Context) => {
   try {
     const branchIdQuery = c.req.query('branchId');
-    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
+    const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : NaN;
+    if (!branchIdQuery || isNaN(branchId)) {
+      return c.json({ success: false, message: 'El parámetro branchId es requerido' }, 400);
+    }
 
     const orders = await kitchenService.getActiveKitchenOrders(branchId);
 

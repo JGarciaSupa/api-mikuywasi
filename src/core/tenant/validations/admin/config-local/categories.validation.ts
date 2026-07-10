@@ -10,7 +10,7 @@ export const createCategorySchema = z.object({
   availableDays: z.array(z.number().min(0).max(6)).optional().default([0, 1, 2, 3, 4, 5, 6]),
   branchId: z.number().int().optional().nullable(),
   parentId: z.number().int().optional().nullable(),
-  kitchenStationId: z.number().int().positive().optional().nullable(),
+  kitchenStationCode: z.string().max(30).optional().nullable(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();

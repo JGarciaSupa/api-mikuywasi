@@ -37,7 +37,7 @@ routes.delete('/:id/extra-groups/:groupId', extras.unassignGroupFromProduct);
 // ── Estaciones de cocina asignadas a un producto (SIGG 2.7) ─────────────────
 routes.get('/:id/kitchen-stations', getProductKitchenStationsController);
 routes.post('/:id/kitchen-stations', assignStationToProductController);
-routes.delete('/:id/kitchen-stations/:stationId', unassignStationFromProductController);
+routes.delete('/:id/kitchen-stations/:stationCode', unassignStationFromProductController);
 
 // ── Gestión global de grupos de extras ──────────────────────────────────────
 routes.get('/extra-groups/all', extras.listExtraGroups);

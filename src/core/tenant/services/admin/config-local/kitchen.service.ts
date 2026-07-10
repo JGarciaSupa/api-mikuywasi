@@ -7,11 +7,14 @@ import { resolveEffectiveStations } from './kitchen-station.service';
  * Estaciones reales (no cuenta "sin asignar") que toca un pedido, según sus ítems.
  */
 async function getRequiredStationsForOrder(db: ReturnType<typeof getTenantDb>, orderId: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) return new Set<number>();
+
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
   const productIds = [...new Set(items.map((i) => i.productId).filter((id): id is number => id != null))];
   if (productIds.length === 0) return new Set<number>();
 
-  const resolved = await resolveEffectiveStations(db, productIds);
+  const resolved = await resolveEffectiveStations(db, productIds, order.branchId);
   const requiredStations = new Set<number>();
   for (const stationIds of resolved.values()) {
     stationIds.forEach((id) => requiredStations.add(id));
@@ -28,18 +31,13 @@ async function getRequiredStationsForOrder(db: ReturnType<typeof getTenantDb>, o
  * el frontend debe mostrarlo en todas las estaciones con una advertencia, nunca
  * ocultarlo por completo).
  */
-export const getActiveKitchenOrders = async (branchId?: number) => {
+export const getActiveKitchenOrders = async (branchId: number) => {
   const db = getTenantDb();
-
-  const conditions = [inArray(orders.status, ['confirmed', 'preparing'])];
-  if (branchId) {
-    conditions.push(eq(orders.branchId, branchId));
-  }
 
   const activeOrders = await db
     .select()
     .from(orders)
-    .where(and(...conditions))
+    .where(and(inArray(orders.status, ['confirmed', 'preparing']), eq(orders.branchId, branchId)))
     .orderBy(asc(orders.createdAt));
 
   if (activeOrders.length === 0) return [];
@@ -53,7 +51,7 @@ export const getActiveKitchenOrders = async (branchId?: number) => {
 
   const productIds = [...new Set(allItems.map((i) => i.productId).filter((id): id is number => id != null))];
 
-  const stationsByProduct = await resolveEffectiveStations(db, productIds);
+  const stationsByProduct = await resolveEffectiveStations(db, productIds, branchId);
 
   const confirmations = await db
     .select()
