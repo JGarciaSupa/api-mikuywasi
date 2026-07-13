@@ -1,6 +1,6 @@
 {
-  "id": "09195549-d24b-4755-b16d-77880b0bac3f",
-  "prevId": "00e4b1b8-1a3c-4e1e-8cbd-b6d46898752e",
+  "id": "fa63a411-341a-46d0-b4d7-89f9e45f09ae",
+  "prevId": "09195549-d24b-4755-b16d-77880b0bac3f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2019,6 +2019,82 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.salons": {
+      "name": "salons",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "branch_id": {
+          "name": "branch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "salons_branch_idx": {
+          "name": "salons_branch_idx",
+          "columns": [
+            {
+              "expression": "branch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "salons_branch_id_branches_id_fk": {
+          "name": "salons_branch_id_branches_id_fk",
+          "tableFrom": "salons",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.social_links": {
       "name": "social_links",
       "schema": "",
@@ -2123,6 +2199,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "salon_id": {
+          "name": "salon_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "varchar(50)",
@@ -2172,6 +2254,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "restaurant_tables_salon_idx": {
+          "name": "restaurant_tables_salon_idx",
+          "columns": [
+            {
+              "expression": "salon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2186,6 +2283,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "restaurant_tables_salon_id_salons_id_fk": {
+          "name": "restaurant_tables_salon_id_salons_id_fk",
+          "tableFrom": "restaurant_tables",
+          "tableTo": "salons",
+          "columnsFrom": [
+            "salon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

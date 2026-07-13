@@ -1,7 +1,22 @@
-import { tables } from '@/db/tenant/schema';
+import { salons, tables } from '@/db/tenant/schema';
 import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getTenantDb } from '@/utils/tenant-context';
+
+/**
+ * Verificar que el salón exista y pertenezca a la sucursal de la mesa.
+ * Evita asignar mesas a salones de otra sede.
+ */
+async function assertSalonInBranch(salonId: string, branchId: number) {
+  const db = getTenantDb();
+  const [salon] = await db.select().from(salons).where(eq(salons.id, salonId));
+  if (!salon) {
+    throw new Error('El salón no existe');
+  }
+  if (salon.branchId !== branchId) {
+    throw new Error('El salón pertenece a otra sucursal');
+  }
+}
 
 /**
  * Obtener las mesas de UNA sucursal. branchId es obligatorio — sin esto, un
@@ -26,9 +41,13 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string; branchId: number; capacity?: number }) {
+export async function createTable(data: { name: string; branchId: number; capacity?: number; salonId?: string | null }) {
   const db = getTenantDb();
   const branchId = data.branchId;
+
+  if (data.salonId) {
+    await assertSalonInBranch(data.salonId, branchId);
+  }
 
   // 1. Verificar límite de 50 mesas por sucursal
   const [totalResult] = await db.select({ count: sql<number>`count(*)` })
@@ -50,6 +69,7 @@ export async function createTable(data: { name: string; branchId: number; capaci
         branchId,
         slug,
         capacity: data.capacity ?? 1,
+        salonId: data.salonId ?? null,
       }).returning();
 
       return newTable;
@@ -70,8 +90,16 @@ export async function createTable(data: { name: string; branchId: number; capaci
 /**
  * Actualizar una mesa existente
  */
-export async function updateTable(id: number, data: { name: string; capacity?: number }) {
+export async function updateTable(id: number, data: { name: string; capacity?: number; salonId?: string | null }) {
   const db = getTenantDb();
+
+  // salonId: undefined = no tocar; null = quitar del salón; string = validar y asignar
+  if (data.salonId) {
+    const table = await getTableById(id);
+    if (!table) return undefined;
+    await assertSalonInBranch(data.salonId, table.branchId);
+  }
+
   const [updatedTable] = await db
     .update(tables)
     .set({ ...data, updatedAt: new Date() })

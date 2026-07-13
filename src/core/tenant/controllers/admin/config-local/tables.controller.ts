@@ -35,9 +35,9 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { name, branchId, capacity } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number };
+    const { name, branchId, capacity, salonId } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number; salonId?: string | null };
 
-    const result = await createTable({ name, branchId, capacity });
+    const result = await createTable({ name, branchId, capacity, salonId });
 
     return c.json({
       success: true,
@@ -66,9 +66,9 @@ export const updateTableController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de mesa inválido' }, 400);
     }
 
-    const { name, capacity } = c.req.valid('json' as never) as { name: string; capacity?: number };
+    const { name, capacity, salonId } = c.req.valid('json' as never) as { name: string; capacity?: number; salonId?: string | null };
 
-    const result = await updateTable(id, { name, capacity });
+    const result = await updateTable(id, { name, capacity, salonId });
 
     if (!result) {
       return c.json({ success: false, message: 'Mesa no encontrada' }, 404);

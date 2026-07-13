@@ -274,6 +274,13 @@
       "when": 1783481411880,
       "tag": "0038_add_branch_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783967181668,
+      "tag": "0039_table_salon",
+      "breakpoints": true
     }
   ]
 }

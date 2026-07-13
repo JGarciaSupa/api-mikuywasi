@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, uuid, AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // ==========================================
 // 🏷️ MARCAS
@@ -211,9 +211,25 @@ export const paymentMethods = pgTable('payment_methods', {
 	branchIdx: index('payment_methods_branch_idx').on(table.branchId),
 }));
 
+// Salones (ambientes) de una sucursal: "Terraza", "Salón Principal", "Barra".
+// Un salón agrupa muchas mesas; una mesa pertenece a lo sumo a UN salón
+// (FK nullable en restaurant_tables — mesa sin salón = salonId NULL).
+export const salons = pgTable('salons', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	name: varchar('name', { length: 100 }).notNull(), // Ej: 'Terraza', 'Salón Principal'
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	branchIdx: index('salons_branch_idx').on(table.branchId),
+}));
+
 export const tables = pgTable('restaurant_tables', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id),
+	// Salón al que pertenece la mesa. NULL = mesa sin salón (se puede asignar después).
+	// Al eliminar un salón sus mesas quedan sin salón, no se eliminan.
+	salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'set null' }),
 	name: varchar('name', { length: 50 }).notNull(), // Ej: 'Mesa 1'
 	slug: varchar('slug', { length: 8 }).notNull().unique(), // URL única del QR de la mesa
 	capacity: integer('capacity').default(1),
@@ -221,6 +237,7 @@ export const tables = pgTable('restaurant_tables', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('restaurant_tables_branch_idx').on(table.branchId),
+	salonIdx: index('restaurant_tables_salon_idx').on(table.salonId),
 }));
 
 // ==========================================
@@ -477,6 +494,7 @@ export const brandsRelations = relations(brands, ({ many }) => ({
 export const branchesRelations = relations(branches, ({ one, many }) => ({
 	brand: one(brands, { fields: [branches.brandId], references: [brands.id] }),
 	userBranches: many(userBranches),
+	salons: many(salons),
 	tables: many(tables),
 	orders: many(orders),
 	paymentMethods: many(paymentMethods),
@@ -509,8 +527,14 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
 	user: one(users, { fields: [refreshTokens.userId], references: [users.id] }),
 }));
 
+export const salonsRelations = relations(salons, ({ one, many }) => ({
+	branch: one(branches, { fields: [salons.branchId], references: [branches.id] }),
+	tables: many(tables),
+}));
+
 export const tablesRelations = relations(tables, ({ one, many }) => ({
 	branch: one(branches, { fields: [tables.branchId], references: [branches.id] }),
+	salon: one(salons, { fields: [tables.salonId], references: [salons.id] }),
 	orders: many(orders),
 }));
 
