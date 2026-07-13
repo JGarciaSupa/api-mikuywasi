@@ -374,6 +374,16 @@ export const identityDocumentTypes = pgTable('identity_document_types', {
   code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (DNI), '06' (RUC)
   name: varchar('name', { length: 100 }).notNull(), // Ej: 'DNI'
   description: varchar('description', { length: 255 }), // Opcional
+  // Cómo debe comportarse/validarse el buscador de este documento al facturar.
+  // 'external_lookup': hay un servicio de búsqueda externo disponible (ej. RENIEC/SUNAT
+  //   para RUC/DNI en Perú) — se muestra el botón de buscar.
+  // 'manual': no existe servicio externo para este país/documento — solo texto libre.
+  validationType: varchar('validation_type', { length: 20,
+    enum: ['external_lookup', 'manual'] as const }).default('manual').notNull(),
+  // Cantidad exacta de caracteres esperada (ej. DNI=8, RUC=11). Null = no se valida longitud.
+  docLength: integer('doc_length'),
+  // Regex opcional para casos donde la longitud no basta (ej. formatos alfanuméricos).
+  docPattern: varchar('doc_pattern', { length: 100 }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

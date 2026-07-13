@@ -71,6 +71,13 @@
       "when": 1783368445362,
       "tag": "0009_bitter_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783902034693,
+      "tag": "0010_flowery_shard",
+      "breakpoints": true
     }
   ]
 }

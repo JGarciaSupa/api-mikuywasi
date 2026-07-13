@@ -13,6 +13,10 @@ import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
+import { getActiveSessionForUser } from './cash.service';
+import { resolveSeriesForRegister, type DocumentType as SeriesDocumentType } from './billing-series.service';
+import { masterDb } from '../../../../../db';
+import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -20,14 +24,16 @@ export interface CreateDocumentInput {
   orderId: string;
   splitId?: number | null;
   documentType: 'factura' | 'boleta' | 'nota_de_venta';
-  seriesId: number;
-  buyerDocType?: 'RUC' | 'DNI' | 'CE';
+  buyerDocType?: string;
   buyerDocNumber?: string;
   buyerName?: string;
   buyerAddress?: string;
   buyerEmail?: string;
   notes?: string;
   createdBy?: string;
+  // Cajero autenticado — se usa para resolver la caja de su turno abierto y, con
+  // ella, la serie a usar (ya no se elige manualmente desde el frontend).
+  userId?: number;
 }
 
 export interface ListDocumentsFilters {
@@ -48,6 +54,88 @@ export interface ListDocumentsFilters {
 
 function padSequential(n: number) {
   return String(n).padStart(8, '0');
+}
+
+// Resuelve la serie a usar dada la caja del turno abierto del usuario autenticado.
+// Centraliza la regla "la serie no se elige manualmente" usada tanto al previsualizar
+// como al emitir el documento.
+async function resolveActiveSeriesOrThrow(
+  branchId: number,
+  documentType: SeriesDocumentType,
+  userId: number | undefined,
+) {
+  const activeSession = await getActiveSessionForUser(userId);
+  if (!activeSession || activeSession.registerId == null) {
+    throw new Error('Debes tener un turno de caja abierto para facturar');
+  }
+  const resolved = await resolveSeriesForRegister(activeSession.registerId, documentType, branchId);
+  if (!resolved) {
+    throw new Error(`Esta caja no tiene una serie configurada para '${documentType}'. Contacta a un administrador.`);
+  }
+  return resolved;
+}
+
+// Busca el tipo de documento de identidad en el catálogo maestro, scoped por el
+// país de la sucursal (branch.countryCode → countries.isoCode → countryId).
+// Devuelve null si la sucursal no tiene país configurado o el código no existe en
+// el catálogo — en ese caso el llamador debe aplicar el fallback histórico.
+async function resolveIdentityDocType(branchId: number, code: string | undefined | null) {
+  if (!code) return null;
+  const db = getTenantDb();
+  const [branch] = await db.select({ countryCode: branches.countryCode }).from(branches).where(eq(branches.id, branchId));
+  if (!branch?.countryCode) return null;
+
+  const [country] = await masterDb.select({ id: countries.id }).from(countries).where(eq(countries.isoCode, branch.countryCode));
+  if (!country) return null;
+
+  const [docType] = await masterDb
+    .select()
+    .from(identityDocumentTypes)
+    .where(and(
+      eq(identityDocumentTypes.countryId, country.id),
+      eq(identityDocumentTypes.isActive, true),
+      or(eq(identityDocumentTypes.code, code), eq(identityDocumentTypes.name, code)),
+    ));
+  return docType ?? null;
+}
+
+// Valida el documento del comprador. Para factura, la regla dura de SUNAT/Greenter
+// (RUC de 11 dígitos) se mantiene siempre, sin depender del catálogo. Para
+// boleta/nota_de_venta el documento es opcional (ver "Consumidor Final"); si se
+// indica, se valida contra el catálogo de la sucursal, o contra el set histórico
+// de Perú (DNI/RUC/CE) si la sucursal aún no tiene país configurado.
+async function validateBuyerDocument(
+  branchId: number,
+  documentType: 'factura' | 'boleta' | 'nota_de_venta',
+  buyerDocType: string | undefined,
+  buyerDocNumber: string | undefined,
+) {
+  if (documentType === 'factura') {
+    if (!buyerDocType || buyerDocType !== 'RUC') {
+      throw new Error('La factura requiere tipo de documento RUC');
+    }
+    if (!buyerDocNumber || buyerDocNumber.length !== 11) {
+      throw new Error('La factura requiere RUC de 11 dígitos');
+    }
+    return;
+  }
+
+  if (!buyerDocType) return;
+
+  const docType = await resolveIdentityDocType(branchId, buyerDocType);
+  if (!docType) {
+    if (!['DNI', 'RUC', 'CE'].includes(buyerDocType)) {
+      throw new Error('Tipo de documento inválido. Use DNI, RUC o CE');
+    }
+    return;
+  }
+
+  if (docType.docLength != null && buyerDocNumber && buyerDocNumber.length !== docType.docLength) {
+    throw new Error(`${docType.name} debe tener ${docType.docLength} dígitos`);
+  }
+  if (docType.docPattern && buyerDocNumber && !new RegExp(docType.docPattern).test(buyerDocNumber)) {
+    throw new Error(`${docType.name} tiene un formato inválido`);
+  }
 }
 
 // ── Número a letras (español, para leyenda SUNAT código 1000) ──────────────────
@@ -179,7 +267,12 @@ async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: numbe
 
 // ── Preview ────────────────────────────────────────────────────────────────────
 
-export async function previewDocument(orderId: string, seriesId: number, splitId?: number | null) {
+export async function previewDocument(
+  orderId: string,
+  documentType: SeriesDocumentType,
+  userId: number | undefined,
+  splitId?: number | null,
+) {
   const db = getTenantDb();
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
@@ -202,7 +295,8 @@ export async function previewDocument(orderId: string, seriesId: number, splitId
     }
   }
 
-  const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, seriesId));
+  const resolvedSeries = await resolveActiveSeriesOrThrow(order.branchId, documentType, userId);
+  const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, resolvedSeries.id));
   if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
 
   const ois = splitId != null
@@ -291,37 +385,34 @@ export async function createDocument(input: CreateDocumentInput) {
     );
   }
 
-  if (input.documentType === 'factura') {
-    if (!input.buyerDocType || input.buyerDocType !== 'RUC') {
-      throw new Error('La factura requiere tipo de documento RUC');
-    }
-    if (!input.buyerDocNumber || input.buyerDocNumber.length !== 11) {
-      throw new Error('La factura requiere RUC de 11 dígitos');
-    }
-    if (!input.buyerName) throw new Error('La factura requiere razón social del comprador');
+  if (input.documentType === 'factura' && !input.buyerName) {
+    throw new Error('La factura requiere razón social del comprador');
   }
+  await validateBuyerDocument(order.branchId, input.documentType, input.buyerDocType, input.buyerDocNumber);
 
-  if ((input.documentType === 'boleta' || input.documentType === 'nota_de_venta') && input.buyerDocType) {
-    if (!['DNI', 'RUC', 'CE'].includes(input.buyerDocType)) {
-      throw new Error('Tipo de documento inválido. Use DNI, RUC o CE');
-    }
-  }
+  // Resolver la serie automáticamente según la caja del turno abierto del cajero
+  // (ya no se elige manualmente desde el frontend — ver Fase B del plan Caja↔Serie).
+  const resolvedSeries = await resolveActiveSeriesOrThrow(order.branchId, input.documentType, input.userId);
+
+  // Consumidor Final: boletas y notas de venta nunca deben bloquear la venta por
+  // falta de datos del cliente. Si no se indicó documento/nombre, se inyecta el
+  // cliente genérico y se persiste tal cual en la BD (antes solo se aplicaba como
+  // fallback efímero al armar el payload SUNAT, dejando la fila con buyer* en null
+  // y el PDF del comprobante impreso en blanco).
+  const isConsumidorFinal =
+    (input.documentType === 'boleta' || input.documentType === 'nota_de_venta') &&
+    !input.buyerDocNumber && !input.buyerName;
+  const buyerDocType = isConsumidorFinal ? null : (input.buyerDocType ?? null);
+  const buyerDocNumber = isConsumidorFinal ? '00000000' : (input.buyerDocNumber ?? null);
+  const buyerName = isConsumidorFinal ? 'CLIENTE FINAL' : (input.buyerName ?? null);
 
   // Calcular líneas antes de la transacción — filtrar por split si aplica
   const ois = input.splitId != null
     ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), eq(orderItems.splitId, input.splitId)))
     : await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), isNull(orderItems.splitId)));
 
-  // series.priceInclTax y taxRate los necesitamos antes; los leemos sin lock
-  const [seriesPreview] = await db
-    .select({ priceInclTax: billingSeries.priceInclTax, taxRate: billingSeries.taxRate })
-    .from(billingSeries)
-    .where(eq(billingSeries.id, input.seriesId));
-
-  if (!seriesPreview) throw new Error('Serie no encontrada o inactiva');
-
-  const priceInclTax = seriesPreview.priceInclTax;
-  const taxRate = toNum(seriesPreview.taxRate);
+  const priceInclTax = resolvedSeries.priceInclTax;
+  const taxRate = toNum(resolvedSeries.taxRate);
 
   const lineCalcs = ois.map((oi) =>
     calcLine(
@@ -346,7 +437,7 @@ export async function createDocument(input: CreateDocumentInput) {
     const [series] = await tx
       .select()
       .from(billingSeries)
-      .where(eq(billingSeries.id, input.seriesId))
+      .where(eq(billingSeries.id, resolvedSeries.id))
       .for('update');
 
     if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
@@ -375,9 +466,9 @@ export async function createDocument(input: CreateDocumentInput) {
         series: series.series,
         sequential,
         documentNumber,
-        buyerDocType: input.buyerDocType ?? null,
-        buyerDocNumber: input.buyerDocNumber ?? null,
-        buyerName: input.buyerName ?? null,
+        buyerDocType,
+        buyerDocNumber,
+        buyerName,
         buyerAddress: input.buyerAddress ?? null,
         buyerEmail: input.buyerEmail ?? null,
         subtotal: String(totalSubtotal),
@@ -447,15 +538,17 @@ async function emitirYActualizarDoc(
   taxRate: number,
 ): Promise<void> {
   let sunatUpdate: Record<string, unknown>;
+  let resolvedAnexo: string | null = null;
 
   try {
-    const { ruc } = await resolveFacturadorConfig(db, doc.branchId);
+    const { ruc, anexo } = await resolveFacturadorConfig(db, doc.branchId);
+    resolvedAnexo = anexo;
 
     const tipoDoc = doc.documentType === 'factura' ? '01' : '03';
     const buyerTipoDoc = doc.buyerDocType === 'RUC' ? '6' : doc.buyerDocType === 'DNI' ? '1' : '0';
 
     const payload = {
-      emisor: { ruc },
+      emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
       cliente: {
         tipo_documento: buyerTipoDoc,
         numero_documento: doc.buyerDocNumber ?? '00000000',
@@ -561,6 +654,7 @@ async function emitirYActualizarDoc(
       xmlHash: sunatUpdate['xml_hash'] as string | null,
       xmlFilename: sunatUpdate['xml_filename'] as string | null,
       facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
+      sunatAnexo: resolvedAnexo,
       updatedAt: sunatUpdate['updated_at'] as Date,
     })
     .where(eq(billingDocuments.id, doc.id));
@@ -715,7 +809,7 @@ export async function retryDocument(id: number) {
 // ── Correct buyer data and retry ──────────────────────────────────────────────
 
 export interface BuyerCorrection {
-  buyerDocType?: 'RUC' | 'DNI' | 'CE' | null;
+  buyerDocType?: string | null;
   buyerDocNumber?: string | null;
   buyerName?: string | null;
   buyerAddress?: string | null;
@@ -732,19 +826,12 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
   if (doc.documentType === 'nota_de_venta') throw new Error('Las notas de venta no se envían a SUNAT');
   if (doc.sunatStatus === 'ACEPTADO') throw new Error('El documento ya fue aceptado por SUNAT');
 
-  if (doc.documentType === 'factura') {
-    const ruc = buyer.buyerDocNumber ?? doc.buyerDocNumber;
-    const tipo = buyer.buyerDocType ?? doc.buyerDocType;
-    if (tipo !== 'RUC' || !ruc || ruc.length !== 11) {
-      throw new Error('La factura requiere tipo RUC con 11 dígitos');
-    }
-  }
-
-  if (doc.documentType === 'boleta' && buyer.buyerDocType) {
-    if (!['DNI', 'RUC', 'CE'].includes(buyer.buyerDocType)) {
-      throw new Error('Tipo de documento inválido para boleta. Use DNI, RUC o CE');
-    }
-  }
+  await validateBuyerDocument(
+    doc.branchId,
+    doc.documentType as 'factura' | 'boleta' | 'nota_de_venta',
+    (buyer.buyerDocType ?? doc.buyerDocType) ?? undefined,
+    (buyer.buyerDocNumber ?? doc.buyerDocNumber) ?? undefined,
+  );
 
   // Actualizar los campos del comprador en la BD
   await db
@@ -1037,9 +1124,11 @@ async function emitAndUpdateCreditNote(
 ) {
   const taxRate = toNum(savedNC.taxRate);
   let sunatUpdate: Record<string, unknown>;
+  let resolvedAnexo: string | null = null;
 
   try {
-    const { ruc } = await resolveFacturadorConfig(db, savedNC.branchId);
+    const { ruc, anexo } = await resolveFacturadorConfig(db, savedNC.branchId);
+    resolvedAnexo = anexo;
 
     const tipoDocOriginal = originalDoc.documentType === 'factura' ? '01' : '03';
     const buyerTipoDoc = savedNC.buyerDocType === 'RUC' ? '6' : savedNC.buyerDocType === 'DNI' ? '1' : '0';
@@ -1066,7 +1155,7 @@ async function emitAndUpdateCreditNote(
     });
 
     const res = await emitirNotaCredito({
-      emisor: { ruc },
+      emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
       cliente: {
         tipo_documento: buyerTipoDoc,
         numero_documento: savedNC.buyerDocNumber ?? '00000000',
@@ -1134,6 +1223,7 @@ async function emitAndUpdateCreditNote(
       xmlHash: sunatUpdate['xml_hash'] as string | null,
       xmlFilename: sunatUpdate['xml_filename'] as string | null,
       facturadorComprobanteId: sunatUpdate['facturador_comprobante_id'] as number | null,
+      sunatAnexo: resolvedAnexo,
       updatedAt: new Date(),
     })
     .where(eq(billingDocuments.id, savedNC.id));
@@ -1531,7 +1621,7 @@ export interface CreateNotaCreditoExternaInput {
 export async function emitirNotaCreditoExterna(input: CreateNotaCreditoExternaInput) {
   const db = getTenantDb();
   if (!input.branchId) throw new Error('Se requiere seleccionar una sucursal con facturador configurado');
-  const { ruc } = await resolveFacturadorConfig(db, input.branchId);
+  const { ruc, anexo } = await resolveFacturadorConfig(db, input.branchId);
 
   const detalles = input.detalles.map((d) => ({
     codigo: d.codigo,
@@ -1549,7 +1639,7 @@ export async function emitirNotaCreditoExterna(input: CreateNotaCreditoExternaIn
   }));
 
   const res = await emitirNotaCredito({
-    emisor: { ruc },
+    emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
     cliente: {
       tipo_documento: input.buyerTipoDoc,
       numero_documento: input.buyerNumeroDoc,

@@ -1,5 +1,5 @@
 import { eq, asc, and, ne, desc } from 'drizzle-orm';
-import { billingSeries, billingDocuments } from '../../../../../db/tenant/schema';
+import { billingSeries, billingDocuments, cashRegisterDocumentSeries, cashRegisters } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
@@ -177,4 +177,132 @@ export async function updateSeries(id: number, input: UpdateSeriesInput) {
     .returning();
 
   return row;
+}
+
+// ── Series por caja (Caja ↔ Documento ↔ Serie) ─────────────────────────────────
+
+export interface ResolvedSeries {
+  id: number;
+  series: string;
+  documentType: string;
+  lastSequential: number;
+  priceInclTax: boolean;
+  taxRate: string;
+  source: 'register' | 'branch';
+}
+
+// Resuelve qué serie usar para un tipo de comprobante dado la caja del turno abierto.
+// 1) Si la caja tiene una serie asignada explícitamente (pivote), se usa esa.
+// 2) Si no, cae de vuelta a la serie de sucursal (comportamiento previo al pivote),
+//    para no bloquear sucursales que aún no configuraron series por caja.
+export async function resolveSeriesForRegister(
+  registerId: number,
+  documentType: DocumentType,
+  branchId: number,
+): Promise<ResolvedSeries | null> {
+  const db = getTenantDb();
+
+  const [pivotRow] = await db
+    .select({ series: billingSeries })
+    .from(cashRegisterDocumentSeries)
+    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
+    .where(and(
+      eq(cashRegisterDocumentSeries.registerId, registerId),
+      eq(cashRegisterDocumentSeries.documentType, documentType),
+      eq(cashRegisterDocumentSeries.isActive, true),
+      eq(billingSeries.isActive, true),
+    ))
+    .limit(1);
+
+  if (pivotRow) {
+    const s = pivotRow.series;
+    return {
+      id: s.id, series: s.series, documentType: s.documentType,
+      lastSequential: s.lastSequential, priceInclTax: s.priceInclTax, taxRate: s.taxRate,
+      source: 'register',
+    };
+  }
+
+  const [branchRow] = await db
+    .select()
+    .from(billingSeries)
+    .where(and(
+      eq(billingSeries.branchId, branchId),
+      eq(billingSeries.documentType, documentType),
+      eq(billingSeries.isActive, true),
+    ))
+    .orderBy(asc(billingSeries.id))
+    .limit(1);
+
+  if (!branchRow) return null;
+  return {
+    id: branchRow.id, series: branchRow.series, documentType: branchRow.documentType,
+    lastSequential: branchRow.lastSequential, priceInclTax: branchRow.priceInclTax, taxRate: branchRow.taxRate,
+    source: 'branch',
+  };
+}
+
+export async function listSeriesForRegister(registerId: number) {
+  const db = getTenantDb();
+  return db
+    .select({
+      documentType: cashRegisterDocumentSeries.documentType,
+      seriesId: billingSeries.id,
+      series: billingSeries.series,
+      lastSequential: billingSeries.lastSequential,
+      isActive: cashRegisterDocumentSeries.isActive,
+    })
+    .from(cashRegisterDocumentSeries)
+    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
+    .where(eq(cashRegisterDocumentSeries.registerId, registerId))
+    .orderBy(asc(cashRegisterDocumentSeries.documentType));
+}
+
+export async function assignSeriesToRegister(registerId: number, documentType: DocumentType, seriesId: number) {
+  const db = getTenantDb();
+
+  const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, registerId));
+  if (!register) throw new Error('Caja no encontrada');
+
+  const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, seriesId));
+  if (!series) throw new Error('Serie no encontrada');
+  if (series.documentType !== documentType) {
+    throw new Error(`La serie ${series.series} es de tipo '${series.documentType}', no '${documentType}'`);
+  }
+  if (series.branchId !== register.branchId) {
+    throw new Error('La serie debe pertenecer a la misma sucursal que la caja');
+  }
+
+  const [existing] = await db
+    .select()
+    .from(cashRegisterDocumentSeries)
+    .where(and(
+      eq(cashRegisterDocumentSeries.registerId, registerId),
+      eq(cashRegisterDocumentSeries.documentType, documentType),
+    ));
+
+  if (existing) {
+    const [row] = await db
+      .update(cashRegisterDocumentSeries)
+      .set({ seriesId, isActive: true, updatedAt: new Date() })
+      .where(eq(cashRegisterDocumentSeries.id, existing.id))
+      .returning();
+    return row;
+  }
+
+  const [row] = await db
+    .insert(cashRegisterDocumentSeries)
+    .values({ registerId, documentType, seriesId })
+    .returning();
+  return row;
+}
+
+export async function unassignSeriesFromRegister(registerId: number, documentType: DocumentType) {
+  const db = getTenantDb();
+  await db
+    .delete(cashRegisterDocumentSeries)
+    .where(and(
+      eq(cashRegisterDocumentSeries.registerId, registerId),
+      eq(cashRegisterDocumentSeries.documentType, documentType),
+    ));
 }

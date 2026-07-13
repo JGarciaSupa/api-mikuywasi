@@ -53,6 +53,41 @@ export const deleteSeriesController = async (c: Context) => {
   }
 };
 
+// ── Series por caja (Caja ↔ Documento ↔ Serie) ─────────────────────────────────
+
+export const listRegisterSeriesController = async (c: Context) => {
+  try {
+    const registerId = Number(c.req.param('registerId'));
+    const data = await billingSeriesService.listSeriesForRegister(registerId);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al listar series de la caja' }, 500);
+  }
+};
+
+export const assignRegisterSeriesController = async (c: Context) => {
+  try {
+    const registerId = Number(c.req.param('registerId'));
+    const { documentType, seriesId } = await c.req.json();
+    const row = await billingSeriesService.assignSeriesToRegister(registerId, documentType, Number(seriesId));
+    return c.json({ success: true, data: row });
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrada') || error.message?.includes('no encontrado') ? 404 : 422;
+    return c.json({ success: false, message: error.message || 'Error al asignar serie a la caja' }, status as any);
+  }
+};
+
+export const unassignRegisterSeriesController = async (c: Context) => {
+  try {
+    const registerId = Number(c.req.param('registerId'));
+    const documentType = c.req.param('documentType') as 'factura' | 'boleta' | 'nota_de_venta';
+    await billingSeriesService.unassignSeriesFromRegister(registerId, documentType);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al quitar serie de la caja' }, 500);
+  }
+};
+
 // ── Documents ─────────────────────────────────────────────────────────────────
 
 export const listDocumentsController = async (c: Context) => {
@@ -105,15 +140,17 @@ export const previewDocumentController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const seriesId = Number(c.req.query('seriesId'));
-    if (!seriesId) return c.json({ success: false, message: 'Se requiere seriesId como query param' }, 400);
+    const documentType = c.req.query('documentType') as 'factura' | 'boleta' | 'nota_de_venta' | undefined;
+    if (!documentType) return c.json({ success: false, message: 'Se requiere documentType como query param' }, 400);
     const splitIdRaw = c.req.query('splitId');
     const splitId = splitIdRaw != null ? Number(splitIdRaw) : null;
-    const preview = await billingService.previewDocument(orderId, seriesId, splitId);
+    const payload = c.get('jwtPayload') as { userId?: number } | undefined;
+    const preview = await billingService.previewDocument(orderId, documentType, payload?.userId, splitId);
     return c.json({ success: true, data: preview });
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') || error.message?.includes('no encontrada') ? 404
       : error.message?.includes('pagada') || error.message?.includes('pagado') ? 422
+      : error.message?.includes('turno de caja') || error.message?.includes('serie configurada') ? 422
       : 500;
     return c.json({ success: false, message: error.message || 'Error al previsualizar documento' }, status as any);
   }
@@ -127,13 +164,17 @@ export const createDocumentController = async (c: Context) => {
       ...body,
       splitId: body.splitId ?? null,
       createdBy: payload?.username ?? null,
+      userId: payload?.userId,
     });
     return c.json({ success: true, data: result }, 201);
   } catch (error: any) {
     const status =
       error.message?.includes('no encontrado') || error.message?.includes('no encontrada') ? 404 :
         error.message?.includes('ya tiene un documento') ? 409 :
-          error.message?.includes('requiere') || error.message?.includes('pagada') || error.message?.includes('pagado') ? 422 :
+          error.message?.includes('requiere') || error.message?.includes('pagada') || error.message?.includes('pagado')
+            || error.message?.includes('turno de caja') || error.message?.includes('serie configurada')
+            || error.message?.includes('Tipo de documento') || error.message?.includes('formato inválido')
+            || error.message?.includes('debe tener') ? 422 :
             500;
     return c.json({ success: false, message: error.message || 'Error al crear documento' }, status as any);
   }

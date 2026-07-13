@@ -5,6 +5,9 @@ import {
   createSeriesController,
   updateSeriesController,
   deleteSeriesController,
+  listRegisterSeriesController,
+  assignRegisterSeriesController,
+  unassignRegisterSeriesController,
   listDocumentsController,
   getDocumentController,
   getRelatedDocumentsController,
@@ -32,6 +35,11 @@ routes.get('/series', listSeriesController);
 routes.post('/series', createSeriesController);
 routes.put('/series/:id', updateSeriesController);
 routes.delete('/series/:id', deleteSeriesController);
+
+// Series por caja
+routes.get('/series/registers/:registerId', listRegisterSeriesController);
+routes.post('/series/registers/:registerId', assignRegisterSeriesController);
+routes.delete('/series/registers/:registerId/:documentType', unassignRegisterSeriesController);
 
 // Certificate conversion proxy
 routes.post('/certificate/convert', convertCertificateController);

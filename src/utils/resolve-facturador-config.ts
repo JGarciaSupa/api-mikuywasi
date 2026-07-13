@@ -5,6 +5,9 @@ import type { TenantDb } from './tenant-context';
 export interface FacturadorConfig {
   empresaId: number;
   ruc: string;
+  // Anexo/código de establecimiento SUNAT de la sucursal (4 dígitos). Null = la
+  // sucursal no tiene anexo propio configurado; el facturador usa '0000' por defecto.
+  anexo: string | null;
 }
 
 /**
@@ -20,12 +23,13 @@ export async function resolveFacturadorConfig(
     .select({
       facturadorEmpresaId: branches.facturadorEmpresaId,
       fiscalId: branches.fiscalId,
+      sunatAnexo: branches.sunatAnexo,
     })
     .from(branches)
     .where(eq(branches.id, branchId));
 
   if (branch?.facturadorEmpresaId && branch?.fiscalId) {
-    return { empresaId: branch.facturadorEmpresaId, ruc: branch.fiscalId };
+    return { empresaId: branch.facturadorEmpresaId, ruc: branch.fiscalId, anexo: branch.sunatAnexo ?? null };
   }
 
   const detail = branch?.facturadorEmpresaId

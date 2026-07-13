@@ -59,7 +59,7 @@ export interface DetallePayload {
 }
 
 export interface ComprobantePayload {
-  emisor: { ruc: string };
+  emisor: { ruc: string; cod_local?: string };
   cliente: {
     tipo_documento: string;    // '6'=RUC '1'=DNI '0'=sin doc
     numero_documento: string;
@@ -292,7 +292,7 @@ export interface VoidedDocumento {
 }
 
 export interface VoidedPayload {
-  emisor: { ruc: string };
+  emisor: { ruc: string; cod_local?: string };
   fec_generacion: string;    // YYYY-MM-DD — fecha de los documentos anulados
   fec_comunicacion: string;  // YYYY-MM-DD — fecha de esta comunicación
   documentos: VoidedDocumento[];
@@ -403,7 +403,7 @@ export interface SummaryDocumento {
 }
 
 export interface SummaryPayload {
-  emisor: { ruc: string };
+  emisor: { ruc: string; cod_local?: string };
   fec_generacion: string; // YYYY-MM-DD — fecha de emisión de la boleta
   fec_resumen: string;    // YYYY-MM-DD — fecha del resumen (hoy)
   documentos: SummaryDocumento[];
@@ -569,7 +569,7 @@ export type CodigoMotivoNC =
   | '10'; // Otros conceptos
 
 export interface NotaCreditoPayload {
-  emisor: { ruc: string };
+  emisor: { ruc: string; cod_local?: string };
   cliente: {
     tipo_documento: string;   // '6'=RUC '1'=DNI '0'=sin doc
     numero_documento: string;

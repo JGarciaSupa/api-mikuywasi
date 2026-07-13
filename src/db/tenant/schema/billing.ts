@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { orders, orderSplits, products, branches } from './core';
+import { cashRegisters } from './warehouse';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
 // ==========================================
@@ -23,6 +24,26 @@ export const billingSeries = pgTable('billing_series', {
 	branchIdx: index('billing_series_branch_idx').on(table.branchId),
 }));
 
+// Asigna a cada caja qué serie usar por tipo de comprobante. El correlativo sigue
+// viviendo únicamente en billingSeries.lastSequential (esta tabla solo resuelve
+// "qué serie" — nunca duplica el contador, para no arriesgar desincronización).
+// Si una caja no tiene fila aquí para un tipo de comprobante dado, el resolver cae
+// de vuelta a la serie de sucursal existente (branchId + documentType), para no
+// romper series ya configuradas antes de este pivote.
+export const cashRegisterDocumentSeries = pgTable('cash_register_document_series', {
+	id: serial('id').primaryKey(),
+	registerId: integer('register_id').notNull().references(() => cashRegisters.id, { onDelete: 'cascade' }),
+	documentType: varchar('document_type', { length: 20,
+		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
+	seriesId: integer('series_id').notNull().references(() => billingSeries.id),
+	isActive: boolean('is_active').notNull().default(true),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	registerDocTypeUnique: uniqueIndex('cash_reg_doc_series_register_doctype_idx').on(table.registerId, table.documentType),
+	registerIdx: index('cash_reg_doc_series_register_idx').on(table.registerId),
+}));
+
 export const billingDocuments = pgTable('billing_documents', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id), // Documento emitido desde esta sede
@@ -36,8 +57,10 @@ export const billingDocuments = pgTable('billing_documents', {
 	documentNumber: varchar('document_number', { length: 20 }).notNull().unique(),
 	referencedDocumentId: integer('referenced_document_id'), // NC → ID del doc original (factura/boleta)
 
-	buyerDocType: varchar('buyer_doc_type', { length: 10,
-		enum: ['RUC', 'DNI', 'CE'] as const }),
+	// Código del tipo de documento de identidad del comprador (ej. 'RUC', 'DNI', 'CE'
+	// en Perú). Ya no es un enum fijo: el catálogo real vive en master.identityDocumentTypes,
+	// scoped por país — cada país puede tener sus propios códigos.
+	buyerDocType: varchar('buyer_doc_type', { length: 20 }),
 	buyerDocNumber: varchar('buyer_doc_number', { length: 20 }),
 	buyerName: varchar('buyer_name', { length: 200 }),
 	buyerAddress: text('buyer_address'),
@@ -48,6 +71,11 @@ export const billingDocuments = pgTable('billing_documents', {
 	taxAmount: decimal('tax_amount', { precision: 12, scale: 2 }).notNull(),
 	total: decimal('total', { precision: 12, scale: 2 }).notNull(),
 	currency: varchar('currency', { length: 10 }).notNull().default('PEN'),
+
+	// Snapshot del anexo/código de establecimiento SUNAT de la sucursal al momento de
+	// emitir (igual criterio que buyerName/buyerAddress: se congela, no se referencia,
+	// para no perder trazabilidad si el anexo de la sucursal cambia después).
+	sunatAnexo: varchar('sunat_anexo', { length: 4 }),
 
 	status: varchar('status', { length: 20,
 		enum: ['draft', 'issued', 'voided'] as const }).notNull().default('issued'),
@@ -100,6 +128,12 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 export const billingSeriesRelations = relations(billingSeries, ({ one, many }) => ({
 	branch: one(branches, { fields: [billingSeries.branchId], references: [branches.id] }),
 	documents: many(billingDocuments),
+	registerAssignments: many(cashRegisterDocumentSeries),
+}));
+
+export const cashRegisterDocumentSeriesRelations = relations(cashRegisterDocumentSeries, ({ one }) => ({
+	register: one(cashRegisters, { fields: [cashRegisterDocumentSeries.registerId], references: [cashRegisters.id] }),
+	series: one(billingSeries, { fields: [cashRegisterDocumentSeries.seriesId], references: [billingSeries.id] }),
 }));
 
 export const billingDocumentsRelations = relations(billingDocuments, ({ one, many }) => ({

@@ -107,6 +107,7 @@ export const branches = pgTable('branches', {
 	// NULL → hereda la empresa del tenantConfigs (Caso A).
 	facturadorEmpresaId: integer('facturador_empresa_id'),
 
+	sunatAnexo: varchar('sunat_anexo', { length: 4 }),
 	isActive: boolean('is_active').default(true).notNull(),
 	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

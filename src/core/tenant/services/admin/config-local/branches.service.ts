@@ -100,6 +100,7 @@ export interface CreateBranchInput {
   fiscalId?: string | null;
   fiscalName?: string | null;
   channelIds?: number[];
+  sunatAnexo?: string | null;
   schedules?: {
     day: string;
     startTime: string;
@@ -165,6 +166,7 @@ export async function createBranch(data: CreateBranchInput) {
       freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
       fiscalId: emptyToNull(data.fiscalId),
       fiscalName: emptyToNull(data.fiscalName),
+      sunatAnexo: emptyToNull(data.sunatAnexo),
       schedules: data.schedules ?? [],
       deliveryZone: data.deliveryZone ?? null,
       allowSellWithoutStock: data.allowSellWithoutStock ?? false,
@@ -218,6 +220,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.freeDeliveryThreshold !== undefined) updateData.freeDeliveryThreshold = emptyToNull(data.freeDeliveryThreshold);
   if (data.fiscalId !== undefined) updateData.fiscalId = emptyToNull(data.fiscalId);
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
+  if (data.sunatAnexo !== undefined) updateData.sunatAnexo = emptyToNull(data.sunatAnexo);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
   if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
   if (data.allowSellWithoutStock !== undefined) updateData.allowSellWithoutStock = data.allowSellWithoutStock;
