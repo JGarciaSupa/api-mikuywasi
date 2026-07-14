@@ -278,8 +278,15 @@
     {
       "idx": 39,
       "version": "7",
+      "when": 1783967181667,
+      "tag": "0039_caja_chica_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
       "when": 1783967181668,
-      "tag": "0039_table_salon",
+      "tag": "0040_table_salon",
       "breakpoints": true
     }
   ]
