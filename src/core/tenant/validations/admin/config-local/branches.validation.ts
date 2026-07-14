@@ -38,7 +38,7 @@ export const createBranchSchema = z.object({
   fiscalId: z.string().max(30).nullable().optional(),
   fiscalName: z.string().max(200).nullable().optional(),
   channelIds: z.array(z.number().int().positive()).optional(),
-  sunatAnexo: z.string().regex(/^\d{4}$/, 'El anexo SUNAT debe tener 4 dígitos (ej. 0000, 0001)').nullable().optional(),
+  sunatAnexo: z.string().refine(val => val === '' || /^\d{4}$/.test(val), 'El anexo SUNAT debe tener 4 dígitos (ej. 0000, 0001)').nullable().optional(),
   schedules: z.array(scheduleSchema).optional(),
   deliveryZone: z.object({
     type: z.literal('Polygon'),

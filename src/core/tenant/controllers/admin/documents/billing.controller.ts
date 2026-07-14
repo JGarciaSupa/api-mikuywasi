@@ -112,6 +112,17 @@ export const listDocumentsController = async (c: Context) => {
   }
 };
 
+export const getAvailableDocumentTypesController = async (c: Context) => {
+  try {
+    const payload = c.get('jwtPayload') as { userId?: number } | undefined;
+    const data = await billingService.getAvailableDocumentTypes(payload?.userId);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    const status = error.message?.includes('turno de caja') ? 422 : 500;
+    return c.json({ success: false, message: error.message || 'Error al obtener tipos de comprobante disponibles' }, status as any);
+  }
+};
+
 export const getDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));

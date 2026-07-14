@@ -14,7 +14,7 @@ import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 import { getActiveSessionForUser } from './cash.service';
-import { resolveSeriesForRegister, type DocumentType as SeriesDocumentType } from './billing-series.service';
+import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType } from './billing-series.service';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
 
@@ -73,6 +73,16 @@ async function resolveActiveSeriesOrThrow(
     throw new Error(`Esta caja no tiene una serie configurada para '${documentType}'. Contacta a un administrador.`);
   }
   return resolved;
+}
+
+// Tipos de comprobante que el cajero puede emitir según la caja de su turno
+// abierto — lo usa el frontend para no ofrecer tipos sin serie asignada a esa caja.
+export async function getAvailableDocumentTypes(userId: number | undefined): Promise<SeriesDocumentType[]> {
+  const activeSession = await getActiveSessionForUser(userId);
+  if (!activeSession || activeSession.registerId == null) {
+    throw new Error('Debes tener un turno de caja abierto para facturar');
+  }
+  return listAvailableDocumentTypesForRegister(activeSession.registerId);
 }
 
 // Busca el tipo de documento de identidad en el catálogo maestro, scoped por el

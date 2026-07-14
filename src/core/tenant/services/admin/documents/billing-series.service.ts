@@ -192,13 +192,12 @@ export interface ResolvedSeries {
 }
 
 // Resuelve qué serie usar para un tipo de comprobante dado la caja del turno abierto.
-// 1) Si la caja tiene una serie asignada explícitamente (pivote), se usa esa.
-// 2) Si no, cae de vuelta a la serie de sucursal (comportamiento previo al pivote),
-//    para no bloquear sucursales que aún no configuraron series por caja.
+// Estricto: solo cuenta la serie asignada explícitamente a la caja (pivote). Sin
+// asignación = tipo desactivado para esa caja, sin caer a una serie de sucursal.
 export async function resolveSeriesForRegister(
   registerId: number,
   documentType: DocumentType,
-  branchId: number,
+  _branchId: number,
 ): Promise<ResolvedSeries | null> {
   const db = getTenantDb();
 
@@ -214,32 +213,30 @@ export async function resolveSeriesForRegister(
     ))
     .limit(1);
 
-  if (pivotRow) {
-    const s = pivotRow.series;
-    return {
-      id: s.id, series: s.series, documentType: s.documentType,
-      lastSequential: s.lastSequential, priceInclTax: s.priceInclTax, taxRate: s.taxRate,
-      source: 'register',
-    };
-  }
-
-  const [branchRow] = await db
-    .select()
-    .from(billingSeries)
-    .where(and(
-      eq(billingSeries.branchId, branchId),
-      eq(billingSeries.documentType, documentType),
-      eq(billingSeries.isActive, true),
-    ))
-    .orderBy(asc(billingSeries.id))
-    .limit(1);
-
-  if (!branchRow) return null;
+  if (!pivotRow) return null;
+  const s = pivotRow.series;
   return {
-    id: branchRow.id, series: branchRow.series, documentType: branchRow.documentType,
-    lastSequential: branchRow.lastSequential, priceInclTax: branchRow.priceInclTax, taxRate: branchRow.taxRate,
-    source: 'branch',
+    id: s.id, series: s.series, documentType: s.documentType,
+    lastSequential: s.lastSequential, priceInclTax: s.priceInclTax, taxRate: s.taxRate,
+    source: 'register',
   };
+}
+
+// Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada
+// y activa). Lo usa el frontend para no ofrecer al cajero tipos que su caja no
+// tiene habilitados.
+export async function listAvailableDocumentTypesForRegister(registerId: number): Promise<DocumentType[]> {
+  const db = getTenantDb();
+  const rows = await db
+    .select({ documentType: cashRegisterDocumentSeries.documentType })
+    .from(cashRegisterDocumentSeries)
+    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
+    .where(and(
+      eq(cashRegisterDocumentSeries.registerId, registerId),
+      eq(cashRegisterDocumentSeries.isActive, true),
+      eq(billingSeries.isActive, true),
+    ));
+  return rows.map((r) => r.documentType as DocumentType);
 }
 
 export async function listSeriesForRegister(registerId: number) {

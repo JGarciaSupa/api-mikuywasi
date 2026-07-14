@@ -9,6 +9,7 @@ import {
   assignRegisterSeriesController,
   unassignRegisterSeriesController,
   listDocumentsController,
+  getAvailableDocumentTypesController,
   getDocumentController,
   getRelatedDocumentsController,
   getDocumentReceiptController,
@@ -45,6 +46,7 @@ routes.delete('/series/registers/:registerId/:documentType', unassignRegisterSer
 routes.post('/certificate/convert', convertCertificateController);
 
 // Documents
+routes.get('/documents/available-types', getAvailableDocumentTypesController);
 routes.get('/documents', listDocumentsController);
 routes.get('/documents/:id', getDocumentController);
 routes.get('/documents/:id/related', getRelatedDocumentsController);
