@@ -1,6 +1,6 @@
 {
-  "id": "ca63a411-341a-46d0-b4d7-89f9e45f09ae",
-  "prevId": "fa63a411-341a-46d0-b4d7-89f9e45f09ae",
+  "id": "da3135d4-e007-49fa-bb08-f6423138f924",
+  "prevId": "ca63a411-341a-46d0-b4d7-89f9e45f09ae",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1673,6 +1673,142 @@
           "tableTo": "products",
           "columnsFrom": [
             "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.product_sales_channel_prices": {
+      "name": "product_sales_channel_prices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sales_channel_id": {
+          "name": "sales_channel_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discount_price": {
+          "name": "discount_price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "product_sales_channel_prices_unique_idx": {
+          "name": "product_sales_channel_prices_unique_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sales_channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_sales_channel_prices_product_idx": {
+          "name": "product_sales_channel_prices_product_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_sales_channel_prices_channel_idx": {
+          "name": "product_sales_channel_prices_channel_idx",
+          "columns": [
+            {
+              "expression": "sales_channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "product_sales_channel_prices_product_id_products_id_fk": {
+          "name": "product_sales_channel_prices_product_id_products_id_fk",
+          "tableFrom": "product_sales_channel_prices",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "product_sales_channel_prices_sales_channel_id_sales_channels_id_fk": {
+          "name": "product_sales_channel_prices_sales_channel_id_sales_channels_id_fk",
+          "tableFrom": "product_sales_channel_prices",
+          "tableTo": "sales_channels",
+          "columnsFrom": [
+            "sales_channel_id"
           ],
           "columnsTo": [
             "id"

@@ -288,6 +288,13 @@
       "when": 1783967181668,
       "tag": "0040_table_salon",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1784082145874,
+      "tag": "0041_prices_channel_product",
+      "breakpoints": true
     }
   ]
 }

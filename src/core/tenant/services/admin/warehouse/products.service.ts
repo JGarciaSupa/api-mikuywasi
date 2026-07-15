@@ -1,4 +1,4 @@
-import { products, categories, branches } from '@/db/tenant/schema';
+import { products, categories, branches, productSalesChannelPrices } from '@/db/tenant/schema';
 import { eq, and, ilike, desc, count, inArray, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
@@ -6,6 +6,52 @@ import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
 
 const MAX_SIZE = 500;
+
+type ProductChannelPriceInput = {
+  salesChannelId: number;
+  price: string;
+  discountPrice?: string | null;
+};
+
+async function attachChannelPrices(db: ReturnType<typeof getTenantDb>, rows: any[]) {
+  if (rows.length === 0) return rows;
+
+  const productIds = rows.map((row) => row.id);
+  const priceRows = await db
+    .select()
+    .from(productSalesChannelPrices)
+    .where(inArray(productSalesChannelPrices.productId, productIds));
+
+  const byProductId = new Map<number, any[]>();
+  for (const priceRow of priceRows) {
+    const list = byProductId.get(priceRow.productId) ?? [];
+    list.push(priceRow);
+    byProductId.set(priceRow.productId, list);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    image: getImageUrl(row.image),
+    channelPrices: byProductId.get(row.id) ?? [],
+  }));
+}
+
+async function syncChannelPrices(tx: any, productId: number, channelPrices: ProductChannelPriceInput[]) {
+  await tx.delete(productSalesChannelPrices).where(eq(productSalesChannelPrices.productId, productId));
+
+  if (!channelPrices.length) return;
+
+  await tx.insert(productSalesChannelPrices).values(
+    channelPrices.map((channelPrice) => ({
+      productId,
+      salesChannelId: channelPrice.salesChannelId,
+      price: channelPrice.price,
+      discountPrice: channelPrice.discountPrice ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }))
+  );
+}
 
 export const getAllProducts = async (
   page: number,
@@ -70,11 +116,10 @@ export const getAllProducts = async (
     .offset(offset)
     .orderBy(desc(products.createdAt));
 
+  const enrichedData = await attachChannelPrices(db, data);
+
   return {
-    data: data.map(product => ({
-      ...product,
-      image: getImageUrl(product.image)
-    })),
+    data: enrichedData,
     pagination: {
       total: totalResult.count,
       page,
@@ -89,10 +134,8 @@ export const getProductById = async (id: number) => {
   const [product] = await db.select().from(products).where(eq(products.id, id));
   if (!product) throw new Error('Producto no encontrado');
 
-  return {
-    ...product,
-    image: getImageUrl(product.image)
-  };
+  const [enriched] = await attachChannelPrices(db, [product]);
+  return enriched;
 };
 
 export const createProduct = async (data: any, imageFile?: File) => {
@@ -117,15 +160,17 @@ export const createProduct = async (data: any, imageFile?: File) => {
     imageUrl = await uploadToR2(imageFile, `${tenantSlug}/productos`, MAX_SIZE);
   }
 
-  const [newProduct] = await db.insert(products).values({
-    ...data,
-    image: imageUrl,
-  }).returning();
+  const [newProduct] = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(products).values({
+      ...data,
+      image: imageUrl,
+    }).returning();
 
-  return {
-    ...newProduct,
-    image: getImageUrl(newProduct.image)
-  };
+    await syncChannelPrices(tx, inserted.id, (data.channelPrices ?? []) as ProductChannelPriceInput[]);
+    return [inserted];
+  });
+
+  return getProductById(newProduct.id);
 };
 
 export const updateProduct = async (id: number, data: any, imageFile?: File) => {
@@ -148,19 +193,23 @@ export const updateProduct = async (id: number, data: any, imageFile?: File) => 
     imageUrl = await uploadToR2(imageFile, `${tenantSlug}/productos`, MAX_SIZE);
   }
 
-  const [updatedProduct] = await db.update(products)
-    .set({
-      ...data,
-      image: imageUrl,
-      updatedAt: new Date(),
-    })
-    .where(eq(products.id, id))
-    .returning();
+  const [updatedProduct] = await db.transaction(async (tx) => {
+    const [updated] = await tx.update(products)
+      .set({
+        ...data,
+        image: imageUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, id))
+      .returning();
 
-  return {
-    ...updatedProduct,
-    image: getImageUrl(updatedProduct.image)
-  };
+    if (data.channelPrices !== undefined) {
+      await syncChannelPrices(tx, id, data.channelPrices as ProductChannelPriceInput[]);
+    }
+    return [updated];
+  });
+
+  return getProductById(updatedProduct.id);
 };
 
 export const deleteProduct = async (id: number) => {

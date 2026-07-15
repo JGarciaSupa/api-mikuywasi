@@ -8,6 +8,20 @@ export const productSchema = z.object({
   price: z.coerce.string({ error: 'El precio es requerido' }).regex(/^\d+(\.\d{1,2})?$/, 'Precio inválido'),
   discountPrice: z.coerce.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio de descuento inválido').optional().nullable(),
   packagingFee: z.coerce.string().regex(/^\d+(\.\d{1,2})?$/, 'Tarifa de empaque inválida').optional().default('0.00'),
+  channelPrices: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      try {
+        return JSON.parse(val);
+      } catch (e) {
+        return [];
+      }
+    }
+    return val;
+  }, z.array(z.object({
+    salesChannelId: z.number().int().positive(),
+    price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio inválido'),
+    discountPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio de descuento inválido').optional().nullable(),
+  }))).optional(),
   order: z.coerce.number().int().optional().default(0),
   alternatives: z.preprocess((val) => {
     if (typeof val === 'string') {

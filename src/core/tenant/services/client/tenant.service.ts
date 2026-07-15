@@ -1,4 +1,4 @@
-import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -12,6 +12,29 @@ function toNum(v: unknown) {
 
 const roundMoney = (val: number) => Number(val.toFixed(2));
 const roundQty = (val: number) => Number(val.toFixed(3));
+
+async function attachProductChannelPrices(db: ReturnType<typeof getTenantDb>, rows: any[]) {
+  if (rows.length === 0) return rows;
+
+  const productIds = rows.map((row) => row.id);
+  const priceRows = await db
+    .select()
+    .from(productSalesChannelPrices)
+    .where(inArray(productSalesChannelPrices.productId, productIds));
+
+  const byProductId = new Map<number, any[]>();
+  for (const priceRow of priceRows) {
+    const list = byProductId.get(priceRow.productId) ?? [];
+    list.push(priceRow);
+    byProductId.set(priceRow.productId, list);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    image: getImageUrl(row.image),
+    channelPrices: byProductId.get(row.id) ?? [],
+  }));
+}
 
 /**
  * Obtener información pública del tenant (config, banners, social links)
@@ -65,13 +88,24 @@ export const getMenu = async (branchId?: number) => {
     orderBy: (p, { asc }) => [asc(p.order)],
   });
 
-  const mapProducts = (list: any[]) => list.map(p => ({ ...p, image: getImageUrl(p.image) }));
+  const allMenuProducts = [
+    ...categoriesWithProducts.flatMap((cat) => cat.products),
+    ...productsWithoutCategory,
+  ];
+  const productsWithPrices = await attachProductChannelPrices(db, allMenuProducts);
+  const productMap = new Map<number, any>(productsWithPrices.map((product) => [product.id, product]));
 
   const result: any[] = categoriesWithProducts
-    .map((cat) => ({ ...cat, products: mapProducts(cat.products) }))
+    .map((cat) => ({
+      ...cat,
+      products: cat.products.map((product) => productMap.get(product.id) ?? { ...product, image: getImageUrl(product.image), channelPrices: [] }),
+    }))
     .filter((cat) => cat.products.length > 0);
 
-  if (productsWithoutCategory.length > 0) {
+  const productsWithoutCategoryWithPrices = productsWithoutCategory
+    .map((product) => productMap.get(product.id) ?? { ...product, image: getImageUrl(product.image), channelPrices: [] });
+
+  if (productsWithoutCategoryWithPrices.length > 0) {
     result.push({
       id: null,
       name: null,
@@ -82,7 +116,7 @@ export const getMenu = async (branchId?: number) => {
       availableDays: [0, 1, 2, 3, 4, 5, 6],
       createdAt: new Date(),
       updatedAt: new Date(),
-      products: mapProducts(productsWithoutCategory)
+      products: productsWithoutCategoryWithPrices
     });
   }
 

@@ -298,12 +298,32 @@ export const products = pgTable('products', {
 	categoryIdIdx: index('products_category_id_idx').on(table.categoryId),
 }));
 
+export const productSalesChannelPrices = pgTable('product_sales_channel_prices', {
+	id: serial('id').primaryKey(),
+	productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+	salesChannelId: integer('sales_channel_id').notNull().references(() => salesChannels.id, { onDelete: 'cascade' }),
+	price: decimal('price', { precision: 10, scale: 2 }).notNull(),
+	discountPrice: decimal('discount_price', { precision: 10, scale: 2 }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	productChannelUnique: uniqueIndex('product_sales_channel_prices_unique_idx').on(table.productId, table.salesChannelId),
+	productIdx: index('product_sales_channel_prices_product_idx').on(table.productId),
+	channelIdx: index('product_sales_channel_prices_channel_idx').on(table.salesChannelId),
+}));
+
 export const productsRelations = relations(products, ({ one, many }) => ({
 	category: one(categories, {
 		fields: [products.categoryId],
 		references: [categories.id],
 	}),
 	kitchenStationAssignments: many(productKitchenStations),
+	channelPrices: many(productSalesChannelPrices),
+}));
+
+export const productSalesChannelPricesRelations = relations(productSalesChannelPrices, ({ one }) => ({
+	product: one(products, { fields: [productSalesChannelPrices.productId], references: [products.id] }),
+	channel: one(salesChannels, { fields: [productSalesChannelPrices.salesChannelId], references: [salesChannels.id] }),
 }));
 
 // ==========================================
