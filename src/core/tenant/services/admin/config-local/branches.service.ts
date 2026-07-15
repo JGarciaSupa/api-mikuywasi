@@ -2,6 +2,21 @@ import { branches, userBranches, salesChannels, branchChannels } from '@/db/tena
 import { eq, sql, and, inArray } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
+type BranchTaxConfig = {
+  key: string;
+  label: string;
+  rate: number;
+  defaultActive: boolean;
+  isActive: boolean;
+};
+
+const DEFAULT_BRANCH_TAXES: BranchTaxConfig[] = [
+  { key: 'impuesto_1', label: 'Aplica Impuesto 1', rate: 18, defaultActive: true, isActive: true },
+  { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false },
+  { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false },
+  { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false },
+];
+
 // ────────────────────────────────────────────
 // CANALES DE VENTA ACTIVOS DE UNA SUCURSAL
 // ────────────────────────────────────────────
@@ -47,6 +62,22 @@ async function syncBranchChannels(tx: any, branchId: number, channelIds: number[
   );
 }
 
+function normalizeBranchTaxes(taxes?: BranchTaxConfig[]) {
+  const source = taxes?.length ? taxes : DEFAULT_BRANCH_TAXES;
+  const byKey = new Map(source.map((tax) => [tax.key, tax]));
+  return DEFAULT_BRANCH_TAXES.map((base) => {
+    const tax = byKey.get(base.key);
+    if (!tax) return base;
+    return {
+      key: tax.key || base.key,
+      label: tax.label || base.label,
+      rate: Number.isFinite(Number(tax.rate)) ? Number(tax.rate) : base.rate,
+      defaultActive: tax.defaultActive ?? base.defaultActive,
+      isActive: tax.isActive ?? tax.defaultActive ?? base.isActive,
+    };
+  });
+}
+
 // ────────────────────────────────────────────
 // LISTAR SUCURSALES
 // ────────────────────────────────────────────
@@ -66,7 +97,11 @@ export async function getBranchById(id: number) {
   if (!branch) return branch;
 
   const channels = await getBranchChannels(id);
-  return { ...branch, channels };
+  return {
+    ...branch,
+    taxes: normalizeBranchTaxes((branch as any).taxes ?? undefined),
+    channels,
+  };
 }
 
 // ────────────────────────────────────────────
@@ -99,6 +134,7 @@ export interface CreateBranchInput {
   freeDeliveryThreshold?: string | null;
   fiscalId?: string | null;
   fiscalName?: string | null;
+  taxes?: BranchTaxConfig[];
   channelIds?: number[];
   sunatAnexo?: string | null;
   schedules?: {
@@ -166,6 +202,7 @@ export async function createBranch(data: CreateBranchInput) {
       freeDeliveryThreshold: emptyToNull(data.freeDeliveryThreshold),
       fiscalId: emptyToNull(data.fiscalId),
       fiscalName: emptyToNull(data.fiscalName),
+      taxes: normalizeBranchTaxes(data.taxes),
       sunatAnexo: emptyToNull(data.sunatAnexo),
       schedules: data.schedules ?? [],
       deliveryZone: data.deliveryZone ?? null,
@@ -220,6 +257,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.freeDeliveryThreshold !== undefined) updateData.freeDeliveryThreshold = emptyToNull(data.freeDeliveryThreshold);
   if (data.fiscalId !== undefined) updateData.fiscalId = emptyToNull(data.fiscalId);
   if (data.fiscalName !== undefined) updateData.fiscalName = emptyToNull(data.fiscalName);
+  if (data.taxes !== undefined) updateData.taxes = normalizeBranchTaxes(data.taxes);
   if (data.sunatAnexo !== undefined) updateData.sunatAnexo = emptyToNull(data.sunatAnexo);
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
   if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
@@ -289,6 +327,7 @@ export async function getMyBranches(userId: number) {
       isMain: branches.isMain,
       isActive: branches.isActive,
       isDefault: userBranches.isDefault,
+      taxes: branches.taxes,
     })
     .from(userBranches)
     .innerJoin(branches, eq(userBranches.branchId, branches.id))

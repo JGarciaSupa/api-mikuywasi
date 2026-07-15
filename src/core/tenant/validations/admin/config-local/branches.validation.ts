@@ -14,6 +14,14 @@ const addressSchema = z.object({
   lng: z.number(),
 }).nullable().optional();
 
+const branchTaxSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  rate: z.coerce.number().min(0),
+  defaultActive: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional().default(false),
+  isActive: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional().default(false),
+});
+
 export const createBranchSchema = z.object({
   brandId: z.number().int().positive('El ID de marca es requerido'),
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
@@ -37,6 +45,7 @@ export const createBranchSchema = z.object({
   freeDeliveryThreshold: z.string().nullable().optional(),
   fiscalId: z.string().max(30).nullable().optional(),
   fiscalName: z.string().max(200).nullable().optional(),
+  taxes: z.array(branchTaxSchema).optional(),
   channelIds: z.array(z.number().int().positive()).optional(),
   sunatAnexo: z.string().refine(val => val === '' || /^\d{4}$/.test(val), 'El anexo SUNAT debe tener 4 dígitos (ej. 0000, 0001)').nullable().optional(),
   schedules: z.array(scheduleSchema).optional(),

@@ -19,6 +19,7 @@ async function getUserBranches(userId: number, roleCode: string | null) {
       isMain: branches.isMain,
       isActive: branches.isActive,
       isDefault: branches.isMain,
+      taxes: branches.taxes,
     })
     .from(branches)
     .where(eq(branches.isActive, true));

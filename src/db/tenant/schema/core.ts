@@ -107,6 +107,16 @@ export const branches = pgTable('branches', {
 	// NULL → hereda la empresa del tenantConfigs (Caso A).
 	facturadorEmpresaId: integer('facturador_empresa_id'),
 
+	// Configuración de impuestos por sucursal. Cada ítem representa un switch
+	// operativo editable desde la sucursal y usado por POS/cobro/facturación.
+	taxes: jsonb('taxes').$type<{
+		key: string;
+		label: string;
+		rate: number;
+		defaultActive: boolean;
+		isActive: boolean;
+	}[]>(),
+
 	sunatAnexo: varchar('sunat_anexo', { length: 4 }),
 	isActive: boolean('is_active').default(true).notNull(),
 	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
@@ -304,6 +314,13 @@ export const productSalesChannelPrices = pgTable('product_sales_channel_prices',
 	salesChannelId: integer('sales_channel_id').notNull().references(() => salesChannels.id, { onDelete: 'cascade' }),
 	price: decimal('price', { precision: 10, scale: 2 }).notNull(),
 	discountPrice: decimal('discount_price', { precision: 10, scale: 2 }),
+	taxes: jsonb('taxes').$type<{
+		key: string;
+		label: string;
+		rate: number;
+		isActive: boolean;
+	}[]>(),
+	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

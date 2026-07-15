@@ -21,6 +21,23 @@ export const productSchema = z.object({
     salesChannelId: z.number().int().positive(),
     price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio inválido'),
     discountPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio de descuento inválido').optional().nullable(),
+    isActive: z.preprocess((value) => value === 'true' || value === true, z.boolean()).optional().default(true),
+    taxes: z.preprocess((val) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val);
+        } catch (e) {
+          return [];
+        }
+      }
+      return val;
+    }, z.array(z.object({
+      key: z.string().min(1),
+      label: z.string().min(1),
+      rate: z.coerce.number().min(0),
+      defaultActive: z.preprocess((value) => value === 'true' || value === true, z.boolean()).optional().default(false),
+      isActive: z.preprocess((value) => value === 'true' || value === true, z.boolean()).optional().default(false),
+    }))).optional(),
   }))).optional(),
   order: z.coerce.number().int().optional().default(0),
   alternatives: z.preprocess((val) => {

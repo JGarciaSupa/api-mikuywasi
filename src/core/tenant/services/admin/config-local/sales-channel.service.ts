@@ -33,7 +33,9 @@ export async function createSalesChannel(data: any) {
     throw new Error(`Ya existe un canal de venta con el código "${data.code}"`);
   }
 
-  const [newChannel] = await db.insert(salesChannels).values(data).returning();
+  const [newChannel] = await db.insert(salesChannels).values({
+    ...data,
+  }).returning();
   return newChannel;
 }
 

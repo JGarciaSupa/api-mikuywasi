@@ -11,6 +11,14 @@ type ProductChannelPriceInput = {
   salesChannelId: number;
   price: string;
   discountPrice?: string | null;
+  isActive?: boolean;
+  taxes?: {
+    key: string;
+    label: string;
+    rate: number;
+    defaultActive: boolean;
+    isActive: boolean;
+  }[];
 };
 
 async function attachChannelPrices(db: ReturnType<typeof getTenantDb>, rows: any[]) {
@@ -47,6 +55,8 @@ async function syncChannelPrices(tx: any, productId: number, channelPrices: Prod
       salesChannelId: channelPrice.salesChannelId,
       price: channelPrice.price,
       discountPrice: channelPrice.discountPrice ?? null,
+      taxes: channelPrice.taxes ?? [],
+      isActive: channelPrice.isActive ?? true,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))

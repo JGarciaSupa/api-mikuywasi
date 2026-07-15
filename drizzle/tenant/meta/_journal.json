@@ -295,6 +295,20 @@
       "when": 1784082145874,
       "tag": "0041_prices_channel_product",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784082145875,
+      "tag": "0042_branch_taxes_channel_price_active",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784090019655,
+      "tag": "0043_prices_channel_product_update",
+      "breakpoints": true
     }
   ]
 }
