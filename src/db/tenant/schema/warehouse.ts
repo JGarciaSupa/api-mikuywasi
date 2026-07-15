@@ -620,6 +620,7 @@ export const cashSessions = pgTable('cash_sessions', {
 	openedBy: varchar('opened_by', { length: 100 }).notNull(),
 	closedBy: varchar('closed_by', { length: 100 }),
 	openingBalance: decimal('opening_balance', { precision: 12, scale: 2 }).notNull().default('0'),
+	openingBalanceForeign: decimal('opening_balance_foreign', { precision: 12, scale: 2 }).notNull().default('0'),
 	closingBalance: decimal('closing_balance', { precision: 12, scale: 2 }),
 	// sum of all income movements
 	totalIncome: decimal('total_income', { precision: 12, scale: 2 }).notNull().default('0'),
@@ -676,6 +677,23 @@ export const cashSessionSequences = pgTable('cash_session_sequences', {
 }, (table) => ({
 	branchYearUnique: uniqueIndex('cash_session_sequences_branch_year_idx').on(table.branchId, table.year),
 }));
+
+export const exchangeRate = pgTable("exchange_rate", {
+	id: serial("id").primaryKey(),
+	dateExchangeRate: date("date_exchange_rate").notNull(),
+	currencyFrom: varchar("currency_from", { length: 3 }).notNull(),
+	currencyTo: varchar("currency_to", { length: 3 }).notNull(),
+	buyExchangeRate: decimal("buy_exchange_rate", { precision: 18, scale: 6 }),
+	sellExchangeRate: decimal("sell_exchange_rate", { precision: 18, scale: 6 }),
+	hotelExchangeRate: decimal("hotel_exchange_rate", { precision: 18, scale: 6 }),
+	officialExchangeRate: decimal("official_exchange_rate", { precision: 18, scale: 6 }),
+
+	branchId: integer("branch_id").references(() => branches.id),
+	userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true })
+});
 
 // ==========================================
 // ⚙️ SUPPORT — SETTINGS & AUDIT

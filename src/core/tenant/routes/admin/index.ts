@@ -27,6 +27,7 @@ import receiptTypes from "./config-local/receipt-types";
 import salesChannels from "./config-local/sales-channels";
 import kitchenStations from "./config-local/kitchen-stations";
 import sunat from "./documents/sunat";
+import exchangeRates from "./config-local/exchange-rates";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
@@ -64,5 +65,6 @@ routes.route('/receipt-types', receiptTypes);
 routes.route('/sales-channels', salesChannels);
 routes.route('/kitchen-stations', kitchenStations);
 routes.route('/sunat', sunat);
+routes.route('/exchange-rates', exchangeRates);
 
 export default routes;

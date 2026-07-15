@@ -153,13 +153,20 @@ export const openCashSession = async (c: Context) => {
     if (!body.registerId) {
       return c.json({ success: false, message: 'Caja (registerId) es requerida' }, 400);
     }
+    const canSetRate = hasPermission(c, 'caja.configurar_tipo_cambio');
     const data = await cash.openCashSession(
       {
         registerId: parseInt(body.registerId),
         openingBalance: parseFloat(body.openingBalance) || 0,
+        openingBalanceForeign: parseFloat(body.openingBalanceForeign) || 0,
         // El servicio decide si es obligatorio (sede con moneda extranjera) o si solo
         // se respeta cuando el usuario tiene caja.configurar_tipo_cambio.
         exchangeRate: body.exchangeRate ? parseFloat(body.exchangeRate) : undefined,
+        sellExchangeRate: body.sellExchangeRate ? parseFloat(body.sellExchangeRate) : undefined,
+        hotelExchangeRate: body.hotelExchangeRate ? parseFloat(body.hotelExchangeRate) : undefined,
+        officialExchangeRate: body.officialExchangeRate ? parseFloat(body.officialExchangeRate) : undefined,
+        baseCurrency: body.baseCurrency,
+        foreignCurrency: body.foreignCurrency,
         allowCustomRate: canSetRate,
         userId: body.userId !== undefined && body.userId !== null ? parseInt(body.userId) : undefined,
         notes: body.notes

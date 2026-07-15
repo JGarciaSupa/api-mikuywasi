@@ -3,6 +3,7 @@ import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequence
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
+import { createExchangeRate } from '../config-local/exchange-rate.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -310,7 +311,13 @@ export async function openCashSession(
   data: {
     registerId: number;
     openingBalance: number;
+    openingBalanceForeign?: number;
     exchangeRate?: number;
+    sellExchangeRate?: number;
+    hotelExchangeRate?: number;
+    officialExchangeRate?: number;
+    baseCurrency?: string;
+    foreignCurrency?: string;
     // Solo quien tiene el permiso caja.configurar_tipo_cambio (el cajero real, quien
     // cobra y hace la conversión) puede/debe fijar el T/C. A un mozo u otro usuario
     // sin el permiso no se le pide ni se le exige — el turno abre con T/C=1.
@@ -355,6 +362,29 @@ export async function openCashSession(
     ? data.exchangeRate.toFixed(4)
     : '1';
 
+  if (data.allowCustomRate && data.exchangeRate != null && data.exchangeRate > 0) {
+    const officialRate = data.officialExchangeRate != null && data.officialExchangeRate > 0
+      ? data.officialExchangeRate.toFixed(4)
+      : rate;
+    const sellRate = data.sellExchangeRate != null && data.sellExchangeRate > 0
+      ? data.sellExchangeRate.toFixed(4)
+      : 0;
+    const hotelRate = data.hotelExchangeRate != null && data.hotelExchangeRate > 0
+      ? data.hotelExchangeRate.toFixed(4)
+      : 0;
+    await createExchangeRate({
+      dateExchangeRate: new Date().toISOString(),
+      currencyFrom: data.baseCurrency || 'PEN',
+      currencyTo: data.foreignCurrency || 'USD',
+      buyExchangeRate: rate,
+      sellExchangeRate: sellRate,
+      hotelExchangeRate: hotelRate,
+      officialExchangeRate: officialRate,
+      branchId: reg.branchId,
+      userId: cashierId,
+    });
+  }
+
   const year = new Date().getFullYear();
 
   return db.transaction(async (tx) => {
@@ -371,6 +401,7 @@ export async function openCashSession(
         userId: cashierId,
         openedBy: openedByName,
         openingBalance: round2(data.openingBalance),
+        openingBalanceForeign: data.openingBalanceForeign ? round2(data.openingBalanceForeign) : '0.00',
         expectedBalance: round2(data.openingBalance),
         notes: data.notes,
         status: 'open',
