@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { orders, orderSplits, products, branches } from './core';
+import { orders, orderSplits, orderItems, products, branches, salesChannels } from './core';
 import { cashRegisters } from './warehouse';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
@@ -109,6 +109,7 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 	id: serial('id').primaryKey(),
 	documentId: integer('document_id').notNull()
 		.references(() => billingDocuments.id, { onDelete: 'cascade' }),
+	orderItemId: integer('order_item_id').references(() => orderItems.id, { onDelete: 'cascade' }),
 	productId: integer('product_id').references(() => products.id),
 	productName: varchar('product_name', { length: 150 }).notNull(),
 	quantity: integer('quantity').notNull(),
@@ -121,6 +122,7 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 	notes: varchar('notes', { length: 200 }),
 }, (table) => ({
 	docIdx: index('billing_doc_lines_doc_idx').on(table.documentId),
+	orderItemUniqueIdx: uniqueIndex('billing_doc_lines_order_item_unique_idx').on(table.orderItemId),
 }));
 
 // ── Relations Billing ────────────────────────────────────────────────────────
@@ -146,6 +148,7 @@ export const billingDocumentsRelations = relations(billingDocuments, ({ one, man
 
 export const billingDocumentLinesRelations = relations(billingDocumentLines, ({ one }) => ({
 	document: one(billingDocuments, { fields: [billingDocumentLines.documentId], references: [billingDocuments.id] }),
+	orderItem: one(orderItems, { fields: [billingDocumentLines.orderItemId], references: [orderItems.id] }),
 	product: one(products, { fields: [billingDocumentLines.productId], references: [products.id] }),
 }));
 

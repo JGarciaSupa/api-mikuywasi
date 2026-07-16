@@ -1,4 +1,4 @@
-import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels, branchChannels } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -12,6 +12,94 @@ function toNum(v: unknown) {
 
 const roundMoney = (val: number) => Number(val.toFixed(2));
 const roundQty = (val: number) => Number(val.toFixed(3));
+
+type TaxConfig = {
+  key: string;
+  label: string;
+  rate: number;
+  isActive: boolean;
+  defaultActive?: boolean;
+  calculationType?: 'percentage' | 'fixed';
+};
+
+const DEFAULT_BRANCH_TAXES: TaxConfig[] = [
+  { key: 'impuesto_1', label: 'Aplica Impuesto 1', rate: 18, defaultActive: true, isActive: true, calculationType: 'percentage' },
+  { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
+  { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
+  { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false, calculationType: 'fixed' },
+];
+
+function normalizeTaxConfigList(taxes?: TaxConfig[] | null): TaxConfig[] {
+  const source = Array.isArray(taxes) && taxes.length > 0 ? taxes : DEFAULT_BRANCH_TAXES;
+  const byKey = new Map(source.map((tax) => [tax.key, tax]));
+
+  return DEFAULT_BRANCH_TAXES.map((base) => {
+    const tax = byKey.get(base.key);
+    if (!tax) return base;
+    return {
+      key: tax.key || base.key,
+      label: tax.label || base.label,
+      rate: Number.isFinite(Number(tax.rate)) ? Number(tax.rate) : base.rate,
+      defaultActive: tax.defaultActive ?? base.defaultActive,
+      isActive: tax.isActive ?? tax.defaultActive ?? base.isActive,
+      calculationType: tax.calculationType ?? base.calculationType,
+    };
+  });
+}
+
+function isFixedTax(tax: TaxConfig) {
+  return tax.calculationType === 'fixed' || tax.key === 'icbper';
+}
+
+function resolveLineTaxes(grossAmount: number, quantity: number, taxes: TaxConfig[]) {
+  const activeTaxes = normalizeTaxConfigList(taxes).filter((tax) => tax.isActive);
+  const percentageTaxes = activeTaxes.filter((tax) => !isFixedTax(tax));
+  const fixedTaxes = activeTaxes.filter((tax) => isFixedTax(tax));
+
+  const fixedTotal = fixedTaxes.reduce((sum, tax) => sum + (toNum(tax.rate) * quantity), 0);
+  const percentageRateTotal = percentageTaxes.reduce((sum, tax) => sum + toNum(tax.rate), 0);
+  const baseAmount = percentageRateTotal > 0
+    ? roundMoney((grossAmount - fixedTotal) / (1 + (percentageRateTotal / 100)))
+    : roundMoney(grossAmount - fixedTotal);
+
+  const taxesWithAmount = activeTaxes.map((tax) => {
+    const amount = isFixedTax(tax)
+      ? roundMoney(toNum(tax.rate) * quantity)
+      : roundMoney(baseAmount * (toNum(tax.rate) / 100));
+
+    return {
+      key: tax.key,
+      label: tax.label,
+      rate: toNum(tax.rate),
+      isActive: true,
+      defaultActive: tax.defaultActive,
+      calculationType: tax.calculationType,
+      amount,
+    };
+  });
+
+  const totalTaxAmount = roundMoney(taxesWithAmount.reduce((sum, tax) => sum + toNum(tax.amount), 0));
+  const subtotal = roundMoney(grossAmount - totalTaxAmount);
+
+  return {
+    subtotal,
+    totalTaxAmount,
+    lineTotal: roundMoney(grossAmount),
+    taxSnapshot: taxesWithAmount,
+  };
+}
+
+async function resolveBranchDefaultChannelId(db: ReturnType<typeof getTenantDb>, branchId: number) {
+  const [activeChannel] = await db
+    .select({ id: salesChannels.id })
+    .from(branchChannels)
+    .innerJoin(salesChannels, eq(branchChannels.channelId, salesChannels.id))
+    .where(and(eq(branchChannels.branchId, branchId), eq(salesChannels.isActive, true)))
+    .orderBy(salesChannels.name)
+    .limit(1);
+
+  return activeChannel?.id ?? null;
+}
 
 async function attachProductChannelPrices(db: ReturnType<typeof getTenantDb>, rows: any[]) {
   if (rows.length === 0) return rows;
@@ -211,16 +299,10 @@ export const getPaymentMethods = async () => {
  */
 export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
   const db = getTenantDb();
-  const { items } = orderData;
-  const subtotal = roundMoney(toNum(orderData.subtotal));
+  const items = Array.isArray(orderData.items) ? orderData.items : [];
+  const branchId = orderData.branchId ?? 1;
   const deliveryFee = roundMoney(toNum(orderData.deliveryFee));
   const retentionPercentage = roundMoney(toNum(orderData.retentionPercentage));
-  const retentionAmount = roundMoney(
-    orderData.retentionAmount !== undefined
-      ? toNum(orderData.retentionAmount)
-      : ((subtotal + deliveryFee) * retentionPercentage) / 100
-  );
-  const total = roundMoney(subtotal + deliveryFee + retentionAmount);
 
   // Método de pago: en interno (POS) no se envía → null (se elige al cobrar).
   // En web el cliente sí envía su método previsto → se guarda + resuelve su id (relación estable).
@@ -235,25 +317,172 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
       const trackingCode = `ORD-${nanoid(8).toUpperCase()}`;
 
       return await db.transaction(async (tx) => {
+        const [branch] = await tx.select().from(branches).where(eq(branches.id, branchId)).limit(1);
+        const branchTaxConfigs = normalizeTaxConfigList((branch as any)?.taxes ?? undefined);
+
+        const resolvedSalesChannelId = orderData.salesChannelId ?? await resolveBranchDefaultChannelId(tx, branchId);
+        const [salesChannelRow] = resolvedSalesChannelId
+          ? await tx.select().from(salesChannels).where(eq(salesChannels.id, resolvedSalesChannelId)).limit(1)
+          : [null];
+
+        const productIds = Array.from(new Set(
+          items
+            .map((item: any) => Number(item.productId))
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+        )) as number[];
+
+        const extraIds = Array.from(new Set(
+          items.flatMap((item: any) => (item.extras ?? []).map((extra: any) => Number(extra.extraId)))
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+        )) as number[];
+
+        const [productRows, channelPriceRows, extraRows] = await Promise.all([
+          productIds.length
+            ? tx.select().from(products).where(inArray(products.id, productIds))
+            : Promise.resolve([] as any[]),
+          resolvedSalesChannelId && productIds.length
+            ? tx.select().from(productSalesChannelPrices).where(
+                and(
+                  eq(productSalesChannelPrices.salesChannelId, resolvedSalesChannelId),
+                  inArray(productSalesChannelPrices.productId, productIds),
+                )
+              )
+            : Promise.resolve([] as any[]),
+          extraIds.length
+            ? tx.select().from(productExtras).where(inArray(productExtras.id, extraIds))
+            : Promise.resolve([] as any[]),
+        ]);
+
+        const productMap = new Map<number, any>(productRows.map((product) => [product.id, product]));
+        const channelPriceMap = new Map<number, any>(channelPriceRows.map((row) => [row.productId, row]));
+        const extraMap = new Map<number, any>(extraRows.map((extra) => [extra.id, extra]));
+
+        const computedItems: Array<any> = [];
+        const orderTaxMap = new Map<string, {
+          key: string;
+          label: string;
+          rate: number;
+          isActive: boolean;
+          defaultActive?: boolean;
+          calculationType?: 'percentage' | 'fixed';
+          amount: number;
+        }>();
+
+        let grossSubtotal = 0;
+
+        for (const rawItem of items) {
+          const productId = Number(rawItem.productId);
+          const product = productMap.get(productId);
+          if (!product) {
+            throw new Error(`Producto no encontrado para el pedido: ${productId}`);
+          }
+
+          const channelPrice = channelPriceMap.get(productId);
+          const resolvedUnitPrice = toNum(
+            channelPrice?.isActive
+              ? (channelPrice.discountPrice ?? channelPrice.price)
+              : (product.discountPrice ?? product.price)
+          );
+          const packagingFee = toNum(channelPrice?.isActive ? (product.packagingFee ?? 0) : (product.packagingFee ?? 0));
+          const quantity = Math.max(1, Math.round(toNum(rawItem.quantity)));
+          const selectedAlternatives = Array.isArray(rawItem.selectedAlternatives) ? rawItem.selectedAlternatives : [];
+          const alternativesExtra = selectedAlternatives.reduce(
+            (sum: number, alt: any) => sum + (toNum(alt?.extraPrice) * quantity),
+            0
+          );
+
+          const selectedExtras = Array.isArray(rawItem.extras) ? rawItem.extras : [];
+          const extrasTotal = selectedExtras.reduce((sum: number, sel: any) => {
+            const extra = extraMap.get(Number(sel.extraId));
+            if (!extra) return sum;
+            const qty = Math.max(1, Math.round(toNum(sel.qty)));
+            return sum + (toNum(extra.price) * qty);
+          }, 0);
+
+          const grossLine = roundMoney(
+            (resolvedUnitPrice * quantity) +
+            alternativesExtra +
+            extrasTotal +
+            (packagingFee * quantity)
+          );
+
+          const sourceTaxes = normalizeTaxConfigList(
+            (channelPrice?.taxes?.length ? channelPrice.taxes : branchTaxConfigs) as TaxConfig[]
+          );
+          const lineTax = resolveLineTaxes(grossLine, quantity, sourceTaxes);
+
+          grossSubtotal = roundMoney(grossSubtotal + lineTax.lineTotal);
+
+          for (const tax of lineTax.taxSnapshot) {
+            const current = orderTaxMap.get(tax.key) ?? {
+              key: tax.key,
+              label: tax.label,
+              rate: tax.rate,
+              isActive: tax.isActive,
+              defaultActive: tax.defaultActive,
+              calculationType: tax.calculationType,
+              amount: 0,
+            };
+            current.amount = roundMoney(current.amount + toNum(tax.amount));
+            orderTaxMap.set(tax.key, current);
+          }
+
+          computedItems.push({
+            productId: product.id,
+            productName: product.name,
+            salesChannelId: resolvedSalesChannelId,
+            unitPrice: resolvedUnitPrice.toFixed(2),
+            quantity,
+            selectedAlternatives,
+            packagingFee: packagingFee.toFixed(2),
+            notes: rawItem.notes ?? null,
+            totalPrice: lineTax.lineTotal.toFixed(2),
+            taxSnapshot: lineTax.taxSnapshot,
+            extras: selectedExtras.map((sel: any) => {
+              const extra = extraMap.get(Number(sel.extraId));
+              if (!extra) return null;
+              const qty = Math.max(1, Math.round(toNum(sel.qty)));
+              return {
+                extraId: Number(sel.extraId),
+                qty,
+                unitPrice: toNum(extra.price).toFixed(2),
+                totalPrice: roundMoney(toNum(extra.price) * qty).toFixed(2),
+              };
+            }).filter(Boolean),
+          });
+        }
+
+        const taxBreakdown = Array.from(orderTaxMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+        const subtotal = grossSubtotal;
+        const retentionAmount = roundMoney(
+          orderData.retentionAmount !== undefined
+            ? toNum(orderData.retentionAmount)
+            : ((subtotal + deliveryFee) * retentionPercentage) / 100
+        );
+        const total = roundMoney(subtotal + deliveryFee + retentionAmount);
+
         const [result] = await tx.insert(orders).values({
           id: orderId,
-          branchId: orderData.branchId ?? 1, // branchId requerido; el cliente debe enviarlo
+          branchId,
           customerName: orderData.customerName,
           customerPhone: orderData.customerPhone,
           customerAddress: orderData.customerAddress,
           deliveryType: orderData.deliveryType,
           deliveryInfo: orderData.deliveryInfo,
+          salesChannelId: resolvedSalesChannelId ?? null,
+          salesChannelName: salesChannelRow?.name ?? null,
           tableId: orderData.tableId,
           tableName: orderData.tableName,
-          paymentMethod: orderData.paymentMethod ?? null, // null en interno; previsto en web
+          paymentMethod: orderData.paymentMethod ?? null,
           paymentMethodId: pm?.id ?? null,
           notes: orderData.notes,
-          cashSessionId: orderData.cashSessionId ?? null, // turno de caja (null en pedidos de cliente web)
+          cashSessionId: orderData.cashSessionId ?? null,
           subtotal: subtotal.toFixed(2),
           deliveryFee: deliveryFee.toFixed(2),
           retentionPercentage: retentionPercentage.toFixed(2),
           retentionAmount: retentionAmount.toFixed(2),
           total: total.toFixed(2),
+          taxBreakdown,
           trackingCode,
           status: initialStatus,
           paymentStatus: 'unpaid',
@@ -261,56 +490,43 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           updatedAt: new Date(),
         }).returning();
 
-        if (items && items.length > 0) {
+        if (computedItems.length > 0) {
           const insertedItems = await tx.insert(orderItems).values(
-            items.map((item: any) => ({
+            computedItems.map((item) => ({
               orderId,
               productId: item.productId,
+              salesChannelId: item.salesChannelId,
               productName: item.productName,
-              unitPrice: item.unitPrice.toString(),
+              unitPrice: item.unitPrice,
               quantity: item.quantity,
               selectedAlternatives: item.selectedAlternatives || [],
-              packagingFee: (item.packagingFee || 0).toString(),
+              packagingFee: item.packagingFee,
               notes: item.notes,
-              totalPrice: item.totalPrice.toString(),
+              totalPrice: item.totalPrice,
+              taxSnapshot: item.taxSnapshot,
             }))
           ).returning();
 
-          // Guardar extras seleccionados por cada item
           for (let i = 0; i < insertedItems.length; i++) {
             const orderItem = insertedItems[i];
-            const srcItem = items[i];
+            const srcItem = computedItems[i];
             if (!srcItem.extras?.length) continue;
 
-            const extraIds = srcItem.extras.map((e: any) => e.extraId);
-            const extrasData = await tx
-              .select()
-              .from(productExtras)
-              .where(inArray(productExtras.id, extraIds));
+            const extraRowsData = srcItem.extras.map((extra: any) => ({
+              orderItemId: orderItem.id,
+              extraId: extra.extraId,
+              qty: extra.qty,
+              unitPrice: extra.unitPrice,
+              totalPrice: extra.totalPrice,
+            }));
 
-            const extraRows = srcItem.extras
-              .map((sel: any) => {
-                const extra = extrasData.find((e) => e.id === sel.extraId);
-                if (!extra) return null;
-                const qty = sel.qty ?? 1;
-                const unitPrice = parseFloat(extra.price);
-                return {
-                  orderItemId: orderItem.id,
-                  extraId: sel.extraId,
-                  qty,
-                  unitPrice: unitPrice.toString(),
-                  totalPrice: (unitPrice * qty).toString(),
-                };
-              })
-              .filter(Boolean);
-
-            if (extraRows.length) {
-              await tx.insert(orderItemExtras).values(extraRows);
+            if (extraRowsData.length) {
+              await tx.insert(orderItemExtras).values(extraRowsData);
             }
           }
         }
 
-        return { ...result, items };
+        return { ...result, items: computedItems, taxBreakdown };
       });
     } catch (error: any) {
       attempts++;

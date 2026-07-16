@@ -1,4 +1,4 @@
-import { eq, and, desc, like, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, like, or, gte, lte, count, sql, isNull, inArray } from 'drizzle-orm';
 import {
   billingDocuments,
   billingDocumentLines,
@@ -199,6 +199,16 @@ interface LineCalc {
   notes: string | null;
   priceInclTax: boolean;
   taxRate: number;
+  igvAmount: number;
+  taxSnapshot?: {
+    key: string;
+    label: string;
+    rate: number;
+    isActive: boolean;
+    defaultActive?: boolean;
+    calculationType?: 'percentage' | 'fixed';
+    amount?: number;
+  }[];
 }
 
 function calcLine(
@@ -246,6 +256,74 @@ function calcLine(
     notes,
     priceInclTax,
     taxRate,
+    igvAmount: taxAmount,
+  };
+}
+
+function isFixedTaxSnapshot(tax: { key: string; calculationType?: 'percentage' | 'fixed' }) {
+  return tax.calculationType === 'fixed' || tax.key === 'icbper';
+}
+
+function resolveLineCalcFromSnapshot(oi: typeof orderItems.$inferSelect): LineCalc | null {
+  const taxSnapshot = (oi.taxSnapshot as LineCalc['taxSnapshot']) ?? [];
+  if (!taxSnapshot.length) return null;
+
+  const activeTaxes = taxSnapshot.filter((tax) => tax.isActive);
+  const grossLine = roundMoney(toNum(oi.totalPrice));
+  const totalTaxAmount = roundMoney(activeTaxes.reduce((sum, tax) => sum + toNum(tax.amount), 0));
+  const percentageTaxes = activeTaxes.filter((tax) => !isFixedTaxSnapshot(tax));
+  const percentageRateTotal = roundMoney(percentageTaxes.reduce((sum, tax) => sum + toNum(tax.rate), 0));
+  const percentageTaxAmount = roundMoney(percentageTaxes.reduce((sum, tax) => sum + toNum(tax.amount), 0));
+  const mainPercentageTax = activeTaxes.find((tax) => tax.key === 'impuesto_1') ?? percentageTaxes[0] ?? null;
+
+  return {
+    productId: oi.productId ?? null,
+    productName: oi.productName,
+    quantity: oi.quantity,
+    unitPrice: toNum(oi.unitPrice),
+    alternativesExtra: 0,
+    packagingFee: toNum(oi.packagingFee),
+    subtotal: roundMoney(grossLine - totalTaxAmount),
+    taxAmount: totalTaxAmount,
+    lineTotal: grossLine,
+    alternativesDesc: null,
+    notes: oi.notes ?? null,
+    priceInclTax: true,
+    taxRate: mainPercentageTax ? toNum(mainPercentageTax.rate) : percentageRateTotal,
+    igvAmount: percentageTaxAmount,
+    taxSnapshot: activeTaxes,
+  };
+}
+
+function resolveLineCalc(oi: typeof orderItems.$inferSelect, priceInclTax: boolean, taxRate: number): LineCalc {
+  return resolveLineCalcFromSnapshot(oi) ?? calcLine(
+    oi.productId ?? null,
+    oi.productName,
+    oi.quantity,
+    toNum(oi.unitPrice),
+    (oi.selectedAlternatives as { name: string; extraPrice: number }[]) ?? [],
+    toNum(oi.packagingFee),
+    oi.notes ?? null,
+    priceInclTax,
+    taxRate
+  );
+}
+
+function resolveDocumentTaxRate(lineCalcs: LineCalc[], fallbackRate: number) {
+  const mainLine = lineCalcs.find((line) => line.taxSnapshot?.length);
+  if (!mainLine?.taxSnapshot?.length) return fallbackRate;
+  const mainTax = mainLine.taxSnapshot.find((tax) => tax.key === 'impuesto_1' && tax.isActive)
+    ?? mainLine.taxSnapshot.find((tax) => !isFixedTaxSnapshot(tax) && tax.isActive)
+    ?? null;
+  return mainTax ? toNum(mainTax.rate) : fallbackRate;
+}
+
+function resolveDocumentTaxSummary(lineCalcs: LineCalc[]) {
+  return {
+    subtotal: roundMoney(lineCalcs.reduce((sum, line) => sum + line.subtotal, 0)),
+    igvAmount: roundMoney(lineCalcs.reduce((sum, line) => sum + (line.igvAmount ?? line.taxAmount), 0)),
+    totalTaxAmount: roundMoney(lineCalcs.reduce((sum, line) => sum + line.taxAmount, 0)),
+    total: roundMoney(lineCalcs.reduce((sum, line) => sum + line.lineTotal, 0)),
   };
 }
 
@@ -316,29 +394,15 @@ export async function previewDocument(
   const priceInclTax = series.priceInclTax;
   const taxRate = toNum(series.taxRate);
 
-  const lineCalcs = ois.map((oi) =>
-    calcLine(
-      oi.productId ?? null,
-      oi.productName,
-      oi.quantity,
-      toNum(oi.unitPrice),
-      (oi.selectedAlternatives as { name: string; extraPrice: number }[]) ?? [],
-      toNum(oi.packagingFee),
-      oi.notes ?? null,
-      priceInclTax,
-      taxRate
-    )
-  );
+  const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
 
-  const totalSubtotal = roundMoney(lineCalcs.reduce((s, l) => s + l.subtotal, 0));
-  const totalTax = roundMoney(lineCalcs.reduce((s, l) => s + l.taxAmount, 0));
-  const total = roundMoney(lineCalcs.reduce((s, l) => s + l.lineTotal, 0));
+  const summary = resolveDocumentTaxSummary(lineCalcs);
 
   return {
     order,
     series,
     lines: lineCalcs,
-    totals: { subtotal: totalSubtotal, taxAmount: totalTax, total },
+    totals: { subtotal: summary.subtotal, taxAmount: summary.totalTaxAmount, total: summary.total },
     nextDocumentNumber: `${series.series}-${padSequential(series.lastSequential + 1)}`,
   };
 }
@@ -424,23 +488,10 @@ export async function createDocument(input: CreateDocumentInput) {
   const priceInclTax = resolvedSeries.priceInclTax;
   const taxRate = toNum(resolvedSeries.taxRate);
 
-  const lineCalcs = ois.map((oi) =>
-    calcLine(
-      oi.productId ?? null,
-      oi.productName,
-      oi.quantity,
-      toNum(oi.unitPrice),
-      (oi.selectedAlternatives as { name: string; extraPrice: number }[]) ?? [],
-      toNum(oi.packagingFee),
-      oi.notes ?? null,
-      priceInclTax,
-      taxRate
-    )
-  );
+  const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
 
-  const totalSubtotal = roundMoney(lineCalcs.reduce((s, l) => s + l.subtotal, 0));
-  const totalTax = roundMoney(lineCalcs.reduce((s, l) => s + l.taxAmount, 0));
-  const total = roundMoney(lineCalcs.reduce((s, l) => s + l.lineTotal, 0));
+  const summary = resolveDocumentTaxSummary(lineCalcs);
+  const documentTaxRate = resolveDocumentTaxRate(lineCalcs, taxRate);
 
   // Transacción: reservar correlativo + insertar documento + líneas
   const { docId } = await db.transaction(async (tx) => {
@@ -481,10 +532,10 @@ export async function createDocument(input: CreateDocumentInput) {
         buyerName,
         buyerAddress: input.buyerAddress ?? null,
         buyerEmail: input.buyerEmail ?? null,
-        subtotal: String(totalSubtotal),
-        taxRate: String(taxRate),
-        taxAmount: String(totalTax),
-        total: String(total),
+        subtotal: String(summary.subtotal),
+        taxRate: String(documentTaxRate),
+        taxAmount: String(summary.totalTaxAmount),
+        total: String(summary.total),
         status: 'issued',
         notes: input.notes ?? null,
         createdBy: input.createdBy ?? null,
@@ -519,7 +570,7 @@ export async function createDocument(input: CreateDocumentInput) {
       .where(eq(billingDocuments.id, docId));
 
     if (savedDoc) {
-      await emitirYActualizarDoc(db, savedDoc, lineCalcs, taxRate);
+      await emitirYActualizarDoc(db, savedDoc, lineCalcs, documentTaxRate);
     }
   }
 
@@ -574,7 +625,7 @@ async function emitirYActualizarDoc(
       },
       totales: {
         gravadas: toNum(doc.subtotal),
-        igv: toNum(doc.taxAmount),
+        igv: roundMoney(lineCalcs.reduce((sum, l) => sum + (l.igvAmount ?? l.taxAmount), 0)),
         total_impuestos: toNum(doc.taxAmount),
         valor_venta: toNum(doc.subtotal),
         subtotal: toNum(doc.total),
@@ -587,6 +638,10 @@ async function emitirYActualizarDoc(
         // Derivamos precios unitarios desde los totales para evitar errores con priceInclTax
         const valorUnitario = roundMoney(l.subtotal / l.quantity);
         const precioUnitario = roundMoney(l.lineTotal / l.quantity);
+        const activeTaxes = l.taxSnapshot?.filter((tax) => tax.isActive) ?? [];
+        const percentageTaxes = activeTaxes.filter((tax) => !isFixedTaxSnapshot(tax));
+        const mainPercentageTax = activeTaxes.find((tax) => tax.key === 'impuesto_1') ?? percentageTaxes[0] ?? null;
+        const icbperTax = activeTaxes.find((tax) => tax.key === 'icbper') ?? null;
         return {
           codigo: String(l.productId ?? i + 1),
           unidad_medida: 'NIU',
@@ -597,11 +652,12 @@ async function emitirYActualizarDoc(
           valor_unitario: valorUnitario,
           valor_venta: l.subtotal,
           base_igv: l.subtotal,
-          porcentaje_igv: taxRate,
-          igv: l.taxAmount,
+          porcentaje_igv: mainPercentageTax ? toNum(mainPercentageTax.rate) : taxRate,
+          igv: roundMoney(l.igvAmount ?? l.taxAmount),
           tipo_afectacion: '10',
           total_impuestos: l.taxAmount,
           precio_unitario: precioUnitario,
+          ...(icbperTax ? { icbper: toNum(icbperTax.amount), factor_icbper: toNum(icbperTax.rate) } : {}),
         };
       }),
     };
@@ -791,26 +847,40 @@ export async function retryDocument(id: number) {
     .where(eq(billingDocumentLines.documentId, id));
 
   const taxRate = toNum(doc.taxRate);
+  const orderItemIds = lines.map((line) => line.orderItemId).filter((id): id is number => id != null);
+  const orderItemRows = orderItemIds.length
+    ? await db.select().from(orderItems).where(inArray(orderItems.id, orderItemIds))
+    : [];
+  const orderItemMap = new Map(orderItemRows.map((row) => [row.id, row]));
 
-  const lineCalcs: LineCalc[] = lines.map((l) => ({
-    productId: l.productId ?? null,
-    productName: l.productName,
-    quantity: l.quantity,
-    unitPrice: toNum(l.unitPrice),
-    alternativesExtra: 0,
-    packagingFee: toNum(l.packagingFee),
-    subtotal: toNum(l.subtotal),
-    taxAmount: toNum(l.taxAmount),
-    lineTotal: toNum(l.lineTotal),
-    alternativesDesc: l.alternativesDesc ?? null,
-    notes: l.notes ?? null,
-    priceInclTax: true,
-    taxRate,
-  }));
+  const lineCalcs: LineCalc[] = lines.map((l) => {
+    const orderItem = l.orderItemId != null ? orderItemMap.get(l.orderItemId) : null;
+    if (orderItem) {
+      const resolved = resolveLineCalcFromSnapshot(orderItem as typeof orderItems.$inferSelect);
+      if (resolved) return resolved;
+    }
+
+    return {
+      productId: l.productId ?? null,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: toNum(l.unitPrice),
+      alternativesExtra: 0,
+      packagingFee: toNum(l.packagingFee),
+      subtotal: toNum(l.subtotal),
+      taxAmount: toNum(l.taxAmount),
+      lineTotal: toNum(l.lineTotal),
+      alternativesDesc: l.alternativesDesc ?? null,
+      notes: l.notes ?? null,
+      priceInclTax: true,
+      taxRate,
+      igvAmount: toNum(l.taxAmount),
+    };
+  });
 
   // send() en el facturador es idempotente: upsert por xml_filename.
   // Si el comprobante ya existe, lo re-firma y re-envía a SUNAT actualizando el registro.
-  await emitirYActualizarDoc(db, doc, lineCalcs, taxRate);
+  await emitirYActualizarDoc(db, doc, lineCalcs, resolveDocumentTaxRate(lineCalcs, taxRate));
 
   const [updated] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return { document: updated, lines };
@@ -861,23 +931,38 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
   const lines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, id));
 
   const taxRate = toNum(corrected.taxRate);
-  const lineCalcs: LineCalc[] = lines.map((l) => ({
-    productId: l.productId ?? null,
-    productName: l.productName,
-    quantity: l.quantity,
-    unitPrice: toNum(l.unitPrice),
-    alternativesExtra: 0,
-    packagingFee: toNum(l.packagingFee),
-    subtotal: toNum(l.subtotal),
-    taxAmount: toNum(l.taxAmount),
-    lineTotal: toNum(l.lineTotal),
-    alternativesDesc: l.alternativesDesc ?? null,
-    notes: l.notes ?? null,
-    priceInclTax: true,
-    taxRate,
-  }));
+  const orderItemIds = lines.map((line) => line.orderItemId).filter((id): id is number => id != null);
+  const orderItemRows = orderItemIds.length
+    ? await db.select().from(orderItems).where(inArray(orderItems.id, orderItemIds))
+    : [];
+  const orderItemMap = new Map(orderItemRows.map((row) => [row.id, row]));
 
-  await emitirYActualizarDoc(db, corrected, lineCalcs, taxRate);
+  const lineCalcs: LineCalc[] = lines.map((l) => {
+    const orderItem = l.orderItemId != null ? orderItemMap.get(l.orderItemId) : null;
+    if (orderItem) {
+      const resolved = resolveLineCalcFromSnapshot(orderItem as typeof orderItems.$inferSelect);
+      if (resolved) return resolved;
+    }
+
+    return {
+      productId: l.productId ?? null,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: toNum(l.unitPrice),
+      alternativesExtra: 0,
+      packagingFee: toNum(l.packagingFee),
+      subtotal: toNum(l.subtotal),
+      taxAmount: toNum(l.taxAmount),
+      lineTotal: toNum(l.lineTotal),
+      alternativesDesc: l.alternativesDesc ?? null,
+      notes: l.notes ?? null,
+      priceInclTax: true,
+      taxRate,
+      igvAmount: toNum(l.taxAmount),
+    };
+  });
+
+  await emitirYActualizarDoc(db, corrected, lineCalcs, resolveDocumentTaxRate(lineCalcs, taxRate));
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return { document: final, lines };
@@ -1143,11 +1228,23 @@ async function emitAndUpdateCreditNote(
     const tipoDocOriginal = originalDoc.documentType === 'factura' ? '01' : '03';
     const buyerTipoDoc = savedNC.buyerDocType === 'RUC' ? '6' : savedNC.buyerDocType === 'DNI' ? '1' : '0';
 
+    const orderItemIds = lines.map((line) => line.orderItemId).filter((id): id is number => id != null);
+    const orderItemRows = orderItemIds.length
+      ? await db.select().from(orderItems).where(inArray(orderItems.id, orderItemIds))
+      : [];
+    const orderItemMap = new Map(orderItemRows.map((row) => [row.id, row]));
+
     const lineCalcs = lines.map((l) => {
-      const subtotal = toNum(l.subtotal);
-      const taxAmount = toNum(l.taxAmount);
-      const lineTotal = toNum(l.lineTotal);
+      const orderItem = l.orderItemId != null ? orderItemMap.get(l.orderItemId) : null;
+      const resolved = orderItem ? resolveLineCalcFromSnapshot(orderItem as typeof orderItems.$inferSelect) : null;
+      const subtotal = resolved?.subtotal ?? toNum(l.subtotal);
+      const taxAmount = resolved?.taxAmount ?? toNum(l.taxAmount);
+      const lineTotal = resolved?.lineTotal ?? toNum(l.lineTotal);
       const qty = l.quantity;
+      const mainTax = resolved?.taxSnapshot?.find((tax) => tax.key === 'impuesto_1' && tax.isActive)
+        ?? resolved?.taxSnapshot?.find((tax) => !isFixedTaxSnapshot(tax) && tax.isActive)
+        ?? null;
+      const icbperTax = resolved?.taxSnapshot?.find((tax) => tax.key === 'icbper' && tax.isActive) ?? null;
       return {
         codigo: String(l.productId ?? l.id),
         unidad_medida: 'NIU',
@@ -1156,13 +1253,15 @@ async function emitAndUpdateCreditNote(
         valor_unitario: roundMoney(subtotal / qty),
         valor_venta: subtotal,
         base_igv: subtotal,
-        porcentaje_igv: taxRate,
-        igv: taxAmount,
+        porcentaje_igv: mainTax ? toNum(mainTax.rate) : taxRate,
+        igv: roundMoney(resolved?.igvAmount ?? taxAmount),
         tipo_afectacion: '10',
         total_impuestos: taxAmount,
         precio_unitario: roundMoney(lineTotal / qty),
+        ...(icbperTax ? { icbper: toNum(icbperTax.amount), factor_icbper: toNum(icbperTax.rate) } : {}),
+        igvAmount: roundMoney(resolved?.igvAmount ?? taxAmount),
       };
-    });
+    }) as any[];
 
     const res = await emitirNotaCredito({
       emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
@@ -1189,7 +1288,7 @@ async function emitAndUpdateCreditNote(
       },
       totales: {
         gravadas: toNum(savedNC.subtotal),
-        igv: toNum(savedNC.taxAmount),
+        igv: roundMoney(lineCalcs.reduce((sum, l) => sum + (l.igvAmount ?? l.taxAmount), 0)),
         total_impuestos: toNum(savedNC.taxAmount),
         valor_venta: toNum(savedNC.subtotal),
         subtotal: toNum(savedNC.total),

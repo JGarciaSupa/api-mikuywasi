@@ -422,6 +422,8 @@ export const orders = pgTable('orders', {
 	}>(),
 
 	deliveryType: text('delivery_type', { enum: ['delivery', 'pickup', 'dine_in'] }).notNull(),
+	salesChannelId: integer('sales_channel_id').references(() => salesChannels.id),
+	salesChannelName: varchar('sales_channel_name', { length: 100 }),
 	tableId: integer('table_id').references(() => tables.id),
 	tableName: varchar('table_name', { length: 50 }),
 
@@ -450,6 +452,16 @@ export const orders = pgTable('orders', {
 	// Turno del cajero que cobró el pedido (para atribución del ingreso en caja).
 	// Se setea al marcar como pagado; el ingreso va a este turno, no al del mozo.
 	collectedSessionId: integer('collected_session_id'), // FK lógica a cash_sessions
+	taxBreakdown: jsonb('tax_breakdown').$type<{
+		key: string;
+		label: string;
+		sunatCode?: string;
+		rate: number;
+		calculationType?: 'percentage' | 'fixed';
+		defaultActive?: boolean;
+		isActive: boolean;
+		amount?: number;
+	}[]>(),
 
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -485,6 +497,7 @@ export const orderItems = pgTable('order_items', {
 	orderId: varchar('order_id', { length: 12 }).references(() => orders.id, { onDelete: 'cascade' }).notNull(),
 	splitId: integer('split_id').references(() => orderSplits.id, { onDelete: 'set null' }),
 	productId: integer('product_id').references(() => products.id),
+	salesChannelId: integer('sales_channel_id').references(() => salesChannels.id),
 	productName: varchar('product_name', { length: 150 }).notNull(),
 	unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
 	quantity: integer('quantity').notNull(),
@@ -492,6 +505,16 @@ export const orderItems = pgTable('order_items', {
 	packagingFee: decimal('packaging_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	notes: varchar('notes', { length: 100 }),
 	totalPrice: decimal('total_price', { precision: 10, scale: 2 }).notNull(),
+	taxSnapshot: jsonb('tax_snapshot').$type<{
+		key: string;
+		label: string;
+		sunatCode?: string;
+		rate: number;
+		calculationType?: 'percentage' | 'fixed';
+		defaultActive?: boolean;
+		isActive: boolean;
+		amount?: number;
+	}[]>(),
 });
 
 // ==========================================
