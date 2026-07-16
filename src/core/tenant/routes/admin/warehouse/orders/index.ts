@@ -8,6 +8,12 @@ import {
   getOrderStatsController
 } from '../../../../controllers/admin/documents/order.controller';
 import {
+  getOrdersReportSummaryController,
+  getOrdersReportBreakdownController,
+  getOrdersReportProductsController,
+  getOrdersReportExportController,
+} from '../../../../controllers/admin/documents/order-reports.controller';
+import {
   listSplitsController,
   createSplitController,
   updateSplitLabelController,
@@ -25,6 +31,13 @@ routes.use('*', authMiddleware);
 // Endpoints
 routes.get('/', getOrdersController);
 routes.get('/stats', getOrderStatsController);
+
+// Reportes agregados (registrados antes de /:id para no colisionar)
+routes.get('/reports/summary', getOrdersReportSummaryController);
+routes.get('/reports/breakdown', getOrdersReportBreakdownController);
+routes.get('/reports/products', getOrdersReportProductsController);
+routes.get('/reports/export', getOrdersReportExportController);
+
 routes.get('/:id', getOrderByIdController);
 routes.patch('/:id/status', updateOrderStatusController);
 routes.patch('/:id/payment-status', updateOrderPaymentStatusController);

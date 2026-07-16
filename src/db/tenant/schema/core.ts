@@ -470,6 +470,8 @@ export const orders = pgTable('orders', {
 	statusIdx: index('orders_status_idx').on(table.status),
 	cashSessionIdx: index('orders_cash_session_idx').on(table.cashSessionId),
 	collectedSessionIdx: index('orders_collected_session_idx').on(table.collectedSessionId),
+	// Reportes y listados filtran siempre por sucursal + rango de fechas
+	branchCreatedAtIdx: index('orders_branch_created_at_idx').on(table.branchId, table.createdAt),
 }));
 
 // Cuentas separadas dentro de un pedido (para dividir la facturación)

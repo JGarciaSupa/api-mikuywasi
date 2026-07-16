@@ -26,10 +26,20 @@ import {
   createNotaCreditoDirectaController,
   createNotaCreditoExternaController,
 } from '../../../../controllers/admin/documents/billing.controller';
+import {
+  getBillingReportSummaryController,
+  getBillingReportBreakdownController,
+  getBillingReportExportController,
+} from '../../../../controllers/admin/documents/billing-reports.controller';
 
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
+
+// Reportes agregados
+routes.get('/reports/summary', getBillingReportSummaryController);
+routes.get('/reports/breakdown', getBillingReportBreakdownController);
+routes.get('/reports/export', getBillingReportExportController);
 
 // Series
 routes.get('/series', listSeriesController);
