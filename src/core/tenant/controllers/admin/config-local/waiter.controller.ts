@@ -52,7 +52,7 @@ export const createWaiterOrderController = async (c: Context) => {
     const body = await c.req.json();
     await tenantService.validateOrderStockBeforeCreate(body);
     // Vincular el pedido al turno abierto del usuario (de ahí salen caja + cajero para el ingreso)
-    const result = await tenantService.createOrder({ ...body, cashSessionId: activeSession.id }, 'confirmed');
+    const result = await tenantService.createOrder({ ...body, cashSessionId: activeSession.id }, 'preparing');
 
     const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);
 
