@@ -664,6 +664,8 @@ export const cashMovements = pgTable('cash_movements', {
 	sessionIdx: index('cash_movements_session_idx').on(table.sessionId),
 	typeIdx: index('cash_movements_type_idx').on(table.movementType),
 	orderIdx: index('cash_movements_order_idx').on(table.orderId),
+	// Los reportes de caja filtran el histórico global por rango de fechas
+	createdAtIdx: index('cash_movements_created_at_idx').on(table.createdAt),
 }));
 
 // Contador atómico del correlativo de turnos de caja por (sucursal, año).

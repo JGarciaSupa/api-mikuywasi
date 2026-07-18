@@ -344,6 +344,13 @@
       "when": 1784202847958,
       "tag": "0048_reportes_pedidos",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1784341366581,
+      "tag": "0049_reportes_caja",
+      "breakpoints": true
     }
   ]
 }

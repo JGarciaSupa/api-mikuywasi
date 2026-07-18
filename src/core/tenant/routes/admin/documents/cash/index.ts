@@ -1,10 +1,22 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../../../middleware/auth.middleware';
 import * as cash from '../../../../controllers/admin/documents/cash.controller';
+import {
+  getCashReportSummaryController,
+  getCashReportSessionsController,
+  getCashReportMovementsController,
+  getCashReportExportController,
+} from '../../../../controllers/admin/documents/cash-reports.controller';
 
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
+
+// Reportes agregados / histórico
+routes.get('/reports/summary', getCashReportSummaryController);
+routes.get('/reports/sessions', getCashReportSessionsController);
+routes.get('/reports/movements', getCashReportMovementsController);
+routes.get('/reports/export', getCashReportExportController);
 
 routes.get('/registers', cash.listCashRegisters);
 routes.post('/registers', cash.createCashRegister);
