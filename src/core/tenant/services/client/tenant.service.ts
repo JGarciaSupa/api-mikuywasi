@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
 import { findPaymentMethodByName } from '../admin/config-local/payment-method.service';
+import { assertStockAvailable, adjustProductStock } from '../shared/product-stock.service';
 
 function toNum(v: unknown) {
   const n = Number(v ?? 0);
@@ -338,7 +339,9 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
 
         const [productRows, channelPriceRows, extraRows] = await Promise.all([
           productIds.length
-            ? tx.select().from(products).where(inArray(products.id, productIds))
+            // FOR UPDATE bloquea las filas de producto durante la transacción para que dos
+            // pedidos concurrentes no puedan sobrevender el mismo stock manual.
+            ? tx.select().from(products).where(inArray(products.id, productIds)).for('update')
             : Promise.resolve([] as any[]),
           resolvedSalesChannelId && productIds.length
             ? tx.select().from(productSalesChannelPrices).where(
@@ -452,6 +455,20 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           });
         }
 
+        // Stock manual por producto (independiente del almacén de insumos): si el producto tiene
+        // un tope configurado, no se puede vender más de lo disponible.
+        const requestedQtyByProductId = new Map<number, number>();
+        for (const item of computedItems) {
+          requestedQtyByProductId.set(
+            item.productId,
+            (requestedQtyByProductId.get(item.productId) ?? 0) + item.quantity
+          );
+        }
+        for (const [productId, requestedQty] of requestedQtyByProductId) {
+          const product = productMap.get(productId);
+          if (product) assertStockAvailable(product, requestedQty);
+        }
+
         const taxBreakdown = Array.from(orderTaxMap.values()).sort((a, b) => a.label.localeCompare(b.label));
         const subtotal = grossSubtotal;
         const retentionAmount = roundMoney(
@@ -524,6 +541,10 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
               await tx.insert(orderItemExtras).values(extraRowsData);
             }
           }
+        }
+
+        for (const [productId, requestedQty] of requestedQtyByProductId) {
+          await adjustProductStock(tx, productId, -requestedQty);
         }
 
         return { ...result, items: computedItems, taxBreakdown };

@@ -19,6 +19,7 @@ import { applyStockExit, applyStockEntry } from './../warehouse/shared/stock-mov
 import { reverseDischargeForOrder } from './../warehouse/sales-discharge.service';
 import { reverseOrderSaleMovement } from './../documents/cash.service';
 import type { AuditActor } from './../warehouse/types';
+import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
 
 const EDITABLE_STATUSES = ['pending', 'confirmed', 'preparing'] as const;
 type EditableStatus = (typeof EDITABLE_STATUSES)[number];
@@ -165,6 +166,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
         .from(products)
         .where(and(eq(products.id, input.productId), eq(products.isActive, true)));
       if (!product) throw new Error('Producto no encontrado o inactivo');
+      assertStockAvailable(product, input.quantity!);
 
       const alternativesExtra = (input.selectedAlternatives ?? [])
         .reduce((s: number, a: any) => s + toNum(a.extraPrice) * input.quantity!, 0);
@@ -214,6 +216,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
         if (extraRows.length) await db.insert(orderItemExtras).values(extraRows);
       }
 
+      await adjustProductStock(db, product.id, -input.quantity!);
       await recalcOrderTotals(db, orderId);
 
       const ingredients = await calcIngredientsForProduct(db, product.id, input.quantity, order.branchId);
@@ -306,6 +309,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
       }
 
       await db.delete(orderItems).where(eq(orderItems.id, input.orderItemId));
+      if (oi.productId) await adjustProductStock(db, oi.productId, oi.quantity);
       await recalcOrderTotals(db, orderId);
       return { removed: input.orderItemId };
     }
@@ -319,6 +323,12 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
       const prevQty = oi.quantity;
       const delta = input.quantity - prevQty;
+
+      if (delta > 0 && oi.productId) {
+        const [product] = await db.select().from(products).where(eq(products.id, oi.productId));
+        if (product) assertStockAvailable(product, delta);
+      }
+
       const unitPrice = toNum(oi.unitPrice);
       const newTotalPrice = roundMoney(unitPrice * input.quantity);
 
@@ -328,6 +338,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
         .where(eq(orderItems.id, input.orderItemId))
         .returning();
 
+      if (oi.productId && delta !== 0) await adjustProductStock(db, oi.productId, -delta);
       await recalcOrderTotals(db, orderId);
 
       if (oi.productId && existingDischarge?.status === 'processed' && delta !== 0) {
@@ -399,6 +410,7 @@ export async function cancelOrder(orderId: string, actor?: AuditActor) {
   if (order.status === 'completed') throw new Error('No se puede cancelar un pedido completado');
 
   await reverseDischargeForOrder(orderId);
+  await restoreProductStockForOrder(db, orderId);
 
   // Revertir el ingreso de caja si el pedido estaba cobrado. No bloquea la cancelación.
   try {

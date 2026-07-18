@@ -55,6 +55,11 @@ export const productSchema = z.object({
   }))).optional().default([]),
   isActive: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional().default(true),
   allowSellWithoutStock: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional().default(false),
+  // Stock manual del producto (cantidad disponible digitada al crear/editar). Vacío o ausente = sin límite.
+  stock: z.preprocess(
+    (val) => (val === '' || val === undefined || val === null ? null : val),
+    z.coerce.number().int('El stock debe ser un número entero').min(0, 'El stock no puede ser negativo').nullable()
+  ).optional(),
 });
 
 export const updateProductSchema = productSchema.partial();

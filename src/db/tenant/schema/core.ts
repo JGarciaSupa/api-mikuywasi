@@ -302,6 +302,8 @@ export const products = pgTable('products', {
 	}[]>().default([]), // Ej: Cremas, término de carne, etc.
 	isActive: boolean('is_active').default(true).notNull(),
 	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
+	// Stock manual del producto (independiente del almacén/insumos). null = sin límite de stock.
+	stock: integer('stock'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
