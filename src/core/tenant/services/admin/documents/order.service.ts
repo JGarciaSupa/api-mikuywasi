@@ -4,6 +4,7 @@ import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-conte
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
+import { restoreProductStockForOrder } from '../../shared/product-stock.service';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -166,6 +167,7 @@ export const updateOrderStatus = async (id: string, status: string) => {
   if (status === 'cancelled') {
     const { reverseDischargeForOrder } = await import('../warehouse/sales-discharge.service');
     await reverseDischargeForOrder(id);
+    await restoreProductStockForOrder(db, id);
   }
 
   const [updated] = await db
