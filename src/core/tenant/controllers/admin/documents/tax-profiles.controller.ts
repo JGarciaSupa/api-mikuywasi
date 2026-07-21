@@ -14,6 +14,21 @@ export const searchTaxProfilesController = async (c: Context) => {
   }
 };
 
+// Búsqueda exacta por documento (para el flujo "local → SUNAT → guarda" del cobro).
+export const findTaxProfileController = async (c: Context) => {
+  try {
+    const documentType = c.req.query('documentType');
+    const documentNumber = c.req.query('documentNumber');
+    if (!documentType || !documentNumber) {
+      return c.json({ success: false, message: 'Se requiere documentType y documentNumber' }, 400);
+    }
+    const data = await taxProfilesService.findTaxProfile(documentType, documentNumber);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al buscar el perfil fiscal');
+  }
+};
+
 // Busca por documento; reutiliza si existe, crea si no.
 export const resolveTaxProfileController = async (c: Context) => {
   try {

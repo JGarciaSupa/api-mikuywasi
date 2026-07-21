@@ -7,6 +7,7 @@ const routes = new Hono();
 routes.use('*', authMiddleware);
 
 routes.get('/', taxProfiles.searchTaxProfilesController);
+routes.get('/find', taxProfiles.findTaxProfileController);
 routes.post('/resolve', taxProfiles.resolveTaxProfileController);
 routes.delete('/:id', taxProfiles.deleteTaxProfileController);
 

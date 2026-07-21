@@ -358,6 +358,13 @@
       "when": 1784436866879,
       "tag": "0050_customer_table_add",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1784606423543,
+      "tag": "0051_add_stock_product",
+      "breakpoints": true
     }
   ]
 }
