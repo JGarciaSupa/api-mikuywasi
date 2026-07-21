@@ -5,6 +5,7 @@ export const createOrderSchema = z.object({
   customerName: z.string({ error: 'Nombre es requerido' }).min(1, 'El nombre es obligatorio'),
   customerPhone: z.string({ error: 'Teléfono es requerido' }).min(1, 'El teléfono es obligatorio').optional().nullable(),
   customerAddress: z.string().optional().nullable(),
+  branchId: z.number().int().positive().optional().nullable(),
   salesChannelId: z.number().int().positive().optional().nullable(),
 
   deliveryType: z.enum(['delivery', 'pickup', 'dine_in'], { error: 'Tipo de entrega es requerido' }),

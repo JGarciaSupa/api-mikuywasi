@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, uuid, AnyPgColumn } from 'drizzle-orm/pg-core';
+import { customers } from './customers';
 
 // ==========================================
 // 🏷️ MARCAS
@@ -412,6 +413,10 @@ export const orderStationConfirmationsRelations = relations(orderStationConfirma
 export const orders = pgTable('orders', {
 	id: varchar('id', { length: 12 }).primaryKey(), // NanoID / UUID Corto
 	branchId: integer('branch_id').notNull().references(() => branches.id),
+	// Cliente frecuente vinculado (opcional). customerName/Phone/Address se mantienen
+	// como snapshot histórico del pedido — no se eliminan ni se derivan de aquí; un
+	// pedido anónimo sigue siendo válido con customerId=null.
+	customerId: integer('customer_id').references(() => customers.id),
 	customerName: varchar('customer_name', { length: 100 }).notNull(),
 	customerPhone: varchar('customer_phone', { length: 20 }),
 	customerAddress: text('customer_address'),
@@ -467,6 +472,7 @@ export const orders = pgTable('orders', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	branchIdx: index('orders_branch_idx').on(table.branchId),
+	customerIdx: index('orders_customer_idx').on(table.customerId),
 	statusIdx: index('orders_status_idx').on(table.status),
 	cashSessionIdx: index('orders_cash_session_idx').on(table.cashSessionId),
 	collectedSessionIdx: index('orders_collected_session_idx').on(table.collectedSessionId),
@@ -602,6 +608,7 @@ export const tablesRelations = relations(tables, ({ one, many }) => ({
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
 	branch: one(branches, { fields: [orders.branchId], references: [branches.id] }),
+	customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
 	table: one(tables, { fields: [orders.tableId], references: [tables.id] }),
 	driver: one(users, { fields: [orders.driverId], references: [users.id] }),
 	orderItems: many(orderItems),

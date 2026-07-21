@@ -351,6 +351,13 @@
       "when": 1784341366581,
       "tag": "0049_reportes_caja",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784436866879,
+      "tag": "0050_customer_table_add",
+      "breakpoints": true
     }
   ]
 }

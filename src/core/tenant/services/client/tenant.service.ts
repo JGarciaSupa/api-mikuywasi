@@ -126,16 +126,27 @@ async function attachProductChannelPrices(db: ReturnType<typeof getTenantDb>, ro
 
 /**
  * Obtener información pública del tenant (config, banners, social links)
+ * Banners/social links con branchId=null son globales; si se indica branchId,
+ * se incluyen además los propios de esa sede.
  */
-export const getTenantInfo = async () => {
+export const getTenantInfo = async (branchId?: number) => {
   const db = getTenantDb();
 
   const [config] = await db.select().from(brands).limit(1);
 
+  const bannerCondition = branchId
+    ? or(isNull(banners.branchId), eq(banners.branchId, branchId))
+    : isNull(banners.branchId);
+  const socialCondition = branchId
+    ? or(isNull(socialLinks.branchId), eq(socialLinks.branchId, branchId))
+    : isNull(socialLinks.branchId);
+
   const tenantBanners = await db.select().from(banners)
+    .where(bannerCondition)
     .orderBy(banners.order);
 
   const tenantSocialLinks = await db.select().from(socialLinks)
+    .where(and(socialCondition, eq(socialLinks.isActive, true)))
     .orderBy(socialLinks.order);
 
   return {
@@ -145,6 +156,68 @@ export const getTenantInfo = async () => {
     socialLinks: tenantSocialLinks,
   };
 };
+
+/**
+ * Obtener sucursales activas del tenant (campo público, sin datos fiscales/internos).
+ */
+export const getBranches = async () => {
+  const db = getTenantDb();
+
+  const rows = await db.select({
+    id: branches.id,
+    name: branches.name,
+    code: branches.code,
+    isMain: branches.isMain,
+    address: branches.address,
+    deliveryZone: branches.deliveryZone,
+    schedules: branches.schedules,
+    phone: branches.phone,
+    whatsapp: branches.whatsapp,
+    email: branches.email,
+    hasDelivery: branches.hasDelivery,
+    hasPickup: branches.hasPickup,
+    hasDineIn: branches.hasDineIn,
+    hasLiveTracking: branches.hasLiveTracking,
+    minOrderAmount: branches.minOrderAmount,
+    defaultDeliveryFee: branches.defaultDeliveryFee,
+    freeDeliveryThreshold: branches.freeDeliveryThreshold,
+  })
+    .from(branches)
+    .where(eq(branches.isActive, true))
+    .orderBy(branches.name);
+
+  return rows;
+};
+
+/**
+ * Resuelve el branchId a usar para un pedido público: el enviado por el cliente
+ * (si existe y está activo), o si no, la sede principal activa (isMain), o si no,
+ * la primera sede activa. Lanza si el tenant no tiene ninguna sede activa.
+ */
+async function resolveOrderBranchId(db: ReturnType<typeof getTenantDb>, requestedBranchId?: number | null) {
+  if (requestedBranchId) {
+    const [branch] = await db.select({ id: branches.id })
+      .from(branches)
+      .where(and(eq(branches.id, requestedBranchId), eq(branches.isActive, true)))
+      .limit(1);
+    if (branch) return branch.id;
+  }
+
+  const [mainBranch] = await db.select({ id: branches.id })
+    .from(branches)
+    .where(and(eq(branches.isMain, true), eq(branches.isActive, true)))
+    .limit(1);
+  if (mainBranch) return mainBranch.id;
+
+  const [anyBranch] = await db.select({ id: branches.id })
+    .from(branches)
+    .where(eq(branches.isActive, true))
+    .orderBy(branches.id)
+    .limit(1);
+  if (anyBranch) return anyBranch.id;
+
+  throw new Error('El tenant no tiene ninguna sucursal activa configurada.');
+}
 
 /**
  * Obtener categorías y productos agrupados. Incluye productos sin categoría.
@@ -212,10 +285,13 @@ export const getMenu = async (branchId?: number) => {
 };
 
 /**
- * Obtener mesas del restaurante
+ * Obtener mesas del restaurante. Si se indica branchId, solo las de esa sede.
  */
-export const getTables = async () => {
+export const getTables = async (branchId?: number) => {
   const db = getTenantDb();
+  if (branchId) {
+    return await db.select().from(tables).where(eq(tables.branchId, branchId)).orderBy(tables.name);
+  }
   return await db.select().from(tables).orderBy(tables.name);
 };
 
@@ -285,12 +361,17 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
 };
 
 /**
- * Obtener métodos de pago activos
+ * Obtener métodos de pago activos. branchId=null en el registro significa
+ * "disponible en todas las sedes"; si se indica branchId, se incluyen esos + los globales.
  */
-export const getPaymentMethods = async () => {
+export const getPaymentMethods = async (branchId?: number) => {
   const db = getTenantDb();
+  const branchCondition = branchId
+    ? or(isNull(paymentMethods.branchId), eq(paymentMethods.branchId, branchId))
+    : isNull(paymentMethods.branchId);
+
   return await db.select().from(paymentMethods)
-    .where(eq(paymentMethods.isActive, true))
+    .where(and(eq(paymentMethods.isActive, true), branchCondition))
     .orderBy(paymentMethods.name);
 };
 
@@ -300,7 +381,7 @@ export const getPaymentMethods = async () => {
 export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
   const db = getTenantDb();
   const items = Array.isArray(orderData.items) ? orderData.items : [];
-  const branchId = orderData.branchId ?? 1;
+  const branchId = await resolveOrderBranchId(db, orderData.branchId);
   const deliveryFee = roundMoney(toNum(orderData.deliveryFee));
   const retentionPercentage = roundMoney(toNum(orderData.retentionPercentage));
 
@@ -464,6 +545,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
         const [result] = await tx.insert(orders).values({
           id: orderId,
           branchId,
+          customerId: orderData.customerId ?? null,
           customerName: orderData.customerName,
           customerPhone: orderData.customerPhone,
           customerAddress: orderData.customerAddress,
@@ -542,7 +624,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
  */
 export const validateOrderStockBeforeCreate = async (orderData: any) => {
   const db = getTenantDb();
-  const branchId = orderData.branchId ?? 1;
+  const branchId = await resolveOrderBranchId(db, orderData.branchId);
 
   // 1. Si la tienda/sucursal permite venta sin stock, saltar validación de inmediato
   const [branch] = await db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
