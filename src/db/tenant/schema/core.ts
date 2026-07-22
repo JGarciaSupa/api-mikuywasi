@@ -515,6 +515,10 @@ export const orderItems = pgTable('order_items', {
 	packagingFee: decimal('packaging_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	notes: varchar('notes', { length: 100 }),
 	totalPrice: decimal('total_price', { precision: 10, scale: 2 }).notNull(),
+	// Costo unitario de la receta del producto congelado al crear el pedido
+	// (insumos a precio promedio de ese momento). NULL: sin receta o pedido
+	// anterior a esta columna; los reportes recalculan con precios actuales.
+	unitCost: decimal('unit_cost', { precision: 10, scale: 4 }),
 	taxSnapshot: jsonb('tax_snapshot').$type<{
 		key: string;
 		label: string;

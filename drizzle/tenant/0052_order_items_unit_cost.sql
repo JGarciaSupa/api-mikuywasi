@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "unit_cost" numeric(10, 4);

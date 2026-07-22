@@ -1,6 +1,7 @@
-import { orders, orderItems, orderSplits, products, categories, cashSessions, users } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderSplits, products, categories, cashSessions, users, billingDocuments } from '../../../../../db/tenant/schema';
 import { eq, and, ne, desc, asc, sql, count, gte, lte, notInArray } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
+import { resolveRecipeUnitCosts } from '../../client/tenant.service';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -21,6 +22,8 @@ export interface OrderReportFilters {
   deliveryType?: 'delivery' | 'pickup' | 'dine_in';
   salesChannelId?: number;
   paymentStatus?: 'unpaid' | 'paid' | 'review_pending';
+  // 'none' = pedidos sin ningún comprobante emitido
+  documentStatus?: 'draft' | 'issued' | 'voided' | 'none';
   granularity?: 'day' | 'hour';
 }
 
@@ -39,6 +42,18 @@ const baseConditions = (f: OrderReportFilters) => {
   if (f.deliveryType) conditions.push(eq(orders.deliveryType, f.deliveryType));
   if (f.salesChannelId) conditions.push(eq(orders.salesChannelId, f.salesChannelId));
   if (f.paymentStatus) conditions.push(eq(orders.paymentStatus, f.paymentStatus));
+  if (f.documentStatus === 'none') {
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM ${billingDocuments}
+      WHERE ${billingDocuments.orderId} = ${orders.id}
+    )`);
+  } else if (f.documentStatus) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM ${billingDocuments}
+      WHERE ${billingDocuments.orderId} = ${orders.id}
+        AND ${billingDocuments.status} = ${f.documentStatus}
+    )`);
+  }
   return conditions;
 };
 
@@ -368,11 +383,18 @@ export const getOrdersReportExport = async (filters: OrderReportFilters) => {
       trackingCode: orders.trackingCode,
       createdAt: orders.createdAt,
       orderStatus: orders.status,
+      customerName: orders.customerName,
+      salesChannelName: orders.salesChannelName,
+      deliveryType: orders.deliveryType,
+      tableName: orders.tableName,
+      productId: orderItems.productId,
       productName: orderItems.productName,
       quantity: orderItems.quantity,
       unitPrice: orderItems.unitPrice,
+      unitCost: orderItems.unitCost,
       packagingFee: orderItems.packagingFee,
       totalPrice: orderItems.totalPrice,
+      taxSnapshot: orderItems.taxSnapshot,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
@@ -380,9 +402,64 @@ export const getOrdersReportExport = async (filters: OrderReportFilters) => {
     .orderBy(asc(orders.createdAt))
     .limit(EXPORT_MAX_ROWS);
 
+  // Comprobantes por pedido (un pedido puede tener varios: splits, reemisiones, NC)
+  const exportDocs = await db
+    .select({
+      orderId: billingDocuments.orderId,
+      documentType: billingDocuments.documentType,
+      documentNumber: billingDocuments.documentNumber,
+      status: billingDocuments.status,
+    })
+    .from(billingDocuments)
+    .innerJoin(orders, eq(billingDocuments.orderId, orders.id))
+    .where(whereClause)
+    .orderBy(asc(billingDocuments.id));
+
+  const docsByOrder = new Map<string, { type: string; number: string; status: string }[]>();
+  for (const doc of exportDocs) {
+    const list = docsByOrder.get(doc.orderId) ?? [];
+    list.push({ type: doc.documentType, number: doc.documentNumber, status: doc.status });
+    docsByOrder.set(doc.orderId, list);
+  }
+
+  // Costo histórico: pedidos anteriores a unit_cost no tienen snapshot; se
+  // recalcula con la receta y los precios promedio ACTUALES de los insumos.
+  const missingCostProductIds = Array.from(new Set(
+    exportItems
+      .filter((item) => item.unitCost == null && item.productId != null)
+      .map((item) => Number(item.productId)),
+  ));
+  const fallbackCosts = await resolveRecipeUnitCosts(db, missingCostProductIds);
+
+  const items = exportItems.map(({ taxSnapshot, productId, ...item }) => {
+    const unitCost = item.unitCost != null
+      ? toNum(item.unitCost)
+      : (productId != null ? fallbackCosts.get(Number(productId)) ?? null : null);
+
+    // Neto = total de la línea sin IGV (los precios ya lo incluyen). Sin snapshot
+    // de impuestos (pedidos muy antiguos) no se puede saber → null.
+    const igvAmount = Array.isArray(taxSnapshot)
+      ? roundMoney(
+          taxSnapshot
+            .filter((tax) => tax.key === 'igv')
+            .reduce((sum, tax) => sum + toNum(tax.amount), 0),
+        )
+      : null;
+
+    return {
+      ...item,
+      unitCost: unitCost != null ? roundMoney(unitCost) : null,
+      igvAmount,
+      netTotal: igvAmount != null ? roundMoney(toNum(item.totalPrice) - igvAmount) : null,
+    };
+  });
+
   return {
-    orders: exportOrders,
-    items: exportItems,
+    orders: exportOrders.map((order) => ({
+      ...order,
+      documents: docsByOrder.get(order.id) ?? [],
+    })),
+    items,
     truncated: exportOrders.length === EXPORT_MAX_ROWS || exportItems.length === EXPORT_MAX_ROWS,
   };
 };

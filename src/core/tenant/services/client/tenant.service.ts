@@ -1,5 +1,5 @@
 import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels, branchChannels } from '../../../../db/tenant/schema';
-import { eq, and, or, isNull, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, or, isNull, inArray, isNotNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
@@ -88,6 +88,50 @@ function resolveLineTaxes(grossAmount: number, quantity: number, taxes: TaxConfi
     lineTotal: roundMoney(grossAmount),
     taxSnapshot: taxesWithAmount,
   };
+}
+
+// Costo unitario de receta por producto: suma(qty insumo × precio promedio) ÷ porciones
+// de la receta de venta activa. Se congela en order_items.unit_cost al crear el pedido,
+// porque items.avgPrice cambia con cada compra y el costo histórico se perdería.
+export async function resolveRecipeUnitCosts(db: any, productIds: number[]) {
+  const costByProduct = new Map<number, number>();
+  if (productIds.length === 0) return costByProduct;
+
+  const rows = await db
+    .select({
+      productId: recipes.productId,
+      recipeId: recipes.id,
+      servings: recipes.servings,
+      lineQty: recipeLines.qty,
+      itemAvgPrice: items.avgPrice,
+    })
+    .from(recipes)
+    .innerJoin(recipeLines, eq(recipeLines.recipeId, recipes.id))
+    .innerJoin(items, eq(recipeLines.itemId, items.id))
+    .where(and(
+      inArray(recipes.productId, productIds),
+      eq(recipes.type, 'sales'),
+      eq(recipes.isActive, true),
+    ));
+
+  const chosenRecipe = new Map<number, number>();
+  const acc = new Map<number, { cost: number; servings: number }>();
+  for (const row of rows) {
+    const productId = Number(row.productId);
+    // Si un producto tuviera más de una receta activa, usar solo la primera
+    const chosen = chosenRecipe.get(productId) ?? row.recipeId;
+    if (chosen !== row.recipeId) continue;
+    chosenRecipe.set(productId, chosen);
+
+    const entry = acc.get(productId) ?? { cost: 0, servings: toNum(row.servings) || 1 };
+    entry.cost += toNum(row.lineQty) * toNum(row.itemAvgPrice);
+    acc.set(productId, entry);
+  }
+
+  for (const [productId, { cost, servings }] of acc) {
+    costByProduct.set(productId, cost / servings);
+  }
+  return costByProduct;
 }
 
 async function resolveBranchDefaultChannelId(db: ReturnType<typeof getTenantDb>, branchId: number) {
@@ -377,6 +421,24 @@ export const getPaymentMethods = async (branchId?: number) => {
 };
 
 /**
+ * Genera el trackingCode secuencial por año: 20260001, 20260002...
+ * Al superar 9999 la secuencia crece un dígito de forma natural (202610000).
+ * El sufijo se compara como número (no como texto) para que 10000 > 9999.
+ */
+const generateTrackingCode = async (tx: any): Promise<string> => {
+  const year = String(new Date().getFullYear());
+  const [row] = await tx
+    .select({
+      maxSeq: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${orders.trackingCode} FROM 5) AS INTEGER)), 0)`,
+    })
+    .from(orders)
+    .where(sql`${orders.trackingCode} ~ ${`^${year}[0-9]+$`}`);
+
+  const nextSeq = Number(row?.maxSeq ?? 0) + 1;
+  return `${year}${String(nextSeq).padStart(4, '0')}`;
+};
+
+/**
  * Crear un nuevo pedido (con NanoID y reintentos en colisión)
  */
 export const createOrder = async (orderData: any, initialStatus: 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'ready_for_pickup' | 'completed' | 'cancelled' = 'pending') => {
@@ -396,9 +458,11 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
   while (attempts < maxAttempts) {
     try {
       const orderId = nanoid(12);
-      const trackingCode = `ORD-${nanoid(8).toUpperCase()}`;
 
       return await db.transaction(async (tx) => {
+        // Dentro de la transacción: si dos pedidos concurrentes calculan el mismo
+        // número, el índice único dispara 23505 y el while reintenta con el siguiente.
+        const trackingCode = await generateTrackingCode(tx);
         const [branch] = await tx.select().from(branches).where(eq(branches.id, branchId)).limit(1);
         const branchTaxConfigs = normalizeTaxConfigList((branch as any)?.taxes ?? undefined);
 
@@ -418,7 +482,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
             .filter((id: number) => Number.isFinite(id) && id > 0)
         )) as number[];
 
-        const [productRows, channelPriceRows, extraRows] = await Promise.all([
+        const [productRows, channelPriceRows, extraRows, recipeUnitCosts] = await Promise.all([
           productIds.length
             // FOR UPDATE bloquea las filas de producto durante la transacción para que dos
             // pedidos concurrentes no puedan sobrevender el mismo stock manual.
@@ -435,6 +499,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           extraIds.length
             ? tx.select().from(productExtras).where(inArray(productExtras.id, extraIds))
             : Promise.resolve([] as any[]),
+          resolveRecipeUnitCosts(tx, productIds),
         ]);
 
         const productMap = new Map<number, any>(productRows.map((product) => [product.id, product]));
@@ -511,11 +576,14 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
             orderTaxMap.set(tax.key, current);
           }
 
+          const recipeUnitCost = recipeUnitCosts.get(product.id);
+
           computedItems.push({
             productId: product.id,
             productName: product.name,
             salesChannelId: resolvedSalesChannelId,
             unitPrice: resolvedUnitPrice.toFixed(2),
+            unitCost: recipeUnitCost !== undefined ? recipeUnitCost.toFixed(4) : null,
             quantity,
             selectedAlternatives,
             packagingFee: packagingFee.toFixed(2),
@@ -597,6 +665,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
               salesChannelId: item.salesChannelId,
               productName: item.productName,
               unitPrice: item.unitPrice,
+              unitCost: item.unitCost,
               quantity: item.quantity,
               selectedAlternatives: item.selectedAlternatives || [],
               packagingFee: item.packagingFee,

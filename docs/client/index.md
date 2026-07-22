@@ -309,7 +309,7 @@ Obtiene todos los m√©todos de pago activos configurados para un restaurante bas√
    "message": "Pedido creado exitosamente",
    "data": {
      "orderId": "k3j4l5m6n7p8",
-     "trackingCode": "ORD-7USIVD6N"
+     "trackingCode": "20260001"
    }
  }
  ```

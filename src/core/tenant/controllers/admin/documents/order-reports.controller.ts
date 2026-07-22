@@ -4,6 +4,7 @@ import type { OrderReportFilters } from '../../../services/admin/documents/order
 
 const DELIVERY_TYPES = ['delivery', 'pickup', 'dine_in'] as const;
 const PAYMENT_STATUSES = ['unpaid', 'paid', 'review_pending'] as const;
+const DOCUMENT_STATUSES = ['draft', 'issued', 'voided', 'none'] as const;
 
 /**
  * Lee y valida los filtros comunes de todos los endpoints de reportes.
@@ -40,6 +41,11 @@ const parseFilters = (c: Context): { filters?: OrderReportFilters; error?: strin
     return { error: 'paymentStatus inválido' };
   }
 
+  const documentStatus = c.req.query('documentStatus');
+  if (documentStatus && !DOCUMENT_STATUSES.includes(documentStatus as any)) {
+    return { error: 'documentStatus inválido' };
+  }
+
   const salesChannelIdRaw = c.req.query('salesChannelId');
   const salesChannelId = salesChannelIdRaw ? parseInt(salesChannelIdRaw, 10) : undefined;
   if (salesChannelIdRaw && isNaN(salesChannelId!)) {
@@ -60,6 +66,7 @@ const parseFilters = (c: Context): { filters?: OrderReportFilters; error?: strin
       deliveryType: deliveryType as OrderReportFilters['deliveryType'],
       salesChannelId,
       paymentStatus: paymentStatus as OrderReportFilters['paymentStatus'],
+      documentStatus: documentStatus as OrderReportFilters['documentStatus'],
       granularity: granularity as OrderReportFilters['granularity'],
     },
   };

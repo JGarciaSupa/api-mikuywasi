@@ -365,6 +365,13 @@
       "when": 1784606423543,
       "tag": "0051_add_stock_product",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784700000000,
+      "tag": "0052_order_items_unit_cost",
+      "breakpoints": true
     }
   ]
 }

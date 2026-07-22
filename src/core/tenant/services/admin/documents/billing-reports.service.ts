@@ -1,6 +1,7 @@
-import { billingDocuments, billingDocumentLines } from '../../../../../db/tenant/schema';
+import { billingDocuments, billingDocumentLines, orderItems, orders, users } from '../../../../../db/tenant/schema';
 import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
+import { resolveRecipeUnitCosts } from '../../client/tenant.service';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -203,7 +204,13 @@ export const getBillingReportBreakdown = async (filters: BillingReportFilters) =
     .groupBy(billingDocuments.documentType);
 
   const bySeries = await db
-    .select({ label: billingDocuments.series, docs: count(), total: totalExpr })
+    .select({
+      label: billingDocuments.series,
+      docs: count(),
+      total: totalExpr,
+      minSequential: sql<number>`MIN(${billingDocuments.sequential})`,
+      maxSequential: sql<number>`MAX(${billingDocuments.sequential})`,
+    })
     .from(billingDocuments)
     .where(and(...issuedConditions(filters, currency)))
     .groupBy(billingDocuments.series);
@@ -230,16 +237,28 @@ export const getBillingReportBreakdown = async (filters: BillingReportFilters) =
     .orderBy(desc(totalExpr))
     .limit(10);
 
+  // Emisor: createdBy guarda el username del JWT; se resuelve al nombre real
+  // del usuario (users.name) con fallback al username si ya no existe.
+  const creatorExpr = sql<string>`COALESCE(${users.name}, ${billingDocuments.createdBy})`;
   const byCreator = await db
-    .select({ label: billingDocuments.createdBy, docs: count(), total: totalExpr })
+    .select({ label: creatorExpr, docs: count(), total: totalExpr })
     .from(billingDocuments)
+    .leftJoin(users, eq(users.username, billingDocuments.createdBy))
     .where(and(...emittedConditions(filters, currency)))
-    .groupBy(billingDocuments.createdBy);
+    .groupBy(sql`1`);
 
   return {
     currency,
     byDocumentType: mapRows(byDocumentType, 'Sin tipo'),
-    bySeries: mapRows(bySeries, 'Sin serie'),
+    bySeries: bySeries
+      .map((row) => ({
+        label: row.label || 'Sin serie',
+        docsCount: row.docs,
+        total: roundMoney(toNum(row.total)),
+        minSequential: toNum(row.minSequential),
+        maxSequential: toNum(row.maxSequential),
+      }))
+      .sort((a, b) => b.total - a.total),
     bySunatStatus: mapRows(bySunatStatus, 'Sin estado'),
     topBuyers: topBuyers.map((row) => ({
       label: row.label,
@@ -281,31 +300,60 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
       status: billingDocuments.status,
       sunatStatus: billingDocuments.sunatStatus,
       voidedReason: billingDocuments.voidedReason,
-      createdBy: billingDocuments.createdBy,
+      // Nombre real del emisor; fallback al username guardado si el usuario ya no existe
+      createdBy: sql<string | null>`COALESCE(${users.name}, ${billingDocuments.createdBy})`,
     })
     .from(billingDocuments)
+    .leftJoin(users, eq(users.username, billingDocuments.createdBy))
     .where(whereClause)
     .orderBy(asc(billingDocuments.issuedAt))
     .limit(EXPORT_MAX_ROWS);
 
-  const lines = await db
+  const exportLines = await db
     .select({
       documentNumber: billingDocuments.documentNumber,
       documentType: billingDocuments.documentType,
       issuedAt: billingDocuments.issuedAt,
       docStatus: billingDocuments.status,
+      deliveryType: orders.deliveryType,
+      salesChannelName: orders.salesChannelName,
+      tableName: orders.tableName,
+      orderStatus: orders.status,
+      productId: billingDocumentLines.productId,
       productName: billingDocumentLines.productName,
       quantity: billingDocumentLines.quantity,
       unitPrice: billingDocumentLines.unitPrice,
+      unitCost: orderItems.unitCost,
       subtotal: billingDocumentLines.subtotal,
       taxAmount: billingDocumentLines.taxAmount,
       lineTotal: billingDocumentLines.lineTotal,
     })
     .from(billingDocumentLines)
     .innerJoin(billingDocuments, eq(billingDocumentLines.documentId, billingDocuments.id))
+    .innerJoin(orders, eq(billingDocuments.orderId, orders.id))
+    .leftJoin(orderItems, eq(billingDocumentLines.orderItemId, orderItems.id))
     .where(whereClause)
     .orderBy(asc(billingDocuments.issuedAt))
     .limit(EXPORT_MAX_ROWS);
+
+  // Costo histórico: líneas sin snapshot (pedidos anteriores a unit_cost) se
+  // recalculan con la receta y los precios promedio ACTUALES de los insumos.
+  const missingCostProductIds = Array.from(new Set(
+    exportLines
+      .filter((line) => line.unitCost == null && line.productId != null)
+      .map((line) => Number(line.productId)),
+  ));
+  const fallbackCosts = await resolveRecipeUnitCosts(db, missingCostProductIds);
+
+  const lines = exportLines.map(({ productId, ...line }) => {
+    const unitCost = line.unitCost != null
+      ? toNum(line.unitCost)
+      : (productId != null ? fallbackCosts.get(Number(productId)) ?? null : null);
+    return {
+      ...line,
+      unitCost: unitCost != null ? roundMoney(unitCost) : null,
+    };
+  });
 
   return {
     documents,
