@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import * as orderService from '../../../services/admin/documents/order.service';
 import { getAuditActor } from '@/utils/helpers';
+import { hasPermissionLive, getCurrentUserId } from '@/utils/permissions';
 
 /**
  * Listado paginado de órdenes
@@ -15,6 +16,10 @@ export const getOrdersController = async (c: Context) => {
     const startDate = c.req.query('startDate');
     const endDate = c.req.query('endDate');
     const branchIdQuery = c.req.query('branchId');
+    // La página de Pedidos envía scopeToUser=true para aplicar la visibilidad por
+    // usuario. Otros consumidores del mismo endpoint (ej. tickets del menú operativo)
+    // no lo envían, por lo que su comportamiento no cambia.
+    const scopeToUser = c.req.query('scopeToUser') === 'true';
 
     if (!branchIdQuery) {
       return c.json({
@@ -31,6 +36,12 @@ export const getOrdersController = async (c: Context) => {
       }, 400);
     }
 
+    // Si la vista pide scope y el usuario NO tiene 'ver_todos_los_pedidos', se
+    // limita a los pedidos que generó o cobró. Se resuelve el permiso "en vivo"
+    // (BD cacheada) para que un cambio de permisos aplique sin re-login.
+    const canSeeAll = await hasPermissionLive(c, 'administracion.ver_todos_los_pedidos');
+    const visibilityUserId = scopeToUser && !canSeeAll ? getCurrentUserId(c) : undefined;
+
     const result = await orderService.getOrders({
       page,
       limit,
@@ -40,6 +51,7 @@ export const getOrdersController = async (c: Context) => {
       startDate,
       endDate,
       branchId,
+      visibilityUserId,
     });
 
     return c.json({

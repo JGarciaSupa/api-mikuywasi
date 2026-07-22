@@ -22,6 +22,10 @@ export interface GetOrdersFilters {
   startDate?: string;
   endDate?: string;
   branchId?: number;
+  // Si se indica, limita el listado a los pedidos que este usuario GENERÓ o COBRÓ
+  // (vía cash_sessions.userId). El controller solo lo pasa cuando el usuario NO
+  // tiene el permiso administracion.ver_todos_los_pedidos. Sin él, se ve todo.
+  visibilityUserId?: number;
 }
 
 /**
@@ -37,7 +41,8 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     search,
     startDate,
     endDate,
-    branchId
+    branchId,
+    visibilityUserId
   } = filters;
 
   const offset = (page - 1) * limit;
@@ -74,6 +79,18 @@ export const getOrders = async (filters: GetOrdersFilters) => {
         like(orders.customerName, `%${search}%`),
         like(orders.customerPhone, `%${search}%`),
         like(orders.trackingCode, `%${search}%`)
+      )!
+    );
+  }
+
+  // Visibilidad por usuario: solo los pedidos que generó (cash_session del pedido) o
+  // cobró (collected_session), resolviendo cada sesión a su cash_sessions.user_id.
+  // Pedidos sin sesión asociada quedan fuera para usuarios restringidos.
+  if (visibilityUserId) {
+    conditions.push(
+      or(
+        sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.cashSessionId} AND cs.user_id = ${visibilityUserId})`,
+        sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.collectedSessionId} AND cs.user_id = ${visibilityUserId})`
       )!
     );
   }

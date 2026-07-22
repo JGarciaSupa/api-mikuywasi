@@ -1,19 +1,7 @@
 import type { Context } from 'hono';
 import * as cash from '../../../services/admin/documents/cash.service';
 import { getAuditActor, jsonError } from '@/utils/helpers';
-
-// Verifica si el usuario tiene un permiso específico (sub-acción completa, ej. 'caja.ver_contabilidad').
-function hasPermission(c: Context, subActionCode: string): boolean {
-  const payload = c.get('jwtPayload');
-  if (!payload) return false;
-  if (payload.role === 'rol_admin') return true;
-  const [actionCode] = subActionCode.split('.');
-  return payload.permissions?.[actionCode]?.includes(subActionCode) ?? false;
-}
-
-function getCurrentUserId(c: Context): number | undefined {
-  return c.get('jwtPayload')?.userId;
-}
+import { hasPermission, getCurrentUserId } from '@/utils/permissions';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
