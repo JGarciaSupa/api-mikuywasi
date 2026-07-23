@@ -78,6 +78,13 @@
       "when": 1783902034693,
       "tag": "0010_flowery_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784784464292,
+      "tag": "0011_sales_channel_classifications",
+      "breakpoints": true
     }
   ]
 }

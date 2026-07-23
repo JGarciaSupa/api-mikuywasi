@@ -10,6 +10,7 @@ import currenciesRoutes from './routes/currencies.routes';
 import countriesRoutes from './routes/countries.routes';
 import identityDocumentTypesRoutes from './routes/identity-document-types.routes';
 import receiptTypesRoutes from './routes/receipt-types.routes';
+import salesChannelClassificationsRoutes from './routes/sales-channel-classifications.routes';
 
 const master = new Hono();
 
@@ -24,6 +25,7 @@ master.route('/currencies', currenciesRoutes); // Monedas globales
 master.route('/countries', countriesRoutes);   // Países globales
 master.route('/identity-document-types', identityDocumentTypesRoutes);
 master.route('/receipt-types', receiptTypesRoutes);
+master.route('/sales-channel-classifications', salesChannelClassificationsRoutes);
 
 
 // Public routes

@@ -1,0 +1,1 @@
+ALTER TABLE "sales_channels" ADD COLUMN "classification_code" varchar(50);

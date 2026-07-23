@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { classificationCodes } from '../admin/config-local/sales-channel.validation';
 
 export const createOrderSchema = z.object({
   customerId: z.number().int().positive().optional().nullable(),
@@ -9,7 +10,7 @@ export const createOrderSchema = z.object({
   branchId: z.number().int().positive().optional().nullable(),
   salesChannelId: z.number().int().positive().optional().nullable(),
 
-  deliveryType: z.enum(['delivery', 'pickup', 'dine_in'], { error: 'Tipo de entrega es requerido' }),
+  deliveryType: z.enum(classificationCodes, { error: 'Tipo de entrega es requerido y debe ser válido' }),
   deliveryInfo: z.object({
     lat: z.number().optional().nullable(),
     lng: z.number().optional().nullable(),

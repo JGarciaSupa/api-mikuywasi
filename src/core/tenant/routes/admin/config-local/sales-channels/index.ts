@@ -11,12 +11,14 @@ import {
   getSalesChannelByIdController,
   updateSalesChannelController
 } from '../../../../controllers/admin/config-local/sales-channel.controller';
+import { getAllClassificationsController } from '../../../../../master/controllers/sales-channel-classifications.controller';
 
 const routes = new Hono();
 
 routes.use('*', authMiddleware);
 
 routes.get('/', getAllSalesChannelsController);
+routes.get('/classifications', getAllClassificationsController);
 routes.get('/:id', getSalesChannelByIdController);
 routes.post('/', validateCreateSalesChannel, createSalesChannelController);
 routes.patch('/:id', validateUpdateSalesChannel, updateSalesChannelController);

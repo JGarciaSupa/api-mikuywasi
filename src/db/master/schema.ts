@@ -429,3 +429,17 @@ export const currencies = pgTable('currencies', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// ==========================================
+// 🛍️ CLASIFICACIONES DE CANALES DE VENTA
+// ==========================================
+
+export const salesChannelClassifications = pgTable('sales_channel_classifications', {
+  code: varchar('code', { length: 50 }).primaryKey(),
+  group: varchar('group', { length: 50 }).notNull(), // 'on_premise', 'off_premise', 'b2b', 'digital'
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});

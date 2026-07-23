@@ -181,8 +181,14 @@ export const salesChannels = pgTable('sales_channels', {
 	id: serial('id').primaryKey(),
 	name: varchar('name', { length: 100 }).notNull(),
 	code: varchar('code', { length: 30 }).notNull().unique(), // Ej: 'SALON', 'DELIVERY-PROPIO', 'RAPPI'
-	type: varchar('type', { length: 20, enum: ['dine_in', 'delivery', 'pickup'] as const }).notNull(),
+	classificationCode: varchar('classification_code', { length: 50 }), // FK Lógica a master.sales_channel_classifications
 	isActive: boolean('is_active').default(true).notNull(),
+	isWaiterEnabled: boolean('is_waiter_enabled').default(false).notNull(), // Activar mozo
+	requireTable: boolean('require_table').default(false).notNull(), // Exigir mesa
+	requireWaiter: boolean('require_waiter').default(false).notNull(), // Exigir mozo
+	requirePax: boolean('require_pax').default(false).notNull(), // Exigir pax
+	requireCustomer: boolean('require_customer').default(false).notNull(), // Exigir cliente frecuente
+	requireDeliveryAddress: boolean('require_delivery_address').default(false).notNull(), // Exigir entregar a (dirección o destinatario)
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -428,7 +434,7 @@ export const orders = pgTable('orders', {
 		reference: string;
 	}>(),
 
-	deliveryType: text('delivery_type', { enum: ['delivery', 'pickup', 'dine_in'] }).notNull(),
+	deliveryType: varchar('delivery_type', { length: 50 }).notNull(),
 	salesChannelId: integer('sales_channel_id').references(() => salesChannels.id),
 	salesChannelName: varchar('sales_channel_name', { length: 100 }),
 	tableId: integer('table_id').references(() => tables.id),
