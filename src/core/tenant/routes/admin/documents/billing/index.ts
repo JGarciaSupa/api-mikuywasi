@@ -8,6 +8,7 @@ import {
   listRegisterSeriesController,
   assignRegisterSeriesController,
   unassignRegisterSeriesController,
+  createRegisterDocumentController,
   listDocumentsController,
   getAvailableDocumentTypesController,
   getDocumentController,
@@ -50,6 +51,7 @@ routes.delete('/series/:id', deleteSeriesController);
 // Series por caja
 routes.get('/series/registers/:registerId', listRegisterSeriesController);
 routes.post('/series/registers/:registerId', assignRegisterSeriesController);
+routes.post('/series/registers/:registerId/document', createRegisterDocumentController);
 routes.delete('/series/registers/:registerId/:documentType', unassignRegisterSeriesController);
 
 // Certificate conversion proxy

@@ -431,6 +431,31 @@ export const currencies = pgTable('currencies', {
 });
 
 // ==========================================
+// 🎚️ ACTIVACIONES (INTERRUPTORES DE COMPORTAMIENTO)
+// ==========================================
+// Catálogo global que el superadmin define una sola vez. Cada activación es un
+// interruptor de comportamiento del sistema (ej. "pedir motivo al eliminar un
+// producto del pedido"). El tenant NO inventa activaciones: solo enciende/apaga
+// las publicadas aquí, por caja (ver `registerActivations` en el tenant).
+// La lógica de qué hace cada una vive en el código, ligada a su `code`.
+
+export const activations = pgTable('activations', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 80 }).notNull().unique(),   // 'order.require_reason_on_item_delete'
+  name: varchar('name', { length: 120 }).notNull(),           // 'Pedir motivo al eliminar un producto'
+  description: varchar('description', { length: 255 }),
+  // Módulo del sistema donde se muestra/gestiona la activación (ej. 'caja_chica').
+  // Determina en qué pantalla/contexto aparece; habrá más módulos a futuro.
+  module: varchar('module', { length: 50 }).default('caja_chica').notNull(),
+  category: varchar('category', { length: 50 }).default('general').notNull(), // agrupador de UI dentro del módulo: 'pedidos'...
+  defaultEnabled: boolean('default_enabled').default(false).notNull(),        // valor efectivo si la caja no tiene override
+  order: integer('order').default(0).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// ==========================================
 // 🛍️ CLASIFICACIONES DE CANALES DE VENTA
 // ==========================================
 

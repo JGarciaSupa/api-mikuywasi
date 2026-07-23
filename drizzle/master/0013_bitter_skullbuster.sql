@@ -1,0 +1,1 @@
+ALTER TABLE "activations" ADD COLUMN "module" varchar(50) DEFAULT 'caja_chica' NOT NULL;

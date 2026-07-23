@@ -77,6 +77,28 @@ export const assignRegisterSeriesController = async (c: Context) => {
   }
 };
 
+// Crea/enlaza un documento (serie + correlativo + nombre custom) a una caja, con
+// el tipo tomado del catálogo maestro (receiptTypeCode).
+export const createRegisterDocumentController = async (c: Context) => {
+  try {
+    const registerId = Number(c.req.param('registerId'));
+    const { receiptTypeCode, series, initialCorrelative, description } = await c.req.json();
+    const row = await billingSeriesService.createOrLinkRegisterDocument({
+      registerId,
+      receiptTypeCode,
+      series,
+      initialCorrelative: initialCorrelative != null ? Number(initialCorrelative) : undefined,
+      description,
+    });
+    return c.json({ success: true, data: row }, 201);
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrada') || error.message?.includes('no encontrado') ? 404
+      : error.message?.includes('ya está en uso') ? 409
+      : 422;
+    return c.json({ success: false, message: error.message || 'Error al crear el documento de la caja' }, status as any);
+  }
+};
+
 export const unassignRegisterSeriesController = async (c: Context) => {
   try {
     const registerId = Number(c.req.param('registerId'));

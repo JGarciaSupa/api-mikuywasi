@@ -12,11 +12,16 @@ export const billingSeries = pgTable('billing_series', {
 	documentType: varchar('document_type', { length: 20,
 		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull().unique(),
+	// Código del tipo de comprobante del MAESTRO (receipt_types) del que nació esta
+	// serie. Solo lectura del maestro — determina el nombre base y el comportamiento
+	// fiscal (SUNAT vs interno). null en series antiguas creadas antes de este cambio.
+	receiptTypeCode: varchar('receipt_type_code', { length: 20 }),
 	initialSequential: integer('initial_sequential').notNull().default(1),
 	lastSequential: integer('last_sequential').notNull().default(0),
 	priceInclTax: boolean('price_incl_tax').notNull().default(false),
 	taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).notNull().default('18'),
 	isActive: boolean('is_active').notNull().default(true),
+	// Nombre custom del documento tal como lo ve la corporación (ej. "Nota de Venta").
 	description: varchar('description', { length: 200 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -41,6 +46,8 @@ export const cashRegisterDocumentSeries = pgTable('cash_register_document_series
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	registerDocTypeUnique: uniqueIndex('cash_reg_doc_series_register_doctype_idx').on(table.registerId, table.documentType),
+	// Una serie pertenece a UNA sola caja: no puede enlazarse a dos cajas distintas.
+	seriesUnique: uniqueIndex('cash_reg_doc_series_series_idx').on(table.seriesId),
 	registerIdx: index('cash_reg_doc_series_register_idx').on(table.registerId),
 }));
 

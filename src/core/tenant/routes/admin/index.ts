@@ -29,6 +29,7 @@ import receiptTypes from "./config-local/receipt-types";
 import salesChannels from "./config-local/sales-channels";
 import kitchenStations from "./config-local/kitchen-stations";
 import reasons from "./config-local/reasons";
+import activations from "./config-local/activations";
 import sunat from "./documents/sunat";
 import exchangeRates from "./config-local/exchange-rates";
 
@@ -70,6 +71,7 @@ routes.route('/receipt-types', receiptTypes);
 routes.route('/sales-channels', salesChannels);
 routes.route('/kitchen-stations', kitchenStations);
 routes.route('/reasons', reasons);
+routes.route('/activations', activations);
 routes.route('/sunat', sunat);
 routes.route('/exchange-rates', exchangeRates);
 

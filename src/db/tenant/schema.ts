@@ -5,3 +5,4 @@ export * from './schema/rbac';
 export * from './schema/billing';
 export * from './schema/customers';
 export * from './schema/reasons';
+export * from './schema/activations';

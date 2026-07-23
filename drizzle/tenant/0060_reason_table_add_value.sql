@@ -1,0 +1,2 @@
+ALTER TABLE "billing_series" ADD COLUMN "receipt_type_code" varchar(20);--> statement-breakpoint
+CREATE UNIQUE INDEX "cash_reg_doc_series_series_idx" ON "cash_register_document_series" USING btree ("series_id");
