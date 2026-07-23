@@ -128,6 +128,60 @@ export const updateOrderStatusController = async (c: Context) => {
 };
 
 /**
+ * Actualizar el cliente de una orden
+ */
+export const updateOrderCustomerController = async (c: Context) => {
+  try {
+    const id = c.req.param('id');
+    const { customerId } = await c.req.json();
+
+    if (!id) {
+      return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
+    }
+
+    const result = await orderService.updateOrderCustomer(id, customerId || null);
+
+    return c.json({
+      success: true,
+      message: 'Cliente actualizado correctamente',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar el cliente',
+    }, 500);
+  }
+};
+
+/**
+ * Actualizar las notas de una orden
+ */
+export const updateOrderNotesController = async (c: Context) => {
+  try {
+    const id = c.req.param('id');
+    const { notes } = await c.req.json();
+
+    if (!id) {
+      return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
+    }
+
+    const result = await orderService.updateOrderNotes(id, notes);
+
+    return c.json({
+      success: true,
+      message: 'Notas actualizadas correctamente',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar las notas',
+    }, 500);
+  }
+};
+
+/**
  * Actualizar estado de pago
  */
 export const updateOrderPaymentStatusController = async (c: Context) => {

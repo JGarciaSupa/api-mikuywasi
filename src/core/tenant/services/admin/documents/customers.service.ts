@@ -57,12 +57,17 @@ export async function searchCustomers(search?: string, limit = 20) {
   const customerIds = rows.map((r) => r.customer.id);
   if (customerIds.length === 0) return [];
 
-  const contacts = await db.select().from(customerContacts)
-    .where(or(...customerIds.map((id) => eq(customerContacts.customerId, id))));
+  const [contacts, addresses] = await Promise.all([
+    db.select().from(customerContacts)
+      .where(or(...customerIds.map((id) => eq(customerContacts.customerId, id)))),
+    db.select().from(customerAddresses)
+      .where(or(...customerIds.map((id) => eq(customerAddresses.customerId, id))))
+  ]);
 
   return rows.map((r) => ({
     ...r.customer,
     contacts: contacts.filter((c) => c.customerId === r.customer.id),
+    addresses: addresses.filter((a) => a.customerId === r.customer.id),
   }));
 }
 
@@ -88,40 +93,47 @@ export async function createCustomer(data: CreateCustomerInput) {
   const db = getTenantDb();
   if (!data.firstName?.trim()) throw new Error('El nombre del cliente es obligatorio');
 
-  return db.transaction(async (tx) => {
-    const [customer] = await tx.insert(customers).values({
-      customerType: data.customerType ?? 'person',
-      firstName: data.firstName.trim(),
-      lastName: data.lastName?.trim() || null,
-    }).returning();
+  try {
+    return await db.transaction(async (tx) => {
+      const [customer] = await tx.insert(customers).values({
+        customerType: data.customerType ?? 'person',
+        firstName: data.firstName.trim(),
+        lastName: data.lastName?.trim() || null,
+      }).returning();
 
-    if (data.contacts?.length) {
-      await tx.insert(customerContacts).values(
-        data.contacts
-          .filter((c) => c.value?.trim())
-          .map((c) => ({ customerId: customer.id, contactType: c.contactType, value: c.value.trim(), isPrimary: c.isPrimary ?? false })),
-      );
+      if (data.contacts?.length) {
+        await tx.insert(customerContacts).values(
+          data.contacts
+            .filter((c) => c.value?.trim())
+            .map((c) => ({ customerId: customer.id, contactType: c.contactType, value: c.value.trim(), isPrimary: c.isPrimary ?? false })),
+        );
+      }
+
+      const validAddresses = data.addresses?.filter((a) => a.address?.trim()) ?? [];
+      if (validAddresses.length) {
+        await tx.insert(customerAddresses).values(
+          validAddresses.map((a, i) => ({
+            customerId: customer.id,
+            name: a.name || null,
+            address: a.address.trim(),
+            district: a.district || null,
+            latitude: a.latitude != null ? String(a.latitude) : null,
+            longitude: a.longitude != null ? String(a.longitude) : null,
+            deliveryInstructions: a.deliveryInstructions || null,
+            // Si ninguna viene marcada como predeterminada, la primera lo es.
+            isDefault: a.isDefault ?? (i === 0 && !validAddresses.some((x) => x.isDefault)),
+          })),
+        );
+      }
+
+      return getCustomerByIdTx(tx, customer.id);
+    });
+  } catch (err: any) {
+    if (err.code === '23505' && err.message?.includes('customer_contacts')) {
+      throw new Error('El número de teléfono o correo ya se encuentra registrado en otro cliente.');
     }
-
-    const validAddresses = data.addresses?.filter((a) => a.address?.trim()) ?? [];
-    if (validAddresses.length) {
-      await tx.insert(customerAddresses).values(
-        validAddresses.map((a, i) => ({
-          customerId: customer.id,
-          name: a.name || null,
-          address: a.address.trim(),
-          district: a.district || null,
-          latitude: a.latitude != null ? String(a.latitude) : null,
-          longitude: a.longitude != null ? String(a.longitude) : null,
-          deliveryInstructions: a.deliveryInstructions || null,
-          // Si ninguna viene marcada como predeterminada, la primera lo es.
-          isDefault: a.isDefault ?? (i === 0 && !validAddresses.some((x) => x.isDefault)),
-        })),
-      );
-    }
-
-    return getCustomerByIdTx(tx, customer.id);
-  });
+    throw err;
+  }
 }
 
 async function getCustomerByIdTx(tx: any, id: number) {

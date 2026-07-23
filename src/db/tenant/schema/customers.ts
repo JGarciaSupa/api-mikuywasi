@@ -20,8 +20,7 @@ export const customers = pgTable('customers', {
 	statusIdx: index('customers_status_idx').on(table.status),
 }));
 
-// Teléfonos/emails del cliente. No se exige unicidad en `value` (números
-// compartidos/reciclados existen) — solo se indexa para búsqueda rápida.
+// Teléfonos/emails del cliente. Se exige unicidad en `value` para evitar duplicados.
 export const customerContacts = pgTable('customer_contacts', {
 	id: serial('id').primaryKey(),
 	customerId: integer('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
@@ -30,7 +29,7 @@ export const customerContacts = pgTable('customer_contacts', {
 	isPrimary: boolean('is_primary').default(false).notNull(),
 }, (table) => ({
 	customerIdx: index('customer_contacts_customer_idx').on(table.customerId),
-	valueIdx: index('customer_contacts_value_idx').on(table.value),
+	valueIdx: uniqueIndex('customer_contacts_value_idx').on(table.value),
 }));
 
 // Direcciones de entrega guardadas del cliente (puede tener varias: "Casa", "Oficina"...).

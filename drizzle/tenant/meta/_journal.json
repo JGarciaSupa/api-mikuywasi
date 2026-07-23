@@ -386,6 +386,13 @@
       "when": 1784778080846,
       "tag": "0054_reason_table_add_value",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1784779769689,
+      "tag": "0055_make_customer_contacts_value_unique",
+      "breakpoints": true
     }
   ]
 }

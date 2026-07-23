@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
@@ -97,15 +97,30 @@ export const getOrders = async (filters: GetOrdersFilters) => {
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const baseQuery = db.select().from(orders);
+  const baseQuery = db.select({
+    order: orders,
+    customer: {
+      id: customers.id,
+      firstName: customers.firstName,
+      lastName: customers.lastName,
+      firstPhone: sql<string>`(SELECT value FROM customer_contacts WHERE customer_id = ${customers.id} AND contact_type IN ('phone', 'mobile') ORDER BY is_primary DESC LIMIT 1)`,
+      firstAddress: sql<string>`(SELECT address FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+      firstReference: sql<string>`(SELECT delivery_instructions FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+    }
+  }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id));
   const countQuery = db.select({ total: count() }).from(orders);
 
-  const data = await (whereClause
+  const rawData = await (whereClause
     ? baseQuery.where(whereClause)
     : baseQuery)
     .limit(limit)
     .offset(offset)
     .orderBy(desc(orders.createdAt));
+
+  const data = rawData.map(row => ({
+    ...row.order,
+    customer: row.customer?.id ? row.customer : null,
+  }));
 
   const [totalResult] = await (whereClause
     ? countQuery.where(whereClause)
@@ -129,12 +144,28 @@ export const getOrders = async (filters: GetOrdersFilters) => {
  */
 export const getOrderById = async (id: string) => {
   const db = getTenantDb();
-  const [order] = await db
-    .select()
+  const [result] = await db
+    .select({
+      order: orders,
+      customer: {
+        id: customers.id,
+        firstName: customers.firstName,
+        lastName: customers.lastName,
+        firstPhone: sql<string>`(SELECT value FROM customer_contacts WHERE customer_id = ${customers.id} AND contact_type IN ('phone', 'mobile') ORDER BY is_primary DESC LIMIT 1)`,
+        firstAddress: sql<string>`(SELECT address FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+        firstReference: sql<string>`(SELECT delivery_instructions FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+      }
+    })
     .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(and(eq(orders.id, id)));
 
-  if (!order) return null;
+  if (!result) return null;
+
+  const order = {
+    ...result.order,
+    customer: result.customer?.id ? result.customer : null,
+  };
 
   const items = await db
     .select()
@@ -316,4 +347,57 @@ export const getOrderStats = async (branchId?: number) => {
       return acc;
     }, {} as Record<string, number>)
   };
+};
+
+export const updateOrderCustomer = async (orderId: string, customerId: number | null) => {
+  const db = getTenantDb();
+  
+  if (!customerId) {
+    // Si se envía null, desvinculamos al cliente pero mantenemos los datos como "Cliente General" o vacío
+    const [updated] = await db
+      .update(orders)
+      .set({
+        customerId: null
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+    return updated;
+  }
+
+  // Obtenemos los datos del cliente para actualizar el snapshot en el pedido
+  const [customer] = await db
+    .select()
+    .from(customers)
+    .where(eq(customers.id, customerId));
+    
+  if (!customer) {
+    throw new Error('Cliente no encontrado');
+  }
+
+  const customerName = customer.lastName ? `${customer.firstName} ${customer.lastName}` : customer.firstName;
+
+  const [updated] = await db
+    .update(orders)
+    .set({
+      customerId: customer.id,
+      customerName: customerName
+    })
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  return updated;
+};
+
+export const updateOrderNotes = async (orderId: string, notes: string | null) => {
+  const db = getTenantDb();
+  
+  const [updated] = await db
+    .update(orders)
+    .set({
+      notes: notes || null
+    })
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  return updated;
 };
