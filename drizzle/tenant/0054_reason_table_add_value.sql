@@ -1,0 +1,1 @@
+ALTER TABLE "reasons" ADD COLUMN "discount_value" numeric(12, 2);
