@@ -1016,6 +1016,15 @@ export async function getDocumentReceipt(id: number) {
 
   // Emisor siempre desde el microservicio facturador (empresa SUNAT configurada)
   const emisor = await resolveEmisor(db, doc.branchId);
+  const issueDate = doc.issuedAt ? new Date(doc.issuedAt) : new Date();
+  const dueDate = new Date(issueDate);
+  const currencyLabel = doc.currency === 'USD' ? 'Dólares' : 'Soles';
+  const serviceAmount = Math.max(roundMoney(toNum(doc.total) - toNum(doc.subtotal) - toNum(doc.taxAmount)), 0);
+  const buyerDocLabel =
+    doc.buyerDocType === 'RUC' ? 'R.U.C'
+      : doc.buyerDocType === 'DNI' ? 'D.N.I'
+        : doc.buyerDocType === 'CE' ? 'C.E.'
+          : doc.buyerDocType ?? null;
 
   let paymentSummary: {
     paymentMethod: string | null;
@@ -1075,6 +1084,17 @@ export async function getDocumentReceipt(id: number) {
       address: branch?.address?.fullAddress ?? null,
     },
     paymentSummary,
+    meta: {
+      issueDateTime: issueDate.toISOString(),
+      dueDate: dueDate.toISOString(),
+      currencyLabel,
+      paymentMethod: paymentSummary?.paymentMethod ?? null,
+      creditDays: null,
+      purchaseOrder: null,
+      advanceAmount: '0.00',
+      serviceAmount: String(serviceAmount.toFixed(2)),
+      buyerDocLabel,
+    },
   };
 }
 
