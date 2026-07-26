@@ -15,6 +15,7 @@ export const classificationCodes = [
 ] as const;
 
 export const createSalesChannelSchema = z.object({
+  branchId: z.number().int().positive().nullable().optional(),
   name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre no puede exceder los 100 caracteres'),
   code: z.string().min(1, 'El código es requerido').max(30, 'El código no puede exceder los 30 caracteres'),
   classificationCode: z.enum(classificationCodes).optional(),

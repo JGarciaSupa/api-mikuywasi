@@ -1,4 +1,4 @@
-import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels, branchChannels } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -137,9 +137,11 @@ export async function resolveRecipeUnitCosts(db: any, productIds: number[]) {
 async function resolveBranchDefaultChannelId(db: ReturnType<typeof getTenantDb>, branchId: number) {
   const [activeChannel] = await db
     .select({ id: salesChannels.id })
-    .from(branchChannels)
-    .innerJoin(salesChannels, eq(branchChannels.channelId, salesChannels.id))
-    .where(and(eq(branchChannels.branchId, branchId), eq(salesChannels.isActive, true)))
+    .from(salesChannels)
+    .where(and(
+      or(eq(salesChannels.branchId, branchId), isNull(salesChannels.branchId)),
+      eq(salesChannels.isActive, true),
+    ))
     .orderBy(salesChannels.name)
     .limit(1);
 

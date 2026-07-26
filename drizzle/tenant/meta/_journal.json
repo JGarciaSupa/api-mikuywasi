@@ -435,6 +435,13 @@
       "when": 1784835524179,
       "tag": "0061_register_activations",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1785029073978,
+      "tag": "0062_sales_channels_branch_id_drop_branch_channels",
+      "breakpoints": true
     }
   ]
 }

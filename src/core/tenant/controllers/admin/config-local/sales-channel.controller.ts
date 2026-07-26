@@ -9,7 +9,16 @@ import {
 
 export const getAllSalesChannelsController = async (c: Context) => {
   try {
-    const results = await getAllSalesChannels();
+    const branchIdParam = c.req.query('branchId');
+    let branchId: number | undefined;
+    if (branchIdParam !== undefined) {
+      branchId = parseInt(branchIdParam);
+      if (isNaN(branchId)) {
+        return c.json({ success: false, message: 'branchId inválido' }, 400);
+      }
+    }
+
+    const results = await getAllSalesChannels(branchId);
     return c.json({ success: true, data: results });
   } catch (error: any) {
     return c.json({
@@ -74,7 +83,7 @@ export const updateSalesChannelController = async (c: Context) => {
 
     const data = c.req.valid('json' as never);
     const result = await updateSalesChannel(id, data);
-
+    
     if (!result) {
       return c.json({ success: false, message: 'Canal de venta no encontrado' }, 404);
     }

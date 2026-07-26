@@ -1,12 +1,20 @@
 import { salesChannels } from '@/db/tenant/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, or, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 
 /**
- * Obtener todos los canales de venta del tenant
+ * Obtener todos los canales de venta del tenant.
+ * Si se pasa branchId, filtra a los canales propios de esa sucursal más los globales (branch_id null).
  */
-export async function getAllSalesChannels() {
+export async function getAllSalesChannels(branchId?: number) {
   const db = getTenantDb();
+
+  if (branchId !== undefined) {
+    return db.select().from(salesChannels)
+      .where(or(eq(salesChannels.branchId, branchId), isNull(salesChannels.branchId)))
+      .orderBy(asc(salesChannels.name));
+  }
+
   return db.select().from(salesChannels).orderBy(asc(salesChannels.name));
 }
 
