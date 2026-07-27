@@ -75,9 +75,7 @@ async function resolveActiveSeriesOrThrow(
   return resolved;
 }
 
-// Tipos de comprobante que el cajero puede emitir según la caja de su turno
-// abierto — lo usa el frontend para no ofrecer tipos sin serie asignada a esa caja.
-export async function getAvailableDocumentTypes(userId: number | undefined): Promise<SeriesDocumentType[]> {
+export async function getAvailableDocumentTypes(userId: number | undefined) {
   const activeSession = await getActiveSessionForUser(userId);
   if (!activeSession || activeSession.registerId == null) {
     throw new Error('Debes tener un turno de caja abierto para facturar');

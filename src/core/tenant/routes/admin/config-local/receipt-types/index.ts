@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { masterDb } from '@/db';
 import { countries, receiptTypes } from '@/db/master/schema';
 import { branches } from '@/db/tenant/schema';
@@ -9,6 +9,7 @@ const routes = new Hono();
 
 // GET /receipt-types?branchId=X — tipos de comprobante permitidos según el país
 // configurado en la sucursal (branch.countryCode → countries.isoCode → countryId).
+// También incluye los comprobantes globales (countryId IS NULL).
 routes.get('/', async (c) => {
   try {
     const branchIdStr = c.req.query('branchId');
@@ -21,20 +22,43 @@ routes.get('/', async (c) => {
       .from(branches)
       .where(eq(branches.id, branchId));
 
-    if (!branch?.countryCode) return c.json({ success: true, data: [] });
+    // Comprobantes globales (sin país) — siempre disponibles
+    const globalDocs = await masterDb
+      .select({
+        id: receiptTypes.id,
+        code: receiptTypes.code,
+        name: receiptTypes.name,
+        isGlobal: receiptTypes.isGlobal,
+      })
+      .from(receiptTypes)
+      .where(and(isNull(receiptTypes.countryId), eq(receiptTypes.isActive, true)))
+      .orderBy(receiptTypes.name);
+
+    if (!branch?.countryCode) {
+      return c.json({ success: true, data: globalDocs });
+    }
 
     const [country] = await masterDb
       .select({ id: countries.id })
       .from(countries)
       .where(eq(countries.isoCode, branch.countryCode));
 
-    if (!country) return c.json({ success: true, data: [] });
+    if (!country) return c.json({ success: true, data: globalDocs });
 
-    const rows = await masterDb
-      .select({ id: receiptTypes.id, code: receiptTypes.code, name: receiptTypes.name })
+    // Comprobantes del país de la sucursal
+    const countryDocs = await masterDb
+      .select({
+        id: receiptTypes.id,
+        code: receiptTypes.code,
+        name: receiptTypes.name,
+        isGlobal: receiptTypes.isGlobal,
+      })
       .from(receiptTypes)
       .where(and(eq(receiptTypes.countryId, country.id), eq(receiptTypes.isActive, true)))
       .orderBy(receiptTypes.name);
+
+    // Globales primero, luego los del país
+    const rows = [...globalDocs, ...countryDocs];
 
     return c.json({ success: true, data: rows });
   } catch (e) {

@@ -82,13 +82,14 @@ export const assignRegisterSeriesController = async (c: Context) => {
 export const createRegisterDocumentController = async (c: Context) => {
   try {
     const registerId = Number(c.req.param('registerId'));
-    const { receiptTypeCode, series, initialCorrelative, description } = await c.req.json();
+    const { receiptTypeCode, series, initialCorrelative, description, isActive } = await c.req.json();
     const row = await billingSeriesService.createOrLinkRegisterDocument({
       registerId,
       receiptTypeCode,
       series,
       initialCorrelative: initialCorrelative != null ? Number(initialCorrelative) : undefined,
       description,
+      isActive,
     });
     return c.json({ success: true, data: row }, 201);
   } catch (error: any) {

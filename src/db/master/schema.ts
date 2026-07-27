@@ -401,10 +401,14 @@ export const identityDocumentTypesRelations = relations(identityDocumentTypes, (
 
 export const receiptTypes = pgTable('receipt_types', {
   id: serial('id').primaryKey(),
-  countryId: integer('country_id').references(() => countries.id, { onDelete: 'cascade' }).notNull(),
-  code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (Factura), '03' (Boleta)
-  name: varchar('name', { length: 100 }).notNull(), // Ej: 'Factura Electrónica'
+  // NULL = tipo de comprobante global/interno (disponible para todos los países).
+  // NOT NULL = tipo de comprobante específico de un país.
+  countryId: integer('country_id').references(() => countries.id, { onDelete: 'cascade' }),
+  code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (Factura), '03' (Boleta), 'INTERNO'
+  name: varchar('name', { length: 100 }).notNull(), // Ej: 'Factura Electrónica', 'Nota de Venta'
   description: varchar('description', { length: 255 }),
+  // Flag para identificar comprobantes globales (no ligados a ningún país, ej. Tickets Internos).
+  isGlobal: boolean('is_global').default(false).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

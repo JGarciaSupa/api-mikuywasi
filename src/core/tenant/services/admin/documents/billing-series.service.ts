@@ -237,12 +237,23 @@ export async function resolveSeriesForRegister(
 }
 
 // Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada
+export interface AvailableDocumentType {
+  documentType: DocumentType;
+  receiptTypeCode: string | null;
+  description: string | null;
+}
+
+// Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada
 // y activa). Lo usa el frontend para no ofrecer al cajero tipos que su caja no
 // tiene habilitados.
-export async function listAvailableDocumentTypesForRegister(registerId: number): Promise<DocumentType[]> {
+export async function listAvailableDocumentTypesForRegister(registerId: number): Promise<AvailableDocumentType[]> {
   const db = getTenantDb();
   const rows = await db
-    .select({ documentType: cashRegisterDocumentSeries.documentType })
+    .select({
+      documentType: cashRegisterDocumentSeries.documentType,
+      receiptTypeCode: billingSeries.receiptTypeCode,
+      description: billingSeries.description,
+    })
     .from(cashRegisterDocumentSeries)
     .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
     .where(and(
@@ -250,7 +261,11 @@ export async function listAvailableDocumentTypesForRegister(registerId: number):
       eq(cashRegisterDocumentSeries.isActive, true),
       eq(billingSeries.isActive, true),
     ));
-  return rows.map((r) => r.documentType as DocumentType);
+  return rows.map((r) => ({
+    documentType: r.documentType as DocumentType,
+    receiptTypeCode: r.receiptTypeCode,
+    description: r.description,
+  }));
 }
 
 export async function listSeriesForRegister(registerId: number) {
@@ -282,6 +297,7 @@ export interface CreateRegisterDocumentInput {
   series: string;
   initialCorrelative?: number; // "siguiente a emitir"; lastSequential = este - 1
   description?: string | null;
+  isActive?: boolean;
 }
 
 // Enlaza (upsert) una serie a una caja para un tipo, dentro de una transacción.
@@ -290,6 +306,7 @@ async function linkSeriesToRegisterTx(
   registerId: number,
   documentType: ReceiptDocumentType,
   seriesId: number,
+  isActive: boolean = true,
 ) {
   const [existing] = await tx
     .select()
@@ -300,14 +317,14 @@ async function linkSeriesToRegisterTx(
     ));
 
   if (existing) {
-    if (existing.seriesId !== seriesId) {
+    if (existing.seriesId !== seriesId || existing.isActive !== isActive) {
       await tx.update(cashRegisterDocumentSeries)
-        .set({ seriesId, isActive: true, updatedAt: new Date() })
+        .set({ seriesId, isActive, updatedAt: new Date() })
         .where(eq(cashRegisterDocumentSeries.id, existing.id));
     }
     return;
   }
-  await tx.insert(cashRegisterDocumentSeries).values({ registerId, documentType, seriesId });
+  await tx.insert(cashRegisterDocumentSeries).values({ registerId, documentType, seriesId, isActive });
 }
 
 export async function createOrLinkRegisterDocument(input: CreateRegisterDocumentInput) {
@@ -345,11 +362,11 @@ export async function createOrLinkRegisterDocument(input: CreateRegisterDocument
         documentType,
         description: description ?? existingSeries.description,
         priceInclTax,
-        isActive: true,
+        isActive: input.isActive ?? true,
         updatedAt: new Date(),
       }).where(eq(billingSeries.id, existingSeries.id)).returning();
 
-      await linkSeriesToRegisterTx(tx, input.registerId, documentType, existingSeries.id);
+      await linkSeriesToRegisterTx(tx, input.registerId, documentType, existingSeries.id, input.isActive ?? true);
       return updated;
     }
 
@@ -364,9 +381,10 @@ export async function createOrLinkRegisterDocument(input: CreateRegisterDocument
       priceInclTax,
       taxRate: '18',
       description,
+      isActive: input.isActive ?? true,
     }).returning();
 
-    await linkSeriesToRegisterTx(tx, input.registerId, documentType, created.id);
+    await linkSeriesToRegisterTx(tx, input.registerId, documentType, created.id, input.isActive ?? true);
     return created;
   });
 }

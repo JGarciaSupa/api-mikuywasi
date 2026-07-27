@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
 export const createReceiptTypeSchema = z.object({
-  countryId: z.number().int().positive('El país es obligatorio'),
+  // Opcional: si se omite o es null → tipo de comprobante global/interno (todos los países).
+  countryId: z.number().int().positive().optional().nullable(),
   code: z.string().min(1, 'El código es obligatorio').max(50, 'El código es muy largo'),
   name: z.string().min(1, 'El nombre es obligatorio').max(100, 'El nombre es muy largo'),
   description: z.string().max(255).optional().nullable(),
+  isGlobal: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
 });
 
