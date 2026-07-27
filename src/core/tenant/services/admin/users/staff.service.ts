@@ -40,12 +40,17 @@ export async function getStaffList(currentUserId: number, params: StaffQueryInpu
   const offset = (params.page - 1) * params.limit;
 
   const whereClause = and(
-    params.name ? like(users.name, `%${params.name}%`) : undefined
+    params.name ? like(users.name, `%${params.name}%`) : undefined,
+    params.roleCode ? eq(roles.code, params.roleCode) : undefined
   );
 
+  // El join a roles se necesita también acá cuando se filtra por roleCode.
+  // userRoles.userId es unique, así que el left join no duplica filas del count.
   const [totalResult] = await db
     .select({ total: count() })
     .from(users)
+    .leftJoin(userRoles, eq(users.id, userRoles.userId))
+    .leftJoin(roles, eq(userRoles.roleId, roles.id))
     .where(whereClause);
 
   const items = await db
@@ -59,6 +64,7 @@ export async function getStaffList(currentUserId: number, params: StaffQueryInpu
       role: {
         id: roles.id,
         name: roles.name,
+        code: roles.code,
       }
     })
     .from(users)

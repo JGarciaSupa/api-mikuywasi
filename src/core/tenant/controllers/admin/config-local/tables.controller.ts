@@ -4,7 +4,8 @@ import {
   deleteTable,
   getAllTables,
   getTableById,
-  updateTable
+  updateTable,
+  updateTablePosition
 } from '../../../services/admin/config-local/tables.service';
 
 /**
@@ -35,9 +36,9 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { name, branchId, capacity, salonId } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number; salonId?: string | null };
+    const { name, branchId, capacity, shape, salonId } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null };
 
-    const result = await createTable({ name, branchId, capacity, salonId });
+    const result = await createTable({ name, branchId, capacity, shape, salonId });
 
     return c.json({
       success: true,
@@ -66,9 +67,9 @@ export const updateTableController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de mesa inválido' }, 400);
     }
 
-    const { name, capacity, salonId } = c.req.valid('json' as never) as { name: string; capacity?: number; salonId?: string | null };
+    const { name, capacity, shape, salonId } = c.req.valid('json' as never) as { name: string; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null };
 
-    const result = await updateTable(id, { name, capacity, salonId });
+    const result = await updateTable(id, { name, capacity, shape, salonId });
 
     if (!result) {
       return c.json({ success: false, message: 'Mesa no encontrada' }, 404);
@@ -83,6 +84,41 @@ export const updateTableController = async (c: Context) => {
     return c.json({
       success: false,
       message: error.message || 'Error al actualizar la mesa'
+    }, 400);
+  }
+};
+
+/**
+ * Actualizar solo la posición de una mesa (arrastrar y soltar en el mapa)
+ */
+export const updateTablePositionController = async (c: Context) => {
+  try {
+    const idParam = c.req.param('id');
+    if (!idParam) {
+      return c.json({ success: false, message: 'ID de mesa requerido' }, 400);
+    }
+    const id = parseInt(idParam);
+    if (isNaN(id)) {
+      return c.json({ success: false, message: 'ID de mesa inválido' }, 400);
+    }
+
+    const { posX, posY } = c.req.valid('json' as never) as { posX: number; posY: number };
+
+    const result = await updateTablePosition(id, { posX, posY });
+
+    if (!result) {
+      return c.json({ success: false, message: 'Mesa no encontrada' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Posición actualizada',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar la posición de la mesa'
     }, 400);
   }
 };

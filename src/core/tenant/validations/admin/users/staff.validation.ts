@@ -29,6 +29,8 @@ export const updateStaffSchema = z.object({
 
 export const staffQuerySchema = z.object({
   name: z.string().optional(),
+  // Filtra por el code del rol (ej. 'rol_mozo') para listar staff con un rol específico.
+  roleCode: z.string().optional(),
   page: z.string().optional().default('1').transform((val) => parseInt(val, 10)),
   limit: z.string().optional().default('10').transform((val) => parseInt(val, 10)),
 });

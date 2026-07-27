@@ -185,6 +185,27 @@ export const updateWaiterOrderStatusController = async (c: Context) => {
 };
 
 /**
+ * PATCH /api/admin/waiter/orders/:id/waiter
+ * Asignar/cambiar el mozo de un pedido abierto desde la vista de mesero.
+ */
+export const updateWaiterOrderWaiterController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const { waiterId } = await c.req.json();
+    const updated = await orderService.updateOrderWaiter(orderId, waiterId ?? null);
+    if (!updated) {
+      return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
+    }
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message || 'Error al actualizar el mozo del pedido' }, 500);
+  }
+};
+
+/**
  * PATCH /api/admin/waiter/orders/:id/payment-status
  * Actualizar estado de pago desde la vista de mesero.
  */

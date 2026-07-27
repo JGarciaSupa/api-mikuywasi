@@ -19,6 +19,8 @@ export const createOrderSchema = z.object({
 
   tableId: z.number().optional().nullable(),
   tableName: z.string().optional().nullable(),
+  // Mozo asignado al pedido (aplica cuando el canal de venta activa/exige mozo).
+  waiterId: z.number().int().positive().optional().nullable(),
 
   paymentMethod: z.string().optional().nullable(), // interno: se elige al cobrar; web: método previsto
   notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),

@@ -9,6 +9,7 @@ import {
   getWaiterOrderController,
   updateWaiterOrderStatusController,
   updateWaiterOrderPaymentStatusController,
+  updateWaiterOrderWaiterController,
 } from '../../../../controllers/admin/config-local/waiter.controller';
 import { validateCreateOrderFromToken } from '../../../../validations/client/order.validation';
 
@@ -22,6 +23,7 @@ routes.post('/orders', validateCreateOrderFromToken, createWaiterOrderController
 routes.get('/orders/:id', getWaiterOrderController);
 routes.patch('/orders/:id/status', updateWaiterOrderStatusController);
 routes.patch('/orders/:id/payment-status', updateWaiterOrderPaymentStatusController);
+routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
 routes.patch('/orders/:id/items', editOrderItemController);
 routes.post('/orders/:id/cancel', cancelOrderController);
 

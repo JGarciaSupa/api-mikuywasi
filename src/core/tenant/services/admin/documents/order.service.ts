@@ -231,6 +231,24 @@ export const updateOrderStatus = async (id: string, status: string) => {
 };
 
 /**
+ * Actualizar el mozo asignado al pedido
+ */
+export const updateOrderWaiter = async (id: string, waiterId: number | null) => {
+  const db = getTenantDb();
+
+  const [updated] = await db
+    .update(orders)
+    .set({
+      waiterId,
+      updatedAt: new Date()
+    })
+    .where(and(eq(orders.id, id)))
+    .returning();
+
+  return updated;
+};
+
+/**
  * Actualizar estado de pago
  */
 export const updateOrderPaymentStatus = async (

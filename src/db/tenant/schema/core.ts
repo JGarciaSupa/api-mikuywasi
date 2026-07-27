@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, uuid, AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, decimal, integer, real, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, uuid, AnyPgColumn } from 'drizzle-orm/pg-core';
 import { customers } from './customers';
 
 // ==========================================
@@ -241,6 +241,10 @@ export const tables = pgTable('restaurant_tables', {
 	name: varchar('name', { length: 50 }).notNull(), // Ej: 'Mesa 1'
 	slug: varchar('slug', { length: 8 }).notNull().unique(), // URL única del QR de la mesa
 	capacity: integer('capacity').default(1),
+	// Posición en el mapa visual de mesas: % del lienzo del salón (0-100). NULL = mesa aún sin ubicar.
+	posX: real('pos_x'),
+	posY: real('pos_y'),
+	shape: varchar('shape', { length: 10, enum: ['square', 'round'] as const }).default('square'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -430,6 +434,10 @@ export const orders = pgTable('orders', {
 	salesChannelName: varchar('sales_channel_name', { length: 100 }),
 	tableId: integer('table_id').references(() => tables.id),
 	tableName: varchar('table_name', { length: 50 }),
+	// Pax (comensales) cuando el canal de venta lo exige (requirePax). Se separan
+	// adultos/niños para reportes de aforo y, a futuro, tarifas diferenciadas.
+	paxAdults: integer('pax_adults'),
+	paxChildren: integer('pax_children'),
 
 	paymentMethod: text('payment_method'), // método: null al crear (interno); web guarda el previsto; se define al cobrar
 	paymentMethodId: integer('payment_method_id').references(() => paymentMethods.id), // relación estable (rename-proof)
@@ -451,6 +459,8 @@ export const orders = pgTable('orders', {
 
 	trackingCode: varchar('tracking_code', { length: 20 }).unique(),
 	driverId: integer('driver_id').references(() => users.id), // Repartidor de esta sede
+	// Mozo asignado al pedido cuando el canal de venta lo activa/exige (isWaiterEnabled/requireWaiter).
+	waiterId: integer('waiter_id').references(() => users.id),
 	// Turno del mozo que generó el pedido (para trazabilidad de ventas por vendedor).
 	cashSessionId: integer('cash_session_id'), // FK lógica a cash_sessions (warehouse.ts)
 	// Turno del cajero que cobró el pedido (para atribución del ingreso en caja).
@@ -609,6 +619,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
 	customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
 	table: one(tables, { fields: [orders.tableId], references: [tables.id] }),
 	driver: one(users, { fields: [orders.driverId], references: [users.id] }),
+	waiter: one(users, { fields: [orders.waiterId], references: [users.id] }),
 	orderItems: many(orderItems),
 	splits: many(orderSplits),
 }));

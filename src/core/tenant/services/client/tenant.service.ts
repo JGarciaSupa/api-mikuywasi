@@ -642,6 +642,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           salesChannelName: salesChannelRow?.name ?? null,
           tableId: orderData.tableId,
           tableName: orderData.tableName,
+          waiterId: orderData.waiterId ?? null,
           paymentMethod: orderData.paymentMethod ?? null,
           paymentMethodId: pm?.id ?? null,
           notes: orderData.notes,

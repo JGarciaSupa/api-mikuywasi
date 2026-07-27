@@ -442,6 +442,27 @@
       "when": 1785029073978,
       "tag": "0062_sales_channels_branch_id_drop_branch_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1785045424176,
+      "tag": "0063_add_waiter_id_to_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785126905849,
+      "tag": "0064_add_pax_adults_and_pax_children_to_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1785130724247,
+      "tag": "0065_add_position_and_shape_to_restaurant_tables",
+      "breakpoints": true
     }
   ]
 }

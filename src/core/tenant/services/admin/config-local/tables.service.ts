@@ -41,7 +41,7 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string; branchId: number; capacity?: number; salonId?: string | null }) {
+export async function createTable(data: { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null }) {
   const db = getTenantDb();
   const branchId = data.branchId;
 
@@ -69,6 +69,7 @@ export async function createTable(data: { name: string; branchId: number; capaci
         branchId,
         slug,
         capacity: data.capacity ?? 1,
+        shape: data.shape ?? 'square',
         salonId: data.salonId ?? null,
       }).returning();
 
@@ -90,7 +91,7 @@ export async function createTable(data: { name: string; branchId: number; capaci
 /**
  * Actualizar una mesa existente
  */
-export async function updateTable(id: number, data: { name: string; capacity?: number; salonId?: string | null }) {
+export async function updateTable(id: number, data: { name: string; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null }) {
   const db = getTenantDb();
 
   // salonId: undefined = no tocar; null = quitar del salón; string = validar y asignar
@@ -103,6 +104,20 @@ export async function updateTable(id: number, data: { name: string; capacity?: n
   const [updatedTable] = await db
     .update(tables)
     .set({ ...data, updatedAt: new Date() })
+    .where(eq(tables.id, id))
+    .returning();
+  return updatedTable;
+}
+
+/**
+ * Actualizar solo la posición de una mesa en el mapa visual (arrastrar y soltar).
+ * Separado de updateTable para no revalidar/reenviar nombre, capacidad o salón en cada suelto.
+ */
+export async function updateTablePosition(id: number, data: { posX: number; posY: number }) {
+  const db = getTenantDb();
+  const [updatedTable] = await db
+    .update(tables)
+    .set({ posX: data.posX, posY: data.posY, updatedAt: new Date() })
     .where(eq(tables.id, id))
     .returning();
   return updatedTable;
