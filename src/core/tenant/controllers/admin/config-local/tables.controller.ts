@@ -40,7 +40,7 @@ export const getAllTablesController = async (c: Context) => {
  */
 export const createTableController = async (c: Context) => {
   try {
-    const { name, branchId, capacity, shape, salonId } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null };
+    const { name, branchId, capacity, shape, salonId } = c.req.valid('json' as never) as { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId: string };
 
     const result = await createTable({ name, branchId, capacity, shape, salonId });
 

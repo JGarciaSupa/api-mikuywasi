@@ -8,16 +8,16 @@ export const createTableSchema = z.object({
   branchId: z.number({ error: 'La sucursal es requerida' }).int().positive('La sucursal es requerida'),
   capacity: z.number().int().min(1, 'La capacidad mínima es 1').optional().default(1),
   shape: shapeSchema.optional().default('square'),
-  // null/omitido = mesa sin salón
-  salonId: z.uuid('El salón es inválido').nullable().optional(),
+  // salón obligatorio y válido
+  salonId: z.string({ error: 'Debes seleccionar un salón obligatorio' }).uuid('El salón es inválido'),
 });
 
 export const updateTableSchema = z.object({
   name: z.string().min(1, 'El nombre es requerido').max(50, 'El nombre no puede exceder los 50 caracteres'),
   capacity: z.number().int().min(1, 'La capacidad mínima es 1').optional(),
   shape: shapeSchema.optional(),
-  // null = quitar la mesa del salón; omitido = no tocar la asignación
-  salonId: z.uuid('El salón es inválido').nullable().optional(),
+  // no-nulable = no se puede quitar el salón de una mesa una vez asignado
+  salonId: z.string().uuid('El salón es inválido').optional(),
 });
 
 // Actualización liviana de posición: se llama en cada "soltar" del arrastre en el

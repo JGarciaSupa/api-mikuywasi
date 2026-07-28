@@ -66,13 +66,14 @@ export async function getTableById(id: number) {
 /**
  * Crear una nueva mesa con slug autogenerado y reintentos en caso de colisión
  */
-export async function createTable(data: { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null }) {
+export async function createTable(data: { name: string; branchId: number; capacity?: number; shape?: 'square' | 'round'; salonId: string }) {
   const db = getTenantDb();
   const branchId = data.branchId;
 
-  if (data.salonId) {
-    await assertSalonInBranch(data.salonId, branchId);
+  if (!data.salonId) {
+    throw new Error('Es obligatorio asignar un salón a cada mesa');
   }
+  await assertSalonInBranch(data.salonId, branchId);
 
   // 1. Verificar límite de 50 mesas por sucursal
   const [totalResult] = await db.select({ count: sql<number>`count(*)` })
@@ -95,7 +96,7 @@ export async function createTable(data: { name: string; branchId: number; capaci
         slug,
         capacity: data.capacity ?? 1,
         shape: data.shape ?? 'square',
-        salonId: data.salonId ?? null,
+        salonId: data.salonId,
       }).returning();
 
       return newTable;
@@ -119,7 +120,11 @@ export async function createTable(data: { name: string; branchId: number; capaci
 export async function updateTable(id: number, data: { name: string; capacity?: number; shape?: 'square' | 'round'; salonId?: string | null }) {
   const db = getTenantDb();
 
-  // salonId: undefined = no tocar; null = quitar del salón; string = validar y asignar
+  if (data.salonId === null) {
+    throw new Error('No es posible remover el salón de la mesa; todas las mesas deben mantener un salón asignado');
+  }
+
+  // salonId: undefined = no tocar; string = validar y asignar
   if (data.salonId) {
     const table = await getTableById(id);
     if (!table) return undefined;
