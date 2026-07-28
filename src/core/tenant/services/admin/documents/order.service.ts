@@ -1,4 +1,5 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables } from '../../../../../db/tenant/schema';
+
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
@@ -467,7 +468,24 @@ export const updateOrderPaymentStatus = async (
     }
   }
 
+  if (order.tableId) {
+    if (!wasPaid && paymentStatus === 'paid') {
+      await db.update(tables).set({
+        statusCode: 'dirty',
+        statusUpdatedAt: new Date(),
+        updatedAt: new Date()
+      }).where(eq(tables.id, order.tableId));
+    } else if (paymentStatus === 'review_pending') {
+      await db.update(tables).set({
+        statusCode: 'payment_pending',
+        statusUpdatedAt: new Date(),
+        updatedAt: new Date()
+      }).where(eq(tables.id, order.tableId));
+    }
+  }
+
   return updated;
+
 };
 
 /**

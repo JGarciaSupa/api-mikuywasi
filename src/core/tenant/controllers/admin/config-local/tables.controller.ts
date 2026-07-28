@@ -5,8 +5,12 @@ import {
   getAllTables,
   getTableById,
   updateTable,
-  updateTablePosition
+  updateTablePosition,
+  updateTableStatus
 } from '../../../services/admin/config-local/tables.service';
+import { getAllTableStatuses } from '@/core/master/services/table-statuses.service';
+
+
 
 /**
  * Obtener las mesas de una sucursal
@@ -154,3 +158,58 @@ export const deleteTableController = async (c: Context) => {
     }, 400);
   }
 };
+
+/**
+ * Actualizar el estado operativo o administrativo de una mesa en tiempo real
+ */
+export const updateTableStatusController = async (c: Context) => {
+  try {
+    const idParam = c.req.param('id');
+    if (!idParam) {
+      return c.json({ success: false, message: 'ID de mesa requerido' }, 400);
+    }
+    const id = parseInt(idParam);
+    if (isNaN(id)) {
+      return c.json({ success: false, message: 'ID de mesa inválido' }, 400);
+    }
+
+    const { statusCode, reservationNote } = c.req.valid('json' as never) as { statusCode: string; reservationNote?: string | null };
+
+    const result = await updateTableStatus(id, statusCode, reservationNote);
+
+    if (!result) {
+      return c.json({ success: false, message: 'Mesa no encontrada' }, 404);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Estado de mesa actualizado',
+      data: result
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar el estado de la mesa'
+    }, 400);
+  }
+};
+
+/**
+ * Obtener el catálogo oficial de estados de mesa desde DB Master
+ */
+export const getTableStatusesController = async (c: Context) => {
+  try {
+    const statuses = await getAllTableStatuses();
+    return c.json({
+      success: true,
+      data: statuses
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al obtener los estados de mesa'
+    }, 500);
+  }
+};
+
+

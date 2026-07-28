@@ -12,6 +12,7 @@ import identityDocumentTypesRoutes from './routes/identity-document-types.routes
 import receiptTypesRoutes from './routes/receipt-types.routes';
 import salesChannelClassificationsRoutes from './routes/sales-channel-classifications.routes';
 import activationsRoutes from './routes/activations.routes';
+import tableStatusesRoutes from './routes/table-statuses.routes';
 
 const master = new Hono();
 
@@ -28,6 +29,8 @@ master.route('/identity-document-types', identityDocumentTypesRoutes);
 master.route('/receipt-types', receiptTypesRoutes);
 master.route('/sales-channel-classifications', salesChannelClassificationsRoutes);
 master.route('/activations', activationsRoutes); // Catálogo global de activaciones (interruptores)
+master.route('/table-statuses', tableStatusesRoutes); // Catálogo global de estados de mesas
+
 
 
 // Public routes

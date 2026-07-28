@@ -1,5 +1,6 @@
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { orders, orderItems, orderSplits } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderSplits, tables } from '../../../../../db/tenant/schema';
+
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
@@ -224,9 +225,11 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
     .select({
       subtotal: orders.subtotal,
       deliveryFee: orders.deliveryFee,
+      tableId: orders.tableId,
     })
     .from(orders)
     .where(eq(orders.id, orderId));
+
   const baseAmount = Number(order?.subtotal ?? 0) + Number(order?.deliveryFee ?? 0);
   const retentionAmount = splits.reduce((sum, split) => sum + Number(split.retentionAmount ?? 0), 0);
   const total = baseAmount + retentionAmount;
@@ -241,9 +244,18 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
     })
     .where(eq(orders.id, orderId));
 
+  if (order?.tableId && newStatus === 'paid') {
+    await db.update(tables).set({
+      statusCode: 'dirty',
+      statusUpdatedAt: new Date(),
+      updatedAt: new Date()
+    }).where(eq(tables.id, order.tableId));
+  }
+
   // El ingreso a caja se registra POR CADA cuenta/split al marcarse pagada
   // (ver updateSplitPayment → recordSplitSaleIncome), no de forma consolidada aquí.
 }
+
 
 // ── Update split payment status ────────────────────────────────────────────────
 

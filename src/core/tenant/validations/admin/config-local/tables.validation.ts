@@ -27,10 +27,18 @@ export const positionTableSchema = z.object({
   posY: z.number().min(0, 'La posición Y debe estar entre 0 y 100').max(100, 'La posición Y debe estar entre 0 y 100'),
 });
 
+export const statusTableSchema = z.object({
+  statusCode: z.string().min(1, 'El código de estado es requerido'),
+  reservationNote: z.string().optional().nullable(),
+});
+
 export type CreateTableInput = z.infer<typeof createTableSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
 export type PositionTableInput = z.infer<typeof positionTableSchema>;
+export type StatusTableInput = z.infer<typeof statusTableSchema>;
 
 export const validateCreateTable = zValidator('json', createTableSchema);
 export const validateUpdateTable = zValidator('json', updateTableSchema);
 export const validatePositionTable = zValidator('json', positionTableSchema);
+export const validateStatusTable = zValidator('json', statusTableSchema);
+

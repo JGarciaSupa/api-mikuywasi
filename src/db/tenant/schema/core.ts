@@ -245,6 +245,9 @@ export const tables = pgTable('restaurant_tables', {
 	posX: real('pos_x'),
 	posY: real('pos_y'),
 	shape: varchar('shape', { length: 10, enum: ['square', 'round'] as const }).default('square'),
+	statusCode: varchar('status_code', { length: 50 }).default('available').notNull(),
+	statusUpdatedAt: timestamp('status_updated_at', { withTimezone: true }).defaultNow(),
+	currentReservationNote: varchar('current_reservation_note', { length: 255 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

@@ -472,3 +472,21 @@ export const salesChannelClassifications = pgTable('sales_channel_classification
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// ==========================================
+// 🪑 CATÁLOGO GLOBAL DE ESTADOS DE MESA
+// ==========================================
+
+export const tableStatuses = pgTable('table_statuses', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 50 }).notNull().unique(),         // 'available', 'seated', etc.
+  name: varchar('name', { length: 100 }).notNull(),                 // 'Disponible', 'Sentados', etc.
+  description: varchar('description', { length: 255 }),
+  colorHex: varchar('color_hex', { length: 20 }).notNull(),          // '#10B981', '#F59E0B', etc.
+  bgColorClass: varchar('bg_color_class', { length: 50 }).notNull(), // 'bg-emerald-500', 'bg-amber-500'
+  displayOrder: integer('display_order').default(0).notNull(),
+  isOperational: boolean('is_operational').default(true).notNull(), // true: Mozo/Salón; false: Admin/Host
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});

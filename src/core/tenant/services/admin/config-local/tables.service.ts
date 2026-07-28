@@ -2,6 +2,7 @@ import { salons, tables } from '@/db/tenant/schema';
 import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getTenantDb } from '@/utils/tenant-context';
+import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
 
 /**
  * Verificar que el salón exista y pertenezca a la sucursal de la mesa.
@@ -24,9 +25,33 @@ async function assertSalonInBranch(salonId: string, branchId: number) {
  */
 export async function getAllTables(branchId: number) {
   const db = getTenantDb();
-  return db.select().from(tables)
+  const rawTables = await db.select().from(tables)
     .where(eq(tables.branchId, branchId))
     .orderBy(tables.createdAt);
+
+  const statusesMap = await getCachedTableStatusesMap();
+  const defaultStatus = statusesMap.get('available') || {
+    code: 'available',
+    name: 'Disponible',
+    colorHex: '#10B981',
+    bgColorClass: 'bg-emerald-500',
+    isOperational: true
+  };
+
+  return rawTables.map(t => {
+    const s = statusesMap.get(t.statusCode) || defaultStatus;
+    return {
+      ...t,
+      status: {
+        code: s.code,
+        name: s.name,
+        colorHex: s.colorHex,
+        bgColorClass: s.bgColorClass,
+        isOperational: s.isOperational,
+        updatedAt: t.statusUpdatedAt
+      }
+    };
+  });
 }
 
 /**
@@ -134,3 +159,42 @@ export async function deleteTable(id: number) {
     .returning();
   return deletedTable;
 }
+
+/**
+ * Actualizar el estado operativo o administrativo de una mesa en tiempo real.
+ * Re-inicia el cronómetro (statusUpdatedAt) al instante actual.
+ */
+export async function updateTableStatus(id: number, statusCode: string, reservationNote?: string | null) {
+  const db = getTenantDb();
+  const statusesMap = await getCachedTableStatusesMap();
+  if (!statusesMap.has(statusCode)) {
+    throw new Error(`El estado '${statusCode}' no existe en el catálogo principal`);
+  }
+
+  const [updatedTable] = await db
+    .update(tables)
+    .set({
+      statusCode,
+      statusUpdatedAt: new Date(),
+      currentReservationNote: statusCode === 'reserved' ? (reservationNote || null) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(tables.id, id))
+    .returning();
+
+  if (!updatedTable) return undefined;
+
+  const s = statusesMap.get(updatedTable.statusCode)!;
+  return {
+    ...updatedTable,
+    status: {
+      code: s.code,
+      name: s.name,
+      colorHex: s.colorHex,
+      bgColorClass: s.bgColorClass,
+      isOperational: s.isOperational,
+      updatedAt: updatedTable.statusUpdatedAt
+    }
+  };
+}
+

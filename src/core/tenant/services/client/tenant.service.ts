@@ -5,6 +5,8 @@ import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
 import { findPaymentMethodByName } from '../admin/config-local/payment-method.service';
 import { assertStockAvailable, adjustProductStock } from '../shared/product-stock.service';
+import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
+
 
 function toNum(v: unknown) {
   const n = Number(v ?? 0);
@@ -389,11 +391,28 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
     }
   }
 
+  const statusesMap = await getCachedTableStatusesMap();
+  const defaultStatus = statusesMap.get('available') || {
+    code: 'available',
+    name: 'Disponible',
+    colorHex: '#10B981',
+    bgColorClass: 'bg-emerald-500',
+    isOperational: true
+  };
+
   return allTables.map((table) => {
     const activeOrder = activeByTableId.get(table.id) ?? null;
+    const s = statusesMap.get(table.statusCode) || defaultStatus;
     return {
       ...table,
-      status: activeOrder ? 'occupied' : 'available',
+      status: {
+        code: s.code,
+        name: s.name,
+        colorHex: s.colorHex,
+        bgColorClass: s.bgColorClass,
+        isOperational: s.isOperational,
+        updatedAt: table.statusUpdatedAt
+      },
       activeOrder: activeOrder
         ? {
           id: activeOrder.id,
@@ -408,6 +427,7 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
     };
   });
 };
+
 
 /**
  * Obtener métodos de pago activos. branchId=null en el registro significa
@@ -738,8 +758,17 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           await adjustProductStock(tx, productId, -requestedQty);
         }
 
+        if (orderData.tableId) {
+          await tx.update(tables).set({
+            statusCode: 'in_kitchen',
+            statusUpdatedAt: new Date(),
+            updatedAt: new Date()
+          }).where(eq(tables.id, orderData.tableId));
+        }
+
         return { ...result, items: computedItems, taxBreakdown };
       });
+
     } catch (error: any) {
       attempts++;
       if (error.code === '23505' && attempts < maxAttempts) continue;
