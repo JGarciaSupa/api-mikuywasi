@@ -1,6 +1,9 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
+
+const waiters = alias(users, 'waiters');
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
@@ -107,8 +110,31 @@ export const getOrders = async (filters: GetOrdersFilters) => {
       firstPhone: sql<string>`(SELECT value FROM customer_contacts WHERE customer_id = ${customers.id} AND contact_type IN ('phone', 'mobile') ORDER BY is_primary DESC LIMIT 1)`,
       firstAddress: sql<string>`(SELECT address FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
       firstReference: sql<string>`(SELECT delivery_instructions FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+    },
+    register: {
+      id: cashRegisters.id,
+      name: cashRegisters.name,
+    },
+    session: {
+      id: cashSessions.id,
+      code: cashSessions.code,
+      openedBy: cashSessions.openedBy,
+    },
+    user: {
+      id: users.id,
+      name: users.name,
+    },
+    waiter: {
+      id: waiters.id,
+      username: waiters.username,
+      name: waiters.name,
     }
-  }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id));
+  }).from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .leftJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
+    .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
+    .leftJoin(users, eq(cashSessions.userId, users.id))
+    .leftJoin(waiters, eq(orders.waiterId, waiters.id));
   const countQuery = db.select({ total: count() }).from(orders);
 
   const rawData = await (whereClause
@@ -118,10 +144,73 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     .offset(offset)
     .orderBy(desc(orders.createdAt));
 
-  const data = rawData.map(row => ({
-    ...row.order,
-    customer: row.customer?.id ? row.customer : null,
-  }));
+  const orderIds = rawData.map(r => r.order.id);
+
+  const docsByOrderId = orderIds.length ? await db.select({
+    orderId: billingDocuments.orderId,
+    id: billingDocuments.id,
+    documentType: billingDocuments.documentType,
+    documentNumber: billingDocuments.documentNumber,
+    series: billingDocuments.series,
+    sequential: billingDocuments.sequential,
+    status: billingDocuments.status,
+    total: billingDocuments.total,
+  }).from(billingDocuments).where(inArray(billingDocuments.orderId, orderIds)) : [];
+
+  const docsByItemLines = orderIds.length ? await db.select({
+    orderId: orderItems.orderId,
+    id: billingDocuments.id,
+    documentType: billingDocuments.documentType,
+    documentNumber: billingDocuments.documentNumber,
+    series: billingDocuments.series,
+    sequential: billingDocuments.sequential,
+    status: billingDocuments.status,
+    total: billingDocuments.total,
+  }).from(orderItems)
+    .innerJoin(billingDocumentLines, eq(orderItems.id, billingDocumentLines.orderItemId))
+    .innerJoin(billingDocuments, eq(billingDocumentLines.documentId, billingDocuments.id))
+    .where(inArray(orderItems.orderId, orderIds)) : [];
+
+  const docsMap = new Map<string, Array<{
+    id: number;
+    documentType: string;
+    documentNumber: string;
+    series: string;
+    sequential: number;
+    status: string;
+    total: string | number;
+  }>>();
+
+  for (const doc of [...docsByOrderId, ...docsByItemLines]) {
+    if (!doc.orderId) continue;
+    const list = docsMap.get(doc.orderId) ?? [];
+    if (!list.some(d => d.id === doc.id)) {
+      list.push({
+        id: doc.id,
+        documentType: doc.documentType,
+        documentNumber: doc.documentNumber,
+        series: doc.series,
+        sequential: doc.sequential,
+        status: doc.status,
+        total: doc.total,
+      });
+    }
+    docsMap.set(doc.orderId, list);
+  }
+
+  const data = rawData.map(row => {
+    const docs = docsMap.get(row.order.id) ?? [];
+    return {
+      ...row.order,
+      customer: row.customer?.id ? row.customer : null,
+      waiter: row.waiter?.id ? row.waiter : null,
+      registerCode: row.register?.id ? String(row.register.id) : null,
+      registerName: row.register?.name ?? null,
+      sessionCode: row.session?.code ?? null,
+      createdByUserName: row.user?.name ?? row.session?.openedBy ?? "—",
+      billingDocuments: docs,
+    };
+  });
 
   const [totalResult] = await (whereClause
     ? countQuery.where(whereClause)
@@ -155,10 +244,32 @@ export const getOrderById = async (id: string) => {
         firstPhone: sql<string>`(SELECT value FROM customer_contacts WHERE customer_id = ${customers.id} AND contact_type IN ('phone', 'mobile') ORDER BY is_primary DESC LIMIT 1)`,
         firstAddress: sql<string>`(SELECT address FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
         firstReference: sql<string>`(SELECT delivery_instructions FROM customer_addresses WHERE customer_id = ${customers.id} ORDER BY is_default DESC LIMIT 1)`,
+      },
+      register: {
+        id: cashRegisters.id,
+        name: cashRegisters.name,
+      },
+      session: {
+        id: cashSessions.id,
+        code: cashSessions.code,
+        openedBy: cashSessions.openedBy,
+      },
+      user: {
+        id: users.id,
+        name: users.name,
+      },
+      waiter: {
+        id: waiters.id,
+        username: waiters.username,
+        name: waiters.name,
       }
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
+    .leftJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
+    .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
+    .leftJoin(users, eq(cashSessions.userId, users.id))
+    .leftJoin(waiters, eq(orders.waiterId, waiters.id))
     .where(and(eq(orders.id, id)));
 
   if (!result) return null;
@@ -166,6 +277,11 @@ export const getOrderById = async (id: string) => {
   const order = {
     ...result.order,
     customer: result.customer?.id ? result.customer : null,
+    waiter: result.waiter?.id ? result.waiter : null,
+    registerCode: result.register?.id ? String(result.register.id) : null,
+    registerName: result.register?.name ?? null,
+    sessionCode: result.session?.code ?? null,
+    createdByUserName: result.user?.name ?? result.session?.openedBy ?? "—",
   };
 
   const items = await db
@@ -197,12 +313,43 @@ export const getOrderById = async (id: string) => {
     extrasByItem.set(row.orderItemId, list);
   }
 
+  const docsByOrderId = await db.select({
+    id: billingDocuments.id,
+    documentType: billingDocuments.documentType,
+    documentNumber: billingDocuments.documentNumber,
+    series: billingDocuments.series,
+    sequential: billingDocuments.sequential,
+    status: billingDocuments.status,
+    total: billingDocuments.total,
+  }).from(billingDocuments).where(eq(billingDocuments.orderId, id));
+
+  const docsByItemLines = itemIds.length ? await db.select({
+    id: billingDocuments.id,
+    documentType: billingDocuments.documentType,
+    documentNumber: billingDocuments.documentNumber,
+    series: billingDocuments.series,
+    sequential: billingDocuments.sequential,
+    status: billingDocuments.status,
+    total: billingDocuments.total,
+  }).from(orderItems)
+    .innerJoin(billingDocumentLines, eq(orderItems.id, billingDocumentLines.orderItemId))
+    .innerJoin(billingDocuments, eq(billingDocumentLines.documentId, billingDocuments.id))
+    .where(inArray(orderItems.id, itemIds)) : [];
+
+  const docsList: Array<any> = [];
+  for (const doc of [...docsByOrderId, ...docsByItemLines]) {
+    if (!docsList.some(d => d.id === doc.id)) {
+      docsList.push(doc);
+    }
+  }
+
   return {
     ...order,
     items: items.map((item) => ({
       ...item,
       extras: extrasByItem.get(item.id) ?? [],
     })),
+    billingDocuments: docsList,
   };
 };
 
