@@ -7,7 +7,8 @@ import {
   updateOrderPaymentStatusController,
   getOrderStatsController,
   updateOrderCustomerController,
-  updateOrderNotesController
+  updateOrderNotesController,
+  updateOrderForController
 } from '../../../../controllers/admin/documents/order.controller';
 import {
   getOrdersReportSummaryController,
@@ -45,6 +46,7 @@ routes.patch('/:id/status', updateOrderStatusController);
 routes.patch('/:id/payment-status', updateOrderPaymentStatusController);
 routes.patch('/:id/customer', updateOrderCustomerController);
 routes.patch('/:id/notes', updateOrderNotesController);
+routes.patch('/:id/order-for', updateOrderForController);
 
 // Cuentas separadas (splits)
 routes.get('/:orderId/splits', listSplitsController);

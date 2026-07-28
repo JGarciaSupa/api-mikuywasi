@@ -371,6 +371,7 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
       tableName: orders.tableName,
       trackingCode: orders.trackingCode,
       customerName: orders.customerName,
+      orderFor: orders.orderFor,
       total: orders.total,
       createdAt: orders.createdAt,
     })
@@ -398,6 +399,7 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
           id: activeOrder.id,
           trackingCode: activeOrder.trackingCode,
           customerName: activeOrder.customerName,
+          orderFor: activeOrder.orderFor,
           status: activeOrder.status,
           total: activeOrder.total,
           createdAt: activeOrder.createdAt,
@@ -472,6 +474,38 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
         const [salesChannelRow] = resolvedSalesChannelId
           ? await tx.select().from(salesChannels).where(eq(salesChannels.id, resolvedSalesChannelId)).limit(1)
           : [null];
+
+        // Reglas operativas del canal de venta (mozo/mesa/pax/cliente/entrega): no
+        // dependen solo de la validación de forma de zod, sino del estado real del
+        // canal en base de datos — por eso se validan acá, no en order.validation.ts.
+        if (salesChannelRow) {
+          if (salesChannelRow.requireTable && !orderData.tableId) {
+            throw new Error('Este canal de venta exige seleccionar una mesa');
+          }
+          if (salesChannelRow.requireWaiter && !orderData.waiterId) {
+            throw new Error('Este canal de venta exige asignar un mozo');
+          }
+          if (salesChannelRow.requirePax && !orderData.paxAdults && !orderData.paxChildren) {
+            throw new Error('Este canal de venta exige indicar el número de comensales');
+          }
+          if (salesChannelRow.requireCustomer && !orderData.customerId) {
+            throw new Error('Este canal de venta exige un cliente frecuente');
+          }
+          if (salesChannelRow.requireDeliveryAddress && !orderData.orderFor?.trim() && !orderData.customerName?.trim()) {
+            throw new Error('Este canal de venta exige indicar a quién se entrega el pedido');
+          }
+        }
+
+        // Aforo: la suma de pax adultos + niños no puede superar la capacidad de la mesa.
+        if (orderData.tableId) {
+          const totalPax = Number(orderData.paxAdults ?? 0) + Number(orderData.paxChildren ?? 0);
+          if (totalPax > 0) {
+            const [tableRow] = await tx.select().from(tables).where(eq(tables.id, orderData.tableId)).limit(1);
+            if (tableRow && totalPax > (tableRow.capacity ?? Infinity)) {
+              throw new Error(`El número de comensales (${totalPax}) supera la capacidad de la mesa (${tableRow.capacity})`);
+            }
+          }
+        }
 
         const productIds = Array.from(new Set(
           items
@@ -636,6 +670,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           customerName: orderData.customerName,
           customerPhone: orderData.customerPhone,
           customerAddress: orderData.customerAddress,
+          orderFor: orderData.orderFor ?? null,
           deliveryType: orderData.deliveryType,
           deliveryInfo: orderData.deliveryInfo,
           salesChannelId: resolvedSalesChannelId ?? null,
@@ -643,6 +678,8 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           tableId: orderData.tableId,
           tableName: orderData.tableName,
           waiterId: orderData.waiterId ?? null,
+          paxAdults: orderData.paxAdults ?? null,
+          paxChildren: orderData.paxChildren ?? null,
           paymentMethod: orderData.paymentMethod ?? null,
           paymentMethodId: pm?.id ?? null,
           notes: orderData.notes,

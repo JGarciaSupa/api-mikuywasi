@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "order_for" varchar(100);

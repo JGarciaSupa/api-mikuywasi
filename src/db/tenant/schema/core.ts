@@ -423,6 +423,7 @@ export const orders = pgTable('orders', {
 	customerName: varchar('customer_name', { length: 100 }).notNull(),
 	customerPhone: varchar('customer_phone', { length: 20 }),
 	customerAddress: text('customer_address'),
+	orderFor: varchar('order_for', { length: 100 }), // Entregar a (nombre del destinatario o receptor)
 	deliveryInfo: jsonb('delivery_info').$type<{
 		lat: number;
 		lng: number;

@@ -133,13 +133,13 @@ export const updateOrderStatusController = async (c: Context) => {
 export const updateOrderCustomerController = async (c: Context) => {
   try {
     const id = c.req.param('id');
-    const { customerId } = await c.req.json();
+    const { customerId, customerPhone, customerAddress } = await c.req.json();
 
     if (!id) {
       return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
     }
 
-    const result = await orderService.updateOrderCustomer(id, customerId || null);
+    const result = await orderService.updateOrderCustomer(id, customerId || null, customerPhone, customerAddress);
 
     return c.json({
       success: true,
@@ -177,6 +177,33 @@ export const updateOrderNotesController = async (c: Context) => {
     return c.json({
       success: false,
       message: error.message || 'Error al actualizar las notas',
+    }, 500);
+  }
+};
+
+/**
+ * Actualizar el campo orderFor (entregar a) de una orden
+ */
+export const updateOrderForController = async (c: Context) => {
+  try {
+    const id = c.req.param('id');
+    const { orderFor } = await c.req.json();
+
+    if (!id) {
+      return c.json({ success: false, message: 'ID de orden no proporcionado' }, 400);
+    }
+
+    const result = await orderService.updateOrderFor(id, orderFor || null);
+
+    return c.json({
+      success: true,
+      message: 'Destinatario (Entregar a) actualizado correctamente',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: error.message || 'Error al actualizar el campo entregar a',
     }, 500);
   }
 };

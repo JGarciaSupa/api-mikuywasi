@@ -463,6 +463,13 @@
       "when": 1785130724247,
       "tag": "0065_add_position_and_shape_to_restaurant_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1785184571272,
+      "tag": "0066_add_order_for_field_to_orders_table",
+      "breakpoints": true
     }
   ]
 }

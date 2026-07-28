@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
@@ -77,6 +77,7 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     conditions.push(
       or(
         like(orders.customerName, `%${search}%`),
+        like(orders.orderFor, `%${search}%`),
         like(orders.customerPhone, `%${search}%`),
         like(orders.trackingCode, `%${search}%`)
       )!
@@ -175,18 +176,18 @@ export const getOrderById = async (id: string) => {
   const itemIds = items.map((i) => i.id);
   const extrasRows = itemIds.length
     ? await db
-        .select({
-          id: orderItemExtras.id,
-          orderItemId: orderItemExtras.orderItemId,
-          extraId: orderItemExtras.extraId,
-          extraName: productExtras.name,
-          qty: orderItemExtras.qty,
-          unitPrice: orderItemExtras.unitPrice,
-          totalPrice: orderItemExtras.totalPrice,
-        })
-        .from(orderItemExtras)
-        .leftJoin(productExtras, eq(orderItemExtras.extraId, productExtras.id))
-        .where(inArray(orderItemExtras.orderItemId, itemIds))
+      .select({
+        id: orderItemExtras.id,
+        orderItemId: orderItemExtras.orderItemId,
+        extraId: orderItemExtras.extraId,
+        extraName: productExtras.name,
+        qty: orderItemExtras.qty,
+        unitPrice: orderItemExtras.unitPrice,
+        totalPrice: orderItemExtras.totalPrice,
+      })
+      .from(orderItemExtras)
+      .leftJoin(productExtras, eq(orderItemExtras.extraId, productExtras.id))
+      .where(inArray(orderItemExtras.orderItemId, itemIds))
     : [];
 
   const extrasByItem = new Map<number, typeof extrasRows>();
@@ -367,15 +368,23 @@ export const getOrderStats = async (branchId?: number) => {
   };
 };
 
-export const updateOrderCustomer = async (orderId: string, customerId: number | null) => {
+export const updateOrderCustomer = async (
+  orderId: string,
+  customerId: number | null,
+  phone?: string | null,
+  address?: string | null
+) => {
   const db = getTenantDb();
-  
+
   if (!customerId) {
     // Si se envía null, desvinculamos al cliente pero mantenemos los datos como "Cliente General" o vacío
     const [updated] = await db
       .update(orders)
       .set({
-        customerId: null
+        customerId: null,
+        customerName: '',
+        customerPhone: null,
+        customerAddress: null
       })
       .where(eq(orders.id, orderId))
       .returning();
@@ -387,18 +396,47 @@ export const updateOrderCustomer = async (orderId: string, customerId: number | 
     .select()
     .from(customers)
     .where(eq(customers.id, customerId));
-    
+
   if (!customer) {
     throw new Error('Cliente no encontrado');
   }
 
   const customerName = customer.lastName ? `${customer.firstName} ${customer.lastName}` : customer.firstName;
 
+  let finalPhone = phone;
+  if (finalPhone === undefined || finalPhone === null || finalPhone.trim() === '') {
+    const [contact] = await db
+      .select({ value: customerContacts.value })
+      .from(customerContacts)
+      .where(
+        and(
+          eq(customerContacts.customerId, customerId),
+          inArray(customerContacts.contactType, ['phone', 'mobile'])
+        )
+      )
+      .orderBy(desc(customerContacts.isPrimary))
+      .limit(1);
+    finalPhone = contact?.value || null;
+  }
+
+  let finalAddress = address;
+  if (finalAddress === undefined || finalAddress === null || finalAddress.trim() === '') {
+    const [addr] = await db
+      .select({ address: customerAddresses.address })
+      .from(customerAddresses)
+      .where(eq(customerAddresses.customerId, customerId))
+      .orderBy(desc(customerAddresses.isDefault))
+      .limit(1);
+    finalAddress = addr?.address || null;
+  }
+
   const [updated] = await db
     .update(orders)
     .set({
       customerId: customer.id,
-      customerName: customerName
+      customerName: customerName,
+      customerPhone: finalPhone || null,
+      customerAddress: finalAddress || null
     })
     .where(eq(orders.id, orderId))
     .returning();
@@ -408,11 +446,25 @@ export const updateOrderCustomer = async (orderId: string, customerId: number | 
 
 export const updateOrderNotes = async (orderId: string, notes: string | null) => {
   const db = getTenantDb();
-  
+
   const [updated] = await db
     .update(orders)
     .set({
       notes: notes || null
+    })
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  return updated;
+};
+
+export const updateOrderFor = async (orderId: string, orderFor: string | null) => {
+  const db = getTenantDb();
+
+  const [updated] = await db
+    .update(orders)
+    .set({
+      orderFor: orderFor?.trim() || null
     })
     .where(eq(orders.id, orderId))
     .returning();

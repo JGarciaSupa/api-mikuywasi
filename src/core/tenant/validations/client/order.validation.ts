@@ -4,9 +4,10 @@ import { classificationCodes } from '../admin/config-local/sales-channel.validat
 
 export const createOrderSchema = z.object({
   customerId: z.number().int().positive().optional().nullable(),
-  customerName: z.string({ error: 'Nombre es requerido' }).min(1, 'El nombre es obligatorio'),
-  customerPhone: z.string({ error: 'Teléfono es requerido' }).min(1, 'El teléfono es obligatorio').optional().nullable(),
-  customerAddress: z.string().optional().nullable(),
+  customerName: z.string().default(''),
+  customerPhone: z.string().optional().nullable().default(null),
+  customerAddress: z.string().optional().nullable().default(null),
+  orderFor: z.string().optional().nullable().default(null),
   branchId: z.number().int().positive().optional().nullable(),
   salesChannelId: z.number().int().positive().optional().nullable(),
 
@@ -21,6 +22,9 @@ export const createOrderSchema = z.object({
   tableName: z.string().optional().nullable(),
   // Mozo asignado al pedido (aplica cuando el canal de venta activa/exige mozo).
   waiterId: z.number().int().positive().optional().nullable(),
+  // Pax (comensales), cuando el canal de venta lo exige (requirePax).
+  paxAdults: z.number().int().min(0).optional().nullable(),
+  paxChildren: z.number().int().min(0).optional().nullable(),
 
   paymentMethod: z.string().optional().nullable(), // interno: se elige al cobrar; web: método previsto
   notes: z.string().max(255, 'La nota debe tener menos de 255 caracteres').optional().nullable(),
