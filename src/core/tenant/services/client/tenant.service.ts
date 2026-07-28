@@ -491,7 +491,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           if (salesChannelRow.requireCustomer && !orderData.customerId) {
             throw new Error('Este canal de venta exige un cliente frecuente');
           }
-          if (salesChannelRow.requireDeliveryAddress && !orderData.orderFor?.trim() && !orderData.customerName?.trim()) {
+          if (salesChannelRow.requireDeliveryAddress && !orderData.orderFor?.trim()) {
             throw new Error('Este canal de venta exige indicar a quién se entrega el pedido');
           }
         }
@@ -526,11 +526,11 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
             : Promise.resolve([] as any[]),
           resolvedSalesChannelId && productIds.length
             ? tx.select().from(productSalesChannelPrices).where(
-                and(
-                  eq(productSalesChannelPrices.salesChannelId, resolvedSalesChannelId),
-                  inArray(productSalesChannelPrices.productId, productIds),
-                )
+              and(
+                eq(productSalesChannelPrices.salesChannelId, resolvedSalesChannelId),
+                inArray(productSalesChannelPrices.productId, productIds),
               )
+            )
             : Promise.resolve([] as any[]),
           extraIds.length
             ? tx.select().from(productExtras).where(inArray(productExtras.id, extraIds))

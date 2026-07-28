@@ -10,6 +10,7 @@ export const createOrderSchema = z.object({
   orderFor: z.string().optional().nullable().default(null),
   branchId: z.number().int().positive().optional().nullable(),
   salesChannelId: z.number().int().positive().optional().nullable(),
+  cashSessionId: z.number().int().positive().optional().nullable(),
 
   deliveryType: z.enum(classificationCodes, { error: 'Tipo de entrega es requerido y debe ser válido' }),
   deliveryInfo: z.object({

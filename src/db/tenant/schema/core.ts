@@ -463,7 +463,7 @@ export const orders = pgTable('orders', {
 	// Mozo asignado al pedido cuando el canal de venta lo activa/exige (isWaiterEnabled/requireWaiter).
 	waiterId: integer('waiter_id').references(() => users.id),
 	// Turno del mozo que generó el pedido (para trazabilidad de ventas por vendedor).
-	cashSessionId: integer('cash_session_id'), // FK lógica a cash_sessions (warehouse.ts)
+	cashSessionId: integer('cash_session_id').notNull(), // FK lógica a cash_sessions (warehouse.ts) - requerido
 	// Turno del cajero que cobró el pedido (para atribución del ingreso en caja).
 	// Se setea al marcar como pagado; el ingreso va a este turno, no al del mozo.
 	collectedSessionId: integer('collected_session_id'), // FK lógica a cash_sessions

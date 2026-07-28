@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ALTER COLUMN "cash_session_id" SET NOT NULL;
