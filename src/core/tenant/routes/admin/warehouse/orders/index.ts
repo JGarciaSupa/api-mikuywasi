@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import {
   getOrdersController,
   getOrderByIdController,
@@ -10,6 +10,11 @@ import {
   updateOrderNotesController,
   updateOrderForController
 } from '../../../../controllers/admin/documents/order.controller';
+import {
+  listTransferableOrdersController,
+  transferOrderController,
+  returnOrderController,
+} from '../../../../controllers/admin/documents/order-transfer.controller';
 import {
   getOrdersReportSummaryController,
   getOrdersReportBreakdownController,
@@ -34,6 +39,12 @@ routes.use('*', authMiddleware);
 // Endpoints
 routes.get('/', getOrdersController);
 routes.get('/stats', getOrderStatsController);
+
+// Transferencia de pedidos a caja (activación ENABLE_ORDER_TRANSFER + permiso pedidos.transferir).
+// Registrado antes de /:id para no colisionar.
+routes.get('/transferable', requirePermission('pedidos', 'pedidos.transferir'), listTransferableOrdersController);
+routes.post('/:id/transfer', requirePermission('pedidos', 'pedidos.transferir'), transferOrderController);
+routes.post('/:id/return', requirePermission('pedidos', 'pedidos.transferir'), returnOrderController);
 
 // Reportes agregados (registrados antes de /:id para no colisionar)
 routes.get('/reports/summary', getOrdersReportSummaryController);

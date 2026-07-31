@@ -9,6 +9,26 @@ import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
 import { restoreProductStockForOrder } from '../../shared/product-stock.service';
+import { resolveForRegister } from '../config-local/activation.service';
+
+const ENABLE_ORDER_TRANSFER = 'ENABLE_ORDER_TRANSFER';
+
+// Un pedido transferido a caja queda bloqueado para edición de atributos/estado
+// hasta que se regrese (NO bloquea el cobro).
+async function assertOrderNotTransferred(
+  db: ReturnType<typeof getTenantDb>,
+  orderId: string,
+) {
+  const [row] = await db
+    .select({ transferredSessionId: orders.transferredSessionId })
+    .from(orders)
+    .where(eq(orders.id, orderId));
+  if (row?.transferredSessionId != null) {
+    throw new Error(
+      `El pedido ${orderId} está transferido a caja y bloqueado. Debe regresarse para editarlo.`
+    );
+  }
+}
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -95,7 +115,9 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     conditions.push(
       or(
         sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.cashSessionId} AND cs.user_id = ${visibilityUserId})`,
-        sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.collectedSessionId} AND cs.user_id = ${visibilityUserId})`
+        sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.collectedSessionId} AND cs.user_id = ${visibilityUserId})`,
+        // También los que transfirió a su caja (aunque aún no los cobre).
+        sql`EXISTS (SELECT 1 FROM cash_sessions cs WHERE cs.id = ${orders.transferredSessionId} AND cs.user_id = ${visibilityUserId})`
       )!
     );
   }
@@ -359,6 +381,7 @@ export const getOrderById = async (id: string) => {
  */
 export const updateOrderStatus = async (id: string, status: string) => {
   const db = getTenantDb();
+  await assertOrderNotTransferred(db, id);
 
   // If order status is updated to 'cancelled', revert the stock discharge
   if (status === 'cancelled') {
@@ -384,6 +407,7 @@ export const updateOrderStatus = async (id: string, status: string) => {
  */
 export const updateOrderWaiter = async (id: string, waiterId: number | null) => {
   const db = getTenantDb();
+  await assertOrderNotTransferred(db, id);
 
   const [updated] = await db
     .update(orders)
@@ -430,6 +454,14 @@ export const updateOrderPaymentStatus = async (
     const cajeraSession = await getActiveSessionForUser(actor?.userId);
     if (!cajeraSession) {
       throw new Error('Necesitas un turno de caja abierto para cobrar este pedido');
+    }
+    // Si la caja tiene la activación de transferencia ON, cobrar exige que el
+    // pedido esté transferido a ESTE turno primero (transferir = paso previo al cobro).
+    if (cajeraSession.registerId != null) {
+      const effective = await resolveForRegister(cajeraSession.registerId);
+      if (effective[ENABLE_ORDER_TRANSFER] && order.transferredSessionId !== cajeraSession.id) {
+        throw new Error('Debes transferir el pedido a tu caja antes de cobrarlo.');
+      }
     }
     collectedSessionId = cajeraSession.id;
   }
@@ -540,6 +572,7 @@ export const updateOrderCustomer = async (
   address?: string | null
 ) => {
   const db = getTenantDb();
+  await assertOrderNotTransferred(db, orderId);
 
   if (!customerId) {
     // Si se envía null, desvinculamos al cliente pero mantenemos los datos como "Cliente General" o vacío
@@ -611,6 +644,7 @@ export const updateOrderCustomer = async (
 
 export const updateOrderNotes = async (orderId: string, notes: string | null) => {
   const db = getTenantDb();
+  await assertOrderNotTransferred(db, orderId);
 
   const [updated] = await db
     .update(orders)
@@ -625,6 +659,7 @@ export const updateOrderNotes = async (orderId: string, notes: string | null) =>
 
 export const updateOrderFor = async (orderId: string, orderFor: string | null) => {
   const db = getTenantDb();
+  await assertOrderNotTransferred(db, orderId);
 
   const [updated] = await db
     .update(orders)

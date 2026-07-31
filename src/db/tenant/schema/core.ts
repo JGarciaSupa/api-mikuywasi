@@ -470,6 +470,13 @@ export const orders = pgTable('orders', {
 	// Turno del cajero que cobró el pedido (para atribución del ingreso en caja).
 	// Se setea al marcar como pagado; el ingreso va a este turno, no al del mozo.
 	collectedSessionId: integer('collected_session_id'), // FK lógica a cash_sessions
+	// Transferencia a caja (activación ENABLE_ORDER_TRANSFER). Cuando está seteado, el
+	// pedido está "en poder" del turno del cajero y BLOQUEADO para edición (ítems/atributos)
+	// hasta que se regrese. Con la activación ON, cobrar exige que esté transferido a ese
+	// turno. NULL = no transferido (del mozo). El historial se registra en `audit_log`.
+	transferredSessionId: integer('transferred_session_id'), // FK lógica a cash_sessions
+	transferredById: integer('transferred_by_id').references(() => users.id), // cajero que transfirió
+	transferredAt: timestamp('transferred_at', { withTimezone: true }),
 	taxBreakdown: jsonb('tax_breakdown').$type<{
 		key: string;
 		label: string;
@@ -489,6 +496,7 @@ export const orders = pgTable('orders', {
 	statusIdx: index('orders_status_idx').on(table.status),
 	cashSessionIdx: index('orders_cash_session_idx').on(table.cashSessionId),
 	collectedSessionIdx: index('orders_collected_session_idx').on(table.collectedSessionId),
+	transferredSessionIdx: index('orders_transferred_session_idx').on(table.transferredSessionId),
 	// Reportes y listados filtran siempre por sucursal + rango de fechas
 	branchCreatedAtIdx: index('orders_branch_created_at_idx').on(table.branchId, table.createdAt),
 }));

@@ -48,6 +48,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.cambiar_estado', name: 'Cambiar estado', description: 'Actualizar el estado de un pedido.', order: 3 },
       { code: 'pedidos.cambiar_estado_pago', name: 'Cambiar estado de pago', description: 'Actualizar el estado de pago del pedido.', order: 4 },
       { code: 'pedidos.crear', name: 'Crear pedidos', description: 'Crear un nuevo pedido.', order: 5 },
+      { code: 'pedidos.transferir', name: 'Transferir pedidos', description: 'Transferir un pedido generado a la caja para cobrarlo (bloquea la edición) y regresarlo.', order: 6 },
     ],
   },
   {
@@ -186,6 +187,7 @@ const RBAC_ROLES: SeedRole[] = [
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
       'pedidos.cambiar_estado_pago',
+      'pedidos.transferir',
       'caja.ver_sesiones',
       'caja.abrir_sesion',
       'caja.cerrar_sesion',

@@ -33,6 +33,19 @@ function assertEditable(status: string, orderId: string) {
   }
 }
 
+// Un pedido transferido a caja (orders.transferred_session_id != null) queda bloqueado
+// para edición de ítems/atributos hasta que se regrese. NO bloquea el cobro.
+function assertNotTransferred(
+  order: { transferredSessionId: number | null },
+  orderId: string,
+) {
+  if (order.transferredSessionId != null) {
+    throw new Error(
+      `El pedido ${orderId} está transferido a caja y bloqueado. Debe regresarse para editarlo.`
+    );
+  }
+}
+
 // ── Helpers de receta/stock ────────────────────────────────────────────────────
 
 interface IngredientLine {
@@ -149,6 +162,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
+  assertNotTransferred(order, orderId);
   assertEditable(order.status, orderId);
 
   const [existingDischarge] = await db
@@ -406,6 +420,7 @@ export async function cancelOrder(orderId: string, actor?: AuditActor) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
 
+  assertNotTransferred(order, orderId);
   if (order.status === 'cancelled') throw new Error('El pedido ya está cancelado');
   if (order.status === 'completed') throw new Error('No se puede cancelar un pedido completado');
 
