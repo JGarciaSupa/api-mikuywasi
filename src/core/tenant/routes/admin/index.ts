@@ -35,11 +35,13 @@ import exchangeRates from "./config-local/exchange-rates";
 
 import { adminLimiter } from "../limiter";
 import { tenantContextMiddleware } from "../../middleware/tenant-context.middleware";
+import { auditMiddleware } from "../../middleware/audit.middleware";
 
 const routes = new Hono();
 
 routes.use('*', adminLimiter);
 routes.use('*', tenantContextMiddleware);
+routes.use('*', auditMiddleware);
 
 routes.route('/', auth);
 routes.route('/categories', categories);
