@@ -49,6 +49,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.cambiar_estado_pago', name: 'Cambiar estado de pago', description: 'Actualizar el estado de pago del pedido.', order: 4 },
       { code: 'pedidos.crear', name: 'Crear pedidos', description: 'Crear un nuevo pedido.', order: 5 },
       { code: 'pedidos.transferir', name: 'Transferir pedidos', description: 'Transferir un pedido generado a la caja para cobrarlo (bloquea la edición) y regresarlo.', order: 6 },
+      { code: 'pedidos.mover_mesa', name: 'Mover pedidos entre mesas', description: 'Mover un pedido completo o productos seleccionados de una mesa a otra (fusiona si la destino tiene pedido).', order: 7 },
     ],
   },
   {
@@ -188,6 +189,7 @@ const RBAC_ROLES: SeedRole[] = [
       'pedidos.ver_detalle',
       'pedidos.cambiar_estado_pago',
       'pedidos.transferir',
+      'pedidos.mover_mesa',
       'caja.ver_sesiones',
       'caja.abrir_sesion',
       'caja.cerrar_sesion',
@@ -219,6 +221,7 @@ const RBAC_ROLES: SeedRole[] = [
       'mozo.cancelar_pedido',
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
+      'pedidos.mover_mesa',
       // Caja: el mozo puede abrir/cerrar su propio turno (obligatorio para crear pedidos).
       // Sin caja.ver_contabilidad: no ve saldos, totales ni movimientos.
       'caja.ver_sesiones',

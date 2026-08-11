@@ -15,6 +15,7 @@ import {
   transferOrderController,
   returnOrderController,
 } from '../../../../controllers/admin/documents/order-transfer.controller';
+import { moveOrderToTableController } from '../../../../controllers/admin/documents/order-move.controller';
 import {
   getOrdersReportSummaryController,
   getOrdersReportBreakdownController,
@@ -45,6 +46,7 @@ routes.get('/stats', getOrderStatsController);
 routes.get('/transferable', requirePermission('pedidos', 'pedidos.transferir'), listTransferableOrdersController);
 routes.post('/:id/transfer', requirePermission('pedidos', 'pedidos.transferir'), transferOrderController);
 routes.post('/:id/return', requirePermission('pedidos', 'pedidos.transferir'), returnOrderController);
+routes.patch('/:id/move-to-table', requirePermission('pedidos', 'pedidos.mover_mesa'), moveOrderToTableController);
 
 // Reportes agregados (registrados antes de /:id para no colisionar)
 routes.get('/reports/summary', getOrdersReportSummaryController);
