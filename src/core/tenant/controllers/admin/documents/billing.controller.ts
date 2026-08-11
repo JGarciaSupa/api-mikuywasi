@@ -82,19 +82,25 @@ export const assignRegisterSeriesController = async (c: Context) => {
 export const createRegisterDocumentController = async (c: Context) => {
   try {
     const registerId = Number(c.req.param('registerId'));
-    const { receiptTypeCode, series, initialCorrelative, description, isActive } = await c.req.json();
+    const { seriesId, receiptTypeCode, series, initialCorrelative, description, isActive, isActiveFacturacion } = await c.req.json();
+
     const row = await billingSeriesService.createOrLinkRegisterDocument({
       registerId,
+      seriesId: seriesId ? Number(seriesId) : undefined,
       receiptTypeCode,
       series,
       initialCorrelative: initialCorrelative != null ? Number(initialCorrelative) : undefined,
       description,
       isActive,
+      isActiveFacturacion,
     });
     return c.json({ success: true, data: row }, 201);
   } catch (error: any) {
+    if (error.code === '23505' || error.message?.includes('duplicate key')) {
+      return c.json({ success: false, message: 'La serie ingresada ya se encuentra registrada o en conflicto con una existente. Intente con otra numeración.' }, 409);
+    }
     const status = error.message?.includes('no encontrada') || error.message?.includes('no encontrado') ? 404
-      : error.message?.includes('ya está en uso') ? 409
+      : error.message?.includes('ya está en uso') || error.message?.includes('Ya existe') ? 409
       : 422;
     return c.json({ success: false, message: error.message || 'Error al crear el documento de la caja' }, status as any);
   }

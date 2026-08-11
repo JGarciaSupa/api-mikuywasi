@@ -439,35 +439,63 @@ async function main() {
     }
     log(`${recipesCreated} recetas con ${linesCreated} líneas de ingredientes`);
 
-    // ── billing_series ──────────────────────────────────────────────────────
-    section('billing_series');
-    await db.insert(s.billingSeries).values([
-      {
-        branchId,
-        documentType: 'factura',
-        series: 'F001',
-        priceInclTax: false,
-        taxRate: '18',
-        description: 'Factura estándar',
-      },
-      {
-        branchId,
-        documentType: 'boleta',
-        series: 'B001',
-        priceInclTax: true,
-        taxRate: '18',
-        description: 'Boleta de venta',
-      },
-      {
-        branchId,
-        documentType: 'nota_de_venta',
-        series: 'NV01',
-        priceInclTax: true,
-        taxRate: '18',
-        description: 'Nota de venta interna',
-      },
-    ]).onConflictDoNothing();
-    log('3 series de facturación (F001, B001, NV01)');
+    // ── cashRegisters & cashRegisterDocumentSeries ───────────────────────────
+    section('cash_registers');
+    const [register] = await db.insert(s.cashRegisters).values({
+      branchId,
+      name: 'Caja Principal',
+      exchangeRate: '1.0000',
+      isActive: true,
+    }).returning().onConflictDoNothing();
+
+    let registerId: number;
+    if (register) {
+      registerId = register.id;
+    } else {
+      const [existingRegister] = await db
+        .select({ id: s.cashRegisters.id })
+        .from(s.cashRegisters)
+        .where(eq(s.cashRegisters.name, 'Caja Principal'))
+        .limit(1);
+      registerId = existingRegister?.id;
+    }
+
+    if (registerId) {
+      section('cash_register_document_series');
+      await db.insert(s.cashRegisterDocumentSeries).values([
+        {
+          registerId,
+          series: 'F001',
+          receiptTypeCode: '01',
+          description: 'Factura estándar',
+          initialSequential: 1,
+          lastSequential: 0,
+          isActiveFacturacion: true,
+          isActive: true,
+        },
+        {
+          registerId,
+          series: 'B001',
+          receiptTypeCode: '03',
+          description: 'Boleta de venta',
+          initialSequential: 1,
+          lastSequential: 0,
+          isActiveFacturacion: true,
+          isActive: true,
+        },
+        {
+          registerId,
+          series: 'NV01',
+          receiptTypeCode: '00',
+          description: 'Nota de venta interna',
+          initialSequential: 1,
+          lastSequential: 0,
+          isActiveFacturacion: true,
+          isActive: true,
+        },
+      ]).onConflictDoNothing();
+      log('3 series de facturación asociadas a Caja Principal (F001, B001, NV01)');
+    }
 
     // ── users ────────────────────────────────────────────────────────────────
     section('users');

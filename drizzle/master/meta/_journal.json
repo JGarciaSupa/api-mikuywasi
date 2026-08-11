@@ -120,6 +120,13 @@
       "when": 1785227968068,
       "tag": "0016_create_master_table_statuses_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785906686365,
+      "tag": "0017_add_document_prefix_to_receipt_types",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "billing_series" DROP CONSTRAINT "billing_series_series_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "billing_series_prefix_series_idx" ON "billing_series" USING btree ("document_prefix","series");

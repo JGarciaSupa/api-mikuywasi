@@ -498,6 +498,48 @@
       "when": 1785471947842,
       "tag": "0070_transfer_orders_update",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785739465674,
+      "tag": "0071_add_document_prefix_to_billing_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1785820825423,
+      "tag": "0072_modify_billing_series_unique_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1785906688208,
+      "tag": "0073_remove_document_prefix_from_billing_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786315365491,
+      "tag": "0074_remove_price_incl_tax_and_tax_rate_from_billing_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786319009588,
+      "tag": "0075_add_columns_to_register_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786319739154,
+      "tag": "0076_merge_billing_series_into_register_series_drop_old",
+      "breakpoints": true
     }
   ]
 }

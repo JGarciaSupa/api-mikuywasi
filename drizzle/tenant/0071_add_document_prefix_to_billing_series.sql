@@ -1,0 +1,1 @@
+ALTER TABLE "billing_series" ADD COLUMN "document_prefix" varchar(1);

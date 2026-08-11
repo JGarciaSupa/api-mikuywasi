@@ -1,9 +1,9 @@
 import { eq, asc, and, ne, desc } from 'drizzle-orm';
-import { billingSeries, billingDocuments, cashRegisterDocumentSeries, cashRegisters } from '../../../../../db/tenant/schema';
+import { cashRegisterDocumentSeries, cashRegisters, billingDocuments } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
-// El pivote y billingSeries aceptan además nota_de_credito (documento fiscal auto).
+// El pivote acepta además nota_de_credito (documento fiscal auto).
 export type ReceiptDocumentType = 'factura' | 'boleta' | 'nota_de_venta' | 'nota_de_credito';
 
 // Traduce el código del tipo de comprobante del MAESTRO (SUNAT) al enum interno.
@@ -18,14 +18,21 @@ export function documentTypeFromReceiptCode(code: string): ReceiptDocumentType {
   }
 }
 
+export function receiptCodeFromDocumentType(type: string): string {
+  switch (type) {
+    case 'factura': return '01';
+    case 'boleta': return '03';
+    case 'nota_de_credito': return '07';
+    default: return '00';
+  }
+}
+
 export interface CreateSeriesInput {
   branchId?: number;
   documentType: DocumentType;
   series: string;
   initialSequential?: number;
   lastSequential?: number;
-  priceInclTax?: boolean;
-  taxRate?: string;
   description?: string;
 }
 
@@ -33,35 +40,68 @@ export interface UpdateSeriesInput {
   initialSequential?: number;
   lastSequential?: number;
   description?: string;
-  priceInclTax?: boolean;
-  taxRate?: string;
   isActive?: boolean;
+}
+
+function addVirtualFields(s: any) {
+  if (!s) return s;
+  const docType = s.receiptTypeCode ? documentTypeFromReceiptCode(s.receiptTypeCode) : 'nota_de_venta';
+  return {
+    ...s,
+    documentType: docType,
+    priceInclTax: docType === 'boleta' || docType === 'nota_de_venta',
+    taxRate: '18',
+    // Mapped properties for backward compatibility
+    isActive: s.isActive,
+  };
 }
 
 export async function listSeries(branchId?: number) {
   const db = getTenantDb();
   if (branchId) {
-    return db
-      .select()
-      .from(billingSeries)
-      .where(eq(billingSeries.branchId, branchId))
-      .orderBy(asc(billingSeries.documentType), asc(billingSeries.series));
+    // Join with cash registers to filter by branch
+    const rows = await db
+      .select({
+        id: cashRegisterDocumentSeries.id,
+        registerId: cashRegisterDocumentSeries.registerId,
+        series: cashRegisterDocumentSeries.series,
+        description: cashRegisterDocumentSeries.description,
+        receiptTypeCode: cashRegisterDocumentSeries.receiptTypeCode,
+        initialSequential: cashRegisterDocumentSeries.initialSequential,
+        lastSequential: cashRegisterDocumentSeries.lastSequential,
+        isActiveFacturacion: cashRegisterDocumentSeries.isActiveFacturacion,
+        isActive: cashRegisterDocumentSeries.isActive,
+        createdAt: cashRegisterDocumentSeries.createdAt,
+        updatedAt: cashRegisterDocumentSeries.updatedAt,
+      })
+      .from(cashRegisterDocumentSeries)
+      .innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterDocumentSeries.registerId))
+      .where(eq(cashRegisters.branchId, branchId))
+      .orderBy(asc(cashRegisterDocumentSeries.receiptTypeCode), asc(cashRegisterDocumentSeries.series));
+
+    return rows.map(addVirtualFields);
   }
-  return db.select().from(billingSeries).orderBy(asc(billingSeries.documentType), asc(billingSeries.series));
+
+  const rows = await db
+    .select()
+    .from(cashRegisterDocumentSeries)
+    .orderBy(asc(cashRegisterDocumentSeries.receiptTypeCode), asc(cashRegisterDocumentSeries.series));
+
+  return rows.map(addVirtualFields);
 }
 
 export async function getSeriesById(id: number) {
   const db = getTenantDb();
-  const [row] = await db.select().from(billingSeries).where(eq(billingSeries.id, id));
-  return row ?? null;
+  const [row] = await db.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, id));
+  return row ? addVirtualFields(row) : null;
 }
 
-function validateSeriesFormat(documentType: DocumentType, series: string): void {
-  if (documentType === 'factura' && !/^F\d{3}$/.test(series)) {
-    throw new Error('La serie de factura debe tener formato F### (ejemplo: F001)');
-  }
-  if (documentType === 'boleta' && !/^B\d{3}$/.test(series)) {
-    throw new Error('La serie de boleta debe tener formato B### (ejemplo: B001)');
+function validateSeriesFormat(documentType: string, series: string): void {
+  // La serie en base de datos guarda exactamente 4 dígitos (ej: 0001).
+  if (documentType === 'factura' || documentType === 'boleta') {
+    if (!/^[fFbcFCBC\d][a-zA-Z\d]{3}$/.test(series) && !/^\d{4}$/.test(series)) {
+      throw new Error(`La serie debe tener exactamente 4 caracteres alfanuméricos (recibido: ${series})`);
+    }
   }
 }
 
@@ -79,48 +119,14 @@ function normalizeSequentialConfig(initialSequential?: number, lastSequential?: 
   };
 }
 
-export async function createSeries(input: CreateSeriesInput) {
-  const db = getTenantDb();
-
-  const series = input.series.toUpperCase().trim();
-  validateSeriesFormat(input.documentType, series);
-  const priceInclTax = input.priceInclTax ??
-    (input.documentType === 'boleta' || input.documentType === 'nota_de_venta');
-  const { initialSequential, lastSequential } = normalizeSequentialConfig(
-    input.initialSequential,
-    input.lastSequential,
-  );
-
-  const [existing] = await db
-    .select()
-    .from(billingSeries)
-    .where(eq(billingSeries.series, series));
-
-  if (existing) {
-    throw new Error(`La serie ${series} ya está registrada. Cada serie debe ser única.`);
-  }
-
-  const [row] = await db
-    .insert(billingSeries)
-    .values({
-      branchId: input.branchId ?? 1,
-      documentType: input.documentType,
-      series,
-      initialSequential,
-      lastSequential,
-      priceInclTax,
-      taxRate: input.taxRate ?? '18',
-      description: input.description ?? null,
-    })
-    .returning();
-
-  return row;
+export async function createSeries(_input: CreateSeriesInput) {
+  throw new Error('La creación directa de series independientes ya no está soportada. Configure la serie directamente en una caja.');
 }
 
 export async function deleteSeries(id: number) {
   const db = getTenantDb();
 
-  const [row] = await db.select().from(billingSeries).where(eq(billingSeries.id, id));
+  const [row] = await db.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, id));
   if (!row) throw new Error('Serie no encontrada');
 
   const [activeDoc] = await db
@@ -133,12 +139,12 @@ export async function deleteSeries(id: number) {
     throw new Error('No se puede eliminar una serie con documentos activos. Anule los documentos primero.');
   }
 
-  await db.delete(billingSeries).where(eq(billingSeries.id, id));
+  await db.delete(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, id));
 }
 
 export async function updateSeries(id: number, input: UpdateSeriesInput) {
   const db = getTenantDb();
-  const [current] = await db.select().from(billingSeries).where(eq(billingSeries.id, id));
+  const [current] = await db.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, id));
   if (!current) throw new Error('Serie no encontrada');
 
   const shouldUpdateSequentials =
@@ -175,22 +181,20 @@ export async function updateSeries(id: number, input: UpdateSeriesInput) {
   }
 
   const [row] = await db
-    .update(billingSeries)
+    .update(cashRegisterDocumentSeries)
     .set({
       ...(sequentialConfig && {
         initialSequential: sequentialConfig.initialSequential,
         lastSequential: sequentialConfig.lastSequential,
       }),
       ...(input.description !== undefined && { description: input.description }),
-      ...(input.priceInclTax !== undefined && { priceInclTax: input.priceInclTax }),
-      ...(input.taxRate !== undefined && { taxRate: input.taxRate }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
       updatedAt: new Date(),
     })
-    .where(eq(billingSeries.id, id))
+    .where(eq(cashRegisterDocumentSeries.id, id))
     .returning();
 
-  return row;
+  return addVirtualFields(row);
 }
 
 // ── Series por caja (Caja ↔ Documento ↔ Serie) ─────────────────────────────────
@@ -206,8 +210,6 @@ export interface ResolvedSeries {
 }
 
 // Resuelve qué serie usar para un tipo de comprobante dado la caja del turno abierto.
-// Estricto: solo cuenta la serie asignada explícitamente a la caja (pivote). Sin
-// asignación = tipo desactivado para esa caja, sin caer a una serie de sucursal.
 export async function resolveSeriesForRegister(
   registerId: number,
   documentType: DocumentType,
@@ -215,116 +217,92 @@ export async function resolveSeriesForRegister(
 ): Promise<ResolvedSeries | null> {
   const db = getTenantDb();
 
-  const [pivotRow] = await db
-    .select({ series: billingSeries })
+  const targetCode = receiptCodeFromDocumentType(documentType);
+
+  const [row] = await db
+    .select()
     .from(cashRegisterDocumentSeries)
-    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
     .where(and(
       eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.documentType, documentType),
+      eq(cashRegisterDocumentSeries.receiptTypeCode, targetCode),
       eq(cashRegisterDocumentSeries.isActive, true),
-      eq(billingSeries.isActive, true),
     ))
     .limit(1);
 
-  if (!pivotRow) return null;
-  const s = pivotRow.series;
+  if (!row) return null;
+  const priceInclTax = documentType === 'boleta' || documentType === 'nota_de_venta';
   return {
-    id: s.id, series: s.series, documentType: s.documentType,
-    lastSequential: s.lastSequential, priceInclTax: s.priceInclTax, taxRate: s.taxRate,
+    id: row.id,
+    series: row.series,
+    documentType,
+    lastSequential: row.lastSequential,
+    priceInclTax,
+    taxRate: '18',
     source: 'register',
   };
 }
 
-// Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada
+// Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada)
 export interface AvailableDocumentType {
   documentType: DocumentType;
   receiptTypeCode: string | null;
   description: string | null;
 }
 
-// Lista los tipos de comprobante que esta caja puede emitir (tiene serie asignada
-// y activa). Lo usa el frontend para no ofrecer al cajero tipos que su caja no
-// tiene habilitados.
+// Lista los tipos de comprobante que esta caja puede emitir y están activos.
 export async function listAvailableDocumentTypesForRegister(registerId: number): Promise<AvailableDocumentType[]> {
   const db = getTenantDb();
   const rows = await db
-    .select({
-      documentType: cashRegisterDocumentSeries.documentType,
-      receiptTypeCode: billingSeries.receiptTypeCode,
-      description: billingSeries.description,
-    })
+    .select()
     .from(cashRegisterDocumentSeries)
-    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
     .where(and(
       eq(cashRegisterDocumentSeries.registerId, registerId),
       eq(cashRegisterDocumentSeries.isActive, true),
-      eq(billingSeries.isActive, true),
     ));
-  return rows.map((r) => ({
-    documentType: r.documentType as DocumentType,
-    receiptTypeCode: r.receiptTypeCode,
-    description: r.description,
-  }));
+
+  return rows.map((r) => {
+    const docType = r.receiptTypeCode ? documentTypeFromReceiptCode(r.receiptTypeCode) : 'nota_de_venta';
+    return {
+      documentType: docType as DocumentType,
+      receiptTypeCode: r.receiptTypeCode,
+      description: r.description,
+    };
+  });
 }
 
 export async function listSeriesForRegister(registerId: number) {
   const db = getTenantDb();
-  return db
-    .select({
-      documentType: cashRegisterDocumentSeries.documentType,
-      seriesId: billingSeries.id,
-      series: billingSeries.series,
-      lastSequential: billingSeries.lastSequential,
-      receiptTypeCode: billingSeries.receiptTypeCode,
-      description: billingSeries.description,
-      isActive: cashRegisterDocumentSeries.isActive,
-    })
+  const rows = await db
+    .select()
     .from(cashRegisterDocumentSeries)
-    .innerJoin(billingSeries, eq(cashRegisterDocumentSeries.seriesId, billingSeries.id))
-    .where(eq(cashRegisterDocumentSeries.registerId, registerId))
-    .orderBy(asc(cashRegisterDocumentSeries.documentType));
+    .where(eq(cashRegisterDocumentSeries.registerId, registerId));
+
+  return rows.map((r) => {
+    const docType = r.receiptTypeCode ? documentTypeFromReceiptCode(r.receiptTypeCode) : 'nota_de_venta';
+    return {
+      documentType: docType,
+      seriesId: r.id,
+      series: r.series,
+      lastSequential: r.lastSequential,
+      receiptTypeCode: r.receiptTypeCode,
+      description: r.description,
+      isActive: r.isActive,
+      isActiveFacturacion: r.isActiveFacturacion,
+    };
+  });
 }
 
-// ── Crear/enlazar un documento a una caja (tab Documentos de Caja) ─────────────
-// El tipo viene del catálogo MAESTRO (receiptTypeCode); la serie/correlativo y el
-// nombre custom (description) se crean acá, en el tenant. La serie es EXCLUSIVA
-// de una caja: si ya la usa otra, se bloquea.
+// ── Crear/enlazar un documento a una caja ─────────────────────────────
 
 export interface CreateRegisterDocumentInput {
   registerId: number;
+  seriesId?: number;
   receiptTypeCode: string;
   series: string;
   initialCorrelative?: number; // "siguiente a emitir"; lastSequential = este - 1
   description?: string | null;
   isActive?: boolean;
-}
-
-// Enlaza (upsert) una serie a una caja para un tipo, dentro de una transacción.
-async function linkSeriesToRegisterTx(
-  tx: Parameters<Parameters<ReturnType<typeof getTenantDb>['transaction']>[0]>[0],
-  registerId: number,
-  documentType: ReceiptDocumentType,
-  seriesId: number,
-  isActive: boolean = true,
-) {
-  const [existing] = await tx
-    .select()
-    .from(cashRegisterDocumentSeries)
-    .where(and(
-      eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.documentType, documentType),
-    ));
-
-  if (existing) {
-    if (existing.seriesId !== seriesId || existing.isActive !== isActive) {
-      await tx.update(cashRegisterDocumentSeries)
-        .set({ seriesId, isActive, updatedAt: new Date() })
-        .where(eq(cashRegisterDocumentSeries.id, existing.id));
-    }
-    return;
-  }
-  await tx.insert(cashRegisterDocumentSeries).values({ registerId, documentType, seriesId, isActive });
+  isActiveFacturacion?: boolean;
 }
 
 export async function createOrLinkRegisterDocument(input: CreateRegisterDocumentInput) {
@@ -342,98 +320,98 @@ export async function createOrLinkRegisterDocument(input: CreateRegisterDocument
 
   const initialSequential = Math.max(1, Math.trunc(input.initialCorrelative ?? 1));
   const lastSequential = initialSequential - 1;
-  // boleta/nota_de_venta operan con precio con impuesto incluido; factura sin incluir.
-  const priceInclTax = documentType === 'boleta' || documentType === 'nota_de_venta';
+
+  validateSeriesFormat(documentType, series);
 
   return db.transaction(async (tx) => {
-    const [existingSeries] = await tx.select().from(billingSeries).where(eq(billingSeries.series, series));
+    let existingSeries;
+    
+    if (input.seriesId) {
+      const [found] = await tx.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, input.seriesId));
+      existingSeries = found;
+      if (!existingSeries) {
+        throw new Error('La serie especificada no existe');
+      }
+    } else {
+      // Validar que la caja NO tenga ya una serie asignada para este tipo de comprobante (solo al crear)
+      const [existingLink] = await tx
+        .select()
+        .from(cashRegisterDocumentSeries)
+        .where(and(
+          eq(cashRegisterDocumentSeries.registerId, input.registerId),
+          eq(cashRegisterDocumentSeries.receiptTypeCode, input.receiptTypeCode)
+        ));
+      
+      if (existingLink) {
+        throw new Error(`Ya existe una serie configurada para el tipo de comprobante '${documentType}' en esta caja. Edite el existente o elimínelo primero.`);
+      }
+
+      // Además, si no hay seriesId pero la serie ya existe, puede pertenecer a otra caja
+      const [found] = await tx.select().from(cashRegisterDocumentSeries)
+        .where(and(
+          eq(cashRegisterDocumentSeries.series, series),
+          eq(cashRegisterDocumentSeries.receiptTypeCode, input.receiptTypeCode)
+        ));
+      existingSeries = found;
+    }
 
     if (existingSeries) {
-      // ¿A qué caja está enlazada esa serie?
-      const [link] = await tx.select().from(cashRegisterDocumentSeries)
-        .where(eq(cashRegisterDocumentSeries.seriesId, existingSeries.id));
-      if (link && link.registerId !== input.registerId) {
+      if (existingSeries.registerId !== input.registerId) {
         throw new Error(`La serie ${series} ya está en uso por otra caja`);
       }
 
-      // Es de esta caja (o aún sin enlazar) → actualizar datos base (edición).
-      const [updated] = await tx.update(billingSeries).set({
-        receiptTypeCode: input.receiptTypeCode,
-        documentType,
-        description: description ?? existingSeries.description,
-        priceInclTax,
-        isActive: input.isActive ?? true,
-        updatedAt: new Date(),
-      }).where(eq(billingSeries.id, existingSeries.id)).returning();
+      // Validar unicidad de la serie contra OTRAS series
+      const [collision] = await tx.select().from(cashRegisterDocumentSeries)
+        .where(and(
+          eq(cashRegisterDocumentSeries.series, series),
+          eq(cashRegisterDocumentSeries.receiptTypeCode, input.receiptTypeCode),
+          ne(cashRegisterDocumentSeries.id, existingSeries.id) // excluir la actual
+        ));
+        
+      if (collision) {
+        throw new Error(`La serie ${series} ya está registrada en el sistema para el comprobante ${documentType}.`);
+      }
 
-      await linkSeriesToRegisterTx(tx, input.registerId, documentType, existingSeries.id, input.isActive ?? true);
-      return updated;
+      // Es de esta caja → actualizar datos base (edición).
+      const [updated] = await tx.update(cashRegisterDocumentSeries).set({
+        receiptTypeCode: input.receiptTypeCode,
+        series,
+        description: description ?? existingSeries.description,
+        isActive: input.isActive ?? true,
+        isActiveFacturacion: input.isActiveFacturacion ?? existingSeries.isActiveFacturacion,
+        updatedAt: new Date(),
+      }).where(eq(cashRegisterDocumentSeries.id, existingSeries.id)).returning();
+
+      return addVirtualFields(updated);
     }
 
-    // No existe → crear la serie y enlazarla a esta caja.
-    const [created] = await tx.insert(billingSeries).values({
-      branchId: register.branchId,
-      documentType,
+    // No existe → crear la serie
+    const [created] = await tx.insert(cashRegisterDocumentSeries).values({
+      registerId: input.registerId,
       series,
       receiptTypeCode: input.receiptTypeCode,
       initialSequential,
       lastSequential,
-      priceInclTax,
-      taxRate: '18',
       description,
       isActive: input.isActive ?? true,
+      isActiveFacturacion: input.isActiveFacturacion ?? true,
     }).returning();
 
-    await linkSeriesToRegisterTx(tx, input.registerId, documentType, created.id, input.isActive ?? true);
-    return created;
+    return addVirtualFields(created);
   });
 }
 
-export async function assignSeriesToRegister(registerId: number, documentType: DocumentType, seriesId: number) {
-  const db = getTenantDb();
-
-  const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, registerId));
-  if (!register) throw new Error('Caja no encontrada');
-
-  const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, seriesId));
-  if (!series) throw new Error('Serie no encontrada');
-  if (series.documentType !== documentType) {
-    throw new Error(`La serie ${series.series} es de tipo '${series.documentType}', no '${documentType}'`);
-  }
-  if (series.branchId !== register.branchId) {
-    throw new Error('La serie debe pertenecer a la misma sucursal que la caja');
-  }
-
-  const [existing] = await db
-    .select()
-    .from(cashRegisterDocumentSeries)
-    .where(and(
-      eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.documentType, documentType),
-    ));
-
-  if (existing) {
-    const [row] = await db
-      .update(cashRegisterDocumentSeries)
-      .set({ seriesId, isActive: true, updatedAt: new Date() })
-      .where(eq(cashRegisterDocumentSeries.id, existing.id))
-      .returning();
-    return row;
-  }
-
-  const [row] = await db
-    .insert(cashRegisterDocumentSeries)
-    .values({ registerId, documentType, seriesId })
-    .returning();
-  return row;
+export async function assignSeriesToRegister(_registerId: number, _documentType: DocumentType, _seriesId: number) {
+  throw new Error('La asignación directa de series está deprecada. Configure la serie directamente en la caja.');
 }
 
 export async function unassignSeriesFromRegister(registerId: number, documentType: DocumentType) {
   const db = getTenantDb();
+  const targetCode = receiptCodeFromDocumentType(documentType);
   await db
     .delete(cashRegisterDocumentSeries)
     .where(and(
       eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.documentType, documentType),
+      eq(cashRegisterDocumentSeries.receiptTypeCode, targetCode),
     ));
 }
