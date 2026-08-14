@@ -1,4 +1,4 @@
-import { eq, and, desc, ilike, count, sql } from 'drizzle-orm';
+import { eq, and, desc, ilike, count, sql, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   salesDischarge,
@@ -48,7 +48,7 @@ export async function buildDischargeFromOrder(orderId: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error('Pedido no encontrado');
 
-  const oItems = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const oItems = await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
   const calculated: {
     itemId: number;
     recipeId: number | null;

@@ -14,6 +14,7 @@ import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 import { getActiveSessionForUser } from './cash.service';
+import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
@@ -1009,7 +1010,7 @@ export async function getDocumentPdf(id: number): Promise<Buffer> {
 
 // ── Receipt (datos enriquecidos para generar PDF/ticket) ──────────────────────
 
-export async function getDocumentReceipt(id: number) {
+export async function getDocumentReceipt(id: number, userId?: number) {
   const db = getTenantDb();
 
   const [doc] = await db
@@ -1046,6 +1047,15 @@ export async function getDocumentReceipt(id: number) {
       : doc.buyerDocType === 'DNI' ? 'D.N.I'
         : doc.buyerDocType === 'CE' ? 'C.E.'
           : doc.buyerDocType ?? null;
+
+  // Resolve activations
+  let effectiveActivations: Record<string, boolean> = {};
+  if (userId) {
+    const activeSession = await getActiveSessionForUser(userId);
+    if (activeSession?.registerId) {
+      effectiveActivations = await resolveForRegister(activeSession.registerId);
+    }
+  }
 
   let paymentSummary: {
     paymentMethod: string | null;
@@ -1094,8 +1104,21 @@ export async function getDocumentReceipt(id: number) {
     }
   }
 
+  // Filter buyer data based on PRINT_CUSTOMER_HEADER
+  const hideCustomerData = effectiveActivations['PRINT_CUSTOMER_HEADER'] === false;
+  let finalDoc = doc;
+  if (hideCustomerData) {
+    finalDoc = {
+      ...doc,
+      buyerName: null,
+      buyerDocType: null,
+      buyerDocNumber: null,
+      buyerAddress: null,
+    };
+  }
+
   return {
-    document: doc,
+    document: finalDoc,
     lines,
     emisor,
     branch: {

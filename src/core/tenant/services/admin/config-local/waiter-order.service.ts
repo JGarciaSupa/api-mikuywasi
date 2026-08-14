@@ -1,4 +1,4 @@
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql, inArray, isNull } from 'drizzle-orm';
 import {
   orders,
   orderItems,
@@ -12,12 +12,16 @@ import {
   items,
   orderItemExtras,
   productExtras,
+  reasons,
+  ordersItemsDeleted,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
 import { applyStockExit, applyStockEntry } from './../warehouse/shared/stock-movement.service';
 import { reverseDischargeForOrder } from './../warehouse/sales-discharge.service';
-import { reverseOrderSaleMovement } from './../documents/cash.service';
+import { reverseOrderSaleMovement, getActiveSessionForUser } from './../documents/cash.service';
+import { resolveForRegister } from './activation.service';
+import { authorizeByPassword } from './../documents/security-auth.service';
 import type { AuditActor } from './../warehouse/types';
 import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
 
@@ -122,7 +126,8 @@ async function recalcOrderTotals(
   db: ReturnType<typeof getTenantDb>,
   orderId: string
 ) {
-  const ois = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  // Excluir ítems anulados (soft-delete): no cuentan para los totales.
+  const ois = await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
   const subtotal = ois.reduce((s, i) => s + toNum(i.totalPrice), 0);
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   const deliveryFee = toNum((order as any)?.deliveryFee ?? '0');
@@ -412,9 +417,51 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
   }
 }
 
+// ── Anulación: motivo (catálogo/libre) + contraseña de autorización ──────────────
+
+export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; }
+
+// Resuelve el motivo y la autorización según las activaciones de la caja del actor.
+// Lanza error si falta el motivo/contraseña exigidos.
+async function resolveDeleteAuthorization(
+  db: ReturnType<typeof getTenantDb>,
+  actorUserId: number | undefined,
+  branchId: number,
+  opts: DeleteOpts,
+  codes: { reasonCatalog: string; password: string; authSubAction: string },
+): Promise<{ reasonId: number | null; motivo: string | null; authorizedById: number | null }> {
+  let effective: Record<string, boolean> = {};
+  const session = actorUserId ? await getActiveSessionForUser(actorUserId) : null;
+  if (session?.registerId != null) effective = await resolveForRegister(session.registerId);
+
+  // Motivo: del catálogo (order_cancel de la sucursal) si la activación está ON; si no, libre.
+  let reasonId: number | null = null;
+  let motivo: string | null = (opts.motivo ?? '').trim() || null;
+  if (effective[codes.reasonCatalog]) {
+    if (!opts.reasonId) throw new Error('Debes seleccionar un motivo del listado');
+    const [r] = await db.select().from(reasons)
+      .where(and(eq(reasons.id, opts.reasonId), eq(reasons.branchId, branchId), eq(reasons.type, 'order_cancel')));
+    if (!r) throw new Error('Motivo inválido');
+    reasonId = r.id;
+    motivo = r.description;
+  } else if (!motivo) {
+    throw new Error('Debes indicar un motivo');
+  }
+
+  // Contraseña de autorización (si la activación está ON).
+  let authorizedById: number | null = null;
+  if (effective[codes.password]) {
+    const auth = await authorizeByPassword(codes.authSubAction, opts.password ?? '');
+    if (!auth) throw new Error('Contraseña de autorización inválida');
+    authorizedById = auth.userId;
+  }
+
+  return { reasonId, motivo, authorizedById };
+}
+
 // ── Cancel order ───────────────────────────────────────────────────────────────
 
-export async function cancelOrder(orderId: string, actor?: AuditActor) {
+export async function cancelOrder(orderId: string, actor?: AuditActor, opts: DeleteOpts = {}) {
   const db = getTenantDb();
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
@@ -423,6 +470,12 @@ export async function cancelOrder(orderId: string, actor?: AuditActor) {
   assertNotTransferred(order, orderId);
   if (order.status === 'cancelled') throw new Error('El pedido ya está cancelado');
   if (order.status === 'completed') throw new Error('No se puede cancelar un pedido completado');
+
+  const gate = await resolveDeleteAuthorization(db, actor?.userId, order.branchId, opts, {
+    reasonCatalog: 'ORDER_DELETE_REASON_CATALOG',
+    password: 'PASSWORD_DELETE_ORDER',
+    authSubAction: 'seguridad.autorizar_eliminar_pedido',
+  });
 
   await reverseDischargeForOrder(orderId);
   await restoreProductStockForOrder(db, orderId);
@@ -436,9 +489,113 @@ export async function cancelOrder(orderId: string, actor?: AuditActor) {
 
   const [updated] = await db
     .update(orders)
-    .set({ status: 'cancelled', updatedAt: new Date() })
+    .set({
+      status: 'cancelled',
+      motivo: gate.motivo,
+      reasonId: gate.reasonId,
+      deletedDate: new Date(),
+      deletedById: actor?.userId ?? null,
+      authorizedById: gate.authorizedById,
+      updatedAt: new Date(),
+    })
     .where(eq(orders.id, orderId))
     .returning();
 
   return updated;
+}
+
+// ── Anular ítem enviado (soft-delete) ────────────────────────────────────────────
+
+export async function annulOrderItem(
+  orderId: string,
+  orderItemId: number,
+  actor?: AuditActor,
+  opts: DeleteOpts = {},
+  quantity?: number,
+) {
+  const db = getTenantDb();
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
+  assertNotTransferred(order, orderId);
+  assertEditable(order.status, orderId);
+
+  const [oi] = await db.select().from(orderItems).where(eq(orderItems.id, orderItemId));
+  if (!oi || oi.orderId !== orderId) throw new Error('Ítem no encontrado en el pedido');
+  if (oi.deletedAt) throw new Error('El ítem ya está anulado');
+
+  // Cantidad a anular: si no se indica (o cubre toda la línea) → anulación total.
+  // Si es menor → anulación parcial (la línea conserva el resto).
+  const annulQty = (quantity == null || quantity >= oi.quantity)
+    ? oi.quantity
+    : Math.floor(quantity);
+  if (annulQty <= 0) throw new Error('La cantidad a anular debe ser mayor a 0');
+  if (annulQty > oi.quantity) throw new Error('La cantidad a anular supera la del ítem');
+  const isPartial = annulQty < oi.quantity;
+
+  const gate = await resolveDeleteAuthorization(db, actor?.userId, order.branchId, opts, {
+    reasonCatalog: 'ORDER_PRODUCT_DELETE_REASON_CATALOG',
+    password: 'PASSWORD_DELETE_PRODUCT',
+    authSubAction: 'seguridad.autorizar_eliminar_producto',
+  });
+
+  // Reversa de stock/descarga por la porción anulada (misma lógica que 'update_qty' al reducir:
+  // repone stock e insumos y reduce las líneas de descarga en vez de borrarlas siempre).
+  const [existingDischarge] = await db.select().from(salesDischarge).where(eq(salesDischarge.orderId, orderId));
+  if (oi.productId && existingDischarge?.status === 'processed') {
+    const ingredients = await calcIngredientsForProduct(db, oi.productId, annulQty, order.branchId);
+    for (const l of ingredients) {
+      await applyStockEntry({
+        branchId: existingDischarge.branchId,
+        itemId: l.itemId,
+        areaId: l.productionAreaId,
+        qty: l.qty,
+        unitPrice: l.avgPrice,
+        documentType: 'reverso_descarga',
+        documentNumber: `DV-VOID-${orderId}`,
+        originDest: `Pedido ${orderId} — ítem anulado (${annulQty})`,
+      });
+    }
+    const allLines = await db.select().from(salesDischargeLines)
+      .where(eq(salesDischargeLines.dischargeId, existingDischarge.id));
+    for (const l of ingredients) {
+      const existing = allLines.find((dl) => dl.itemId === l.itemId && dl.recipeId === l.recipeId);
+      if (!existing) continue;
+      const newQtyLine = roundQty(Math.max(0, toNum(existing.qty) - l.qty));
+      if (newQtyLine <= 0) {
+        await db.delete(salesDischargeLines).where(eq(salesDischargeLines.id, existing.id));
+      } else {
+        const newCostLine = roundMoney(newQtyLine * toNum(existing.avgPrice));
+        await db.update(salesDischargeLines)
+          .set({ qty: String(newQtyLine), lineCost: String(newCostLine) })
+          .where(eq(salesDischargeLines.id, existing.id));
+      }
+    }
+  }
+  if (oi.productId) await adjustProductStock(db, oi.productId, annulQty);
+
+  if (isPartial) {
+    // Anulación parcial: la línea conserva el resto; se recalcula su total por la nueva cantidad.
+    const remaining = oi.quantity - annulQty;
+    const newTotalPrice = roundMoney(toNum(oi.unitPrice) * remaining);
+    await db.update(orderItems)
+      .set({ quantity: remaining, totalPrice: String(newTotalPrice) })
+      .where(eq(orderItems.id, orderItemId));
+  } else {
+    // Anulación total: soft-delete de la línea (la fila se conserva con deleted_at).
+    await db.update(orderItems).set({ deletedAt: new Date() }).where(eq(orderItems.id, orderItemId));
+  }
+
+  await db.insert(ordersItemsDeleted).values({
+    orderId,
+    orderItemId,
+    quantity: annulQty,
+    reasonId: gate.reasonId,
+    motivo: gate.motivo,
+    deletedById: actor?.userId ?? null,
+    authorizedById: gate.authorizedById,
+  });
+
+  await recalcOrderTotals(db, orderId);
+  return { annulled: orderItemId, quantity: annulQty, partial: isPartial };
 }

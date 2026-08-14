@@ -488,6 +488,13 @@ export const orders = pgTable('orders', {
 		amount?: number;
 	}[]>(),
 
+	// Anulación del pedido (status='cancelled'). Se llenan al anular.
+	motivo: varchar('motivo', { length: 200 }),
+	reasonId: integer('reason_id'), // FK lógica a reasons (motivo del catálogo, si aplica)
+	deletedDate: timestamp('deleted_date', { withTimezone: true }),
+	deletedById: integer('deleted_by_id').references(() => users.id), // ejecutó la anulación
+	authorizedById: integer('authorized_by_id').references(() => users.id), // autorizó por contraseña
+
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -548,7 +555,29 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
+	// Soft-delete: cuando se anula un ítem enviado se marca aquí (la fila no se borra).
+	// Las lecturas operativas (totales, cocina, descarga) excluyen deleted_at != null.
+	deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
+
+// Log de ítems anulados (soft-delete). El order_item permanece con deleted_at seteado;
+// aquí queda el detalle: motivo, quién ejecutó y quién autorizó por contraseña.
+export const ordersItemsDeleted = pgTable('orders_items_deleted', {
+	id: serial('id').primaryKey(),
+	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+	orderItemId: integer('order_item_id').notNull().references(() => orderItems.id, { onDelete: 'cascade' }),
+	// Cantidad anulada en este evento. En anulación total = cantidad completa de la línea;
+	// en anulación parcial = solo la porción anulada (la línea conserva el resto).
+	quantity: integer('quantity'),
+	reasonId: integer('reason_id'), // FK lógica a reasons (si el motivo vino del catálogo)
+	motivo: varchar('motivo', { length: 200 }),
+	deletedById: integer('deleted_by_id').references(() => users.id),      // ejecutó
+	authorizedById: integer('authorized_by_id').references(() => users.id), // autorizó por contraseña
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	orderIdx: index('orders_items_deleted_order_idx').on(table.orderId),
+	itemIdx: index('orders_items_deleted_item_idx').on(table.orderItemId),
+}));
 
 // ==========================================
 // 🎨 PERSONALIZACIÓN DE INTERFAZ WEB/WEBAPP

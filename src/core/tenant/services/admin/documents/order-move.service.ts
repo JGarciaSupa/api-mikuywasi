@@ -1,4 +1,4 @@
-import { and, eq, inArray, desc, sql } from 'drizzle-orm';
+import { and, eq, inArray, desc, sql, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
   orders,
@@ -64,7 +64,7 @@ async function assertNoBilling(db: ReturnType<typeof getTenantDb>, orderId: stri
 
 // Recalcula subtotal/retención/total del pedido (mismo criterio que waiter-order.recalcOrderTotals).
 async function recalcTotals(db: ReturnType<typeof getTenantDb>, orderId: string) {
-  const ois = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const ois = await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
   const subtotal = ois.reduce((s, i) => s + toNum(i.totalPrice), 0);
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   const deliveryFee = toNum(order?.deliveryFee ?? '0');
@@ -274,7 +274,7 @@ export async function moveOrderToTable(input: MoveOrderInput) {
     // Ítems a mover: los indicados o todos (total → ocupada).
     let moves: MoveItemInput[];
     if (isTotal) {
-      const all = await db.select({ id: orderItems.id, quantity: orderItems.quantity }).from(orderItems).where(eq(orderItems.orderId, orderId));
+      const all = await db.select({ id: orderItems.id, quantity: orderItems.quantity }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
       moves = all.map((i) => ({ orderItemId: i.id, quantity: i.quantity }));
     } else {
       moves = items!;
@@ -287,7 +287,7 @@ export async function moveOrderToTable(input: MoveOrderInput) {
     await recalcTotals(db, orderId);
 
     // Si el origen quedó sin ítems, se cierra (sin revertir stock: los ítems se movieron).
-    const remaining = await db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, orderId)).limit(1);
+    const remaining = await db.select({ id: orderItems.id }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt))).limit(1);
     if (remaining.length === 0) {
       await db.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId));
     }

@@ -1,10 +1,12 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted } from '../../../../../db/tenant/schema';
 
-import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-context';
 
 const waiters = alias(users, 'waiters');
+const deletedByUsers = alias(users, 'deleted_by_users');
+const authorizedByUsers = alias(users, 'authorized_by_users');
 import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
@@ -285,6 +287,14 @@ export const getOrderById = async (id: string) => {
         id: waiters.id,
         username: waiters.username,
         name: waiters.name,
+      },
+      deletedBy: {
+        id: deletedByUsers.id,
+        name: deletedByUsers.name,
+      },
+      authorizedBy: {
+        id: authorizedByUsers.id,
+        name: authorizedByUsers.name,
       }
     })
     .from(orders)
@@ -293,6 +303,8 @@ export const getOrderById = async (id: string) => {
     .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
     .leftJoin(users, eq(cashSessions.userId, users.id))
     .leftJoin(waiters, eq(orders.waiterId, waiters.id))
+    .leftJoin(deletedByUsers, eq(orders.deletedById, deletedByUsers.id))
+    .leftJoin(authorizedByUsers, eq(orders.authorizedById, authorizedByUsers.id))
     .where(and(eq(orders.id, id)));
 
   if (!result) return null;
@@ -305,12 +317,14 @@ export const getOrderById = async (id: string) => {
     registerName: result.register?.name ?? null,
     sessionCode: result.session?.code ?? null,
     createdByUserName: result.user?.name ?? result.session?.openedBy ?? "—",
+    deletedByName: result.deletedBy?.id ? result.deletedBy.name : null,
+    authorizedByName: result.authorizedBy?.id ? result.authorizedBy.name : null,
   };
 
   const items = await db
     .select()
     .from(orderItems)
-    .where(eq(orderItems.orderId, id));
+    .where(and(eq(orderItems.orderId, id), isNull(orderItems.deletedAt)));
 
   const itemIds = items.map((i) => i.id);
   const extrasRows = itemIds.length
@@ -366,12 +380,37 @@ export const getOrderById = async (id: string) => {
     }
   }
 
+  // Ítems anulados (soft-delete): se leen del log orders_items_deleted junto al
+  // order_item (que sigue existiendo con deleted_at) para mostrar el detalle de
+  // la anulación en la vista de solo lectura del pedido.
+  const annulledRows = await db
+    .select({
+      id: ordersItemsDeleted.id,
+      orderItemId: ordersItemsDeleted.orderItemId,
+      reasonId: ordersItemsDeleted.reasonId,
+      motivo: ordersItemsDeleted.motivo,
+      createdAt: ordersItemsDeleted.createdAt,
+      productName: orderItems.productName,
+      // Cantidad anulada en el evento (log); para filas antiguas sin quantity, la de la línea.
+      quantity: sql<number>`COALESCE(${ordersItemsDeleted.quantity}, ${orderItems.quantity})`,
+      unitPrice: orderItems.unitPrice,
+      deletedByName: deletedByUsers.name,
+      authorizedByName: authorizedByUsers.name,
+    })
+    .from(ordersItemsDeleted)
+    .leftJoin(orderItems, eq(ordersItemsDeleted.orderItemId, orderItems.id))
+    .leftJoin(deletedByUsers, eq(ordersItemsDeleted.deletedById, deletedByUsers.id))
+    .leftJoin(authorizedByUsers, eq(ordersItemsDeleted.authorizedById, authorizedByUsers.id))
+    .where(eq(ordersItemsDeleted.orderId, id))
+    .orderBy(desc(ordersItemsDeleted.createdAt));
+
   return {
     ...order,
     items: items.map((item) => ({
       ...item,
       extras: extrasByItem.get(item.id) ?? [],
     })),
+    annulledItems: annulledRows,
     billingDocuments: docsList,
   };
 };

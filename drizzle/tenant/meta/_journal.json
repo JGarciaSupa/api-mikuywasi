@@ -540,6 +540,20 @@
       "when": 1786319739154,
       "tag": "0076_merge_billing_series_into_register_series_drop_old",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786578297935,
+      "tag": "0077_add_table_items_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1786585481974,
+      "tag": "0078_update_table_items_delete",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "orders_items_deleted" ADD COLUMN "quantity" integer;

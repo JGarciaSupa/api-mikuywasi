@@ -327,7 +327,8 @@ export const diagnoseDocumentController = async (c: Context) => {
 export const getDocumentReceiptController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
-    const data = await billingService.getDocumentReceipt(id);
+    const payload = c.get('jwtPayload') as { userId?: number } | undefined;
+    const data = await billingService.getDocumentReceipt(id, payload?.userId);
     if (!data) return c.json({ success: false, message: 'Documento no encontrado' }, 404);
     return c.json({ success: true, data });
   } catch (error: any) {

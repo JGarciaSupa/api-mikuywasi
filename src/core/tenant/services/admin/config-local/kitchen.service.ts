@@ -1,5 +1,5 @@
 import { orders, orderItems, orderStationConfirmations } from '@/db/tenant/schema';
-import { eq, asc, inArray, and } from 'drizzle-orm';
+import { eq, asc, inArray, and, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import { resolveEffectiveStations } from './kitchen-station.service';
 
@@ -10,7 +10,7 @@ async function getRequiredStationsForOrder(db: ReturnType<typeof getTenantDb>, o
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) return new Set<number>();
 
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const items = await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
   const productIds = [...new Set(items.map((i) => i.productId).filter((id): id is number => id != null))];
   if (productIds.length === 0) return new Set<number>();
 
@@ -47,7 +47,7 @@ export const getActiveKitchenOrders = async (branchId: number) => {
   const allItems = await db
     .select()
     .from(orderItems)
-    .where(inArray(orderItems.orderId, orderIds));
+    .where(and(inArray(orderItems.orderId, orderIds), isNull(orderItems.deletedAt)));
 
   const productIds = [...new Set(allItems.map((i) => i.productId).filter((id): id is number => id != null))];
 
