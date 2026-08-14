@@ -496,12 +496,12 @@ export const updateOrderPaymentStatus = async (
     }
     // Si la caja tiene la activación de transferencia ON, cobrar exige que el
     // pedido esté transferido a ESTE turno primero (transferir = paso previo al cobro).
-    if (cajeraSession.registerId != null) {
-      const effective = await resolveForRegister(cajeraSession.registerId);
-      if (effective[ENABLE_ORDER_TRANSFER] && order.transferredSessionId !== cajeraSession.id) {
-        throw new Error('Debes transferir el pedido a tu caja antes de cobrarlo.');
-      }
-    }
+    // if (cajeraSession.registerId != null) {
+    //   const effective = await resolveForRegister(cajeraSession.registerId);
+    //   if (effective[ENABLE_ORDER_TRANSFER] && order.transferredSessionId !== cajeraSession.id) {
+    //     throw new Error('Debes transferir el pedido a tu caja antes de cobrarlo.');
+    //   }
+    // }
     collectedSessionId = cajeraSession.id;
   }
 
