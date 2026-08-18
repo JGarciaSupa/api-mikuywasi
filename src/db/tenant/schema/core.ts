@@ -555,10 +555,25 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
+	// ─── Preparación en cocina (KDS) ─────────────────────────────────────────
+	// Unidades de la línea que cocina ya terminó. 0 = pendiente; >= quantity = línea
+	// lista. Se guarda la cantidad (no un booleano) para poder sacar 2 de 3 hamburguesas
+	// sin mentir sobre el estado del resto.
+	preparedQty: integer('prepared_qty').default(0).notNull(),
+	// Momento en que la línea quedó COMPLETA (preparedQty >= quantity). NULL mientras
+	// esté pendiente o parcial — y vuelve a NULL si cocina deshace la marca.
+	preparedAt: timestamp('prepared_at', { withTimezone: true }),
+	preparedById: integer('prepared_by_id').references(() => users.id),
+	// Cuándo entró la línea al pedido. Las adiciones posteriores del mozo tienen su
+	// propio cronómetro en cocina, distinto al del pedido completo.
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	// Soft-delete: cuando se anula un ítem enviado se marca aquí (la fila no se borra).
 	// Las lecturas operativas (totales, cocina, descarga) excluyen deleted_at != null.
 	deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => ({
+	// La cocina consulta siempre "ítems de estos pedidos y su avance de preparación".
+	orderPreparedIdx: index('order_items_order_prepared_idx').on(table.orderId, table.preparedQty),
+}));
 
 // Log de ítems anulados (soft-delete). El order_item permanece con deleted_at seteado;
 // aquí queda el detalle: motivo, quién ejecutó y quién autorizó por contraseña.

@@ -554,6 +554,13 @@
       "when": 1786585481974,
       "tag": "0078_update_table_items_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1787079412984,
+      "tag": "0079_order_items_kitchen_prepared",
+      "breakpoints": true
     }
   ]
 }
