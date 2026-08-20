@@ -75,3 +75,45 @@ Actualiza el estado de una orden específica dentro del flujo de trabajo de la c
 - **400 Bad Request**: Si el estado no es uno de los permitidos para cocina o falta el ID.
 - **403 Forbidden**: Si el usuario no tiene permisos de `kitchen` o `admin`.
 - **404 Not Found**: Si la orden no existe en el tenant actual.
+
+---
+
+## 3. Avance de preparación por ítem (SIGG 2.7)
+
+Estos endpoints comparten la misma forma de respuesta (`KitchenPreparationResult`):
+
+```json
+{
+  "success": true,
+  "message": "...",
+  "data": {
+    "order": { "id": "123", "status": "preparing" },
+    "items": [
+      { "id": 1, "quantity": 2, "preparedQty": 2, "preparedAt": "2024-05-11T10:12:00Z" }
+    ],
+    "confirmedStationIds": [4],
+    "allConfirmed": false
+  }
+}
+```
+
+`allConfirmed`: true cuando TODAS las estaciones que toca el pedido (unión de `stationIds` de sus ítems) ya tienen todas sus líneas con `preparedQty >= quantity`. Cuando pasa a `true`, el pedido se mueve automáticamente a `ready_for_pickup` — no hace falta un paso adicional.
+
+### 3.1. Marcar/deshacer una línea
+- **URL:** `PATCH /api/admin/kitchen/orders/:id/items/:itemId/prepared`
+- **Body:** `{ "qty": 1 }` — opcional; omitido = marca la línea completa (`preparedQty = quantity`). `qty: 0` deshace.
+- Si esta línea era la última pendiente de su estación, la estación queda confirmada automáticamente (y el pedido pasa a `ready_for_pickup` si era la última estación pendiente).
+
+### 3.2. Marcar todo el pedido listo
+- **URL:** `POST /api/admin/kitchen/orders/:id/prepared`
+- Sin body. Marca `preparedQty = quantity` en todas las líneas del pedido y confirma todas las estaciones requeridas.
+
+### 3.3. Confirmar una estación
+- **URL:** `POST /api/admin/kitchen/orders/:id/stations/:stationId/confirm`
+- Marca listas las líneas asignadas a esa estación y confirma su parte. El pedido pasa a `ready_for_pickup` solo cuando todas las estaciones requeridas confirmaron.
+- **400 Bad Request** si la estación no tiene ítems en este pedido.
+
+### 3.4. Devolver un pedido a la cola
+- **URL:** `POST /api/admin/kitchen/orders/:id/recall`
+- Solo válido si el pedido está en `ready_for_pickup`. Limpia confirmaciones de estación y avance de todas las líneas, y regresa el pedido a `preparing`.
+- **400 Bad Request** si el pedido no está en `ready_for_pickup`.

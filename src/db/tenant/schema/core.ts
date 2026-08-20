@@ -548,6 +548,15 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
+	// Avance de preparación en cocina (SIGG 2.7). preparedQty >= quantity = línea lista;
+	// preparedAt/preparedById son el momento y quién la dejó lista (se limpian si se
+	// deshace el avance).
+	preparedQty: integer('prepared_qty').default(0).notNull(),
+	preparedAt: timestamp('prepared_at', { withTimezone: true }),
+	preparedById: integer('prepared_by_id').references(() => users.id),
+	// Cuándo entró la línea al pedido: distingue las adiciones del mozo (agregadas
+	// bastante después de creado el pedido) de los ítems originales.
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 // ==========================================

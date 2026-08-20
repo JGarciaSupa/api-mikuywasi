@@ -498,6 +498,13 @@
       "when": 1785471947842,
       "tag": "0070_transfer_orders_update",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787257407700,
+      "tag": "0071_add_kitchen_item_preparation_tracking",
+      "breakpoints": true
     }
   ]
 }
