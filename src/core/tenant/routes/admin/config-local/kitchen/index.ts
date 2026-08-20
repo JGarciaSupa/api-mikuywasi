@@ -4,8 +4,8 @@ import {
   getKitchenOrdersController,
   updateKitchenStatusController,
   confirmKitchenStationController,
-  setItemPreparedController,
-  markOrderPreparedController,
+  setKitchenItemPreparedController,
+  markKitchenOrderPreparedController,
   recallKitchenOrderController
 } from '../../../../controllers/admin/config-local/kitchen.controller';
 
@@ -17,9 +17,11 @@ routes.use('*', authMiddleware);
 // Endpoints
 routes.get('/orders', getKitchenOrdersController);
 routes.patch('/orders/:id/status', updateKitchenStatusController);
-routes.patch('/orders/:id/items/:itemId/prepared', setItemPreparedController);
-routes.post('/orders/:id/prepared', markOrderPreparedController);
+// Avance por línea: la fuente de verdad del estado de cocina.
+routes.patch('/orders/:id/items/:itemId/prepared', setKitchenItemPreparedController);
+routes.post('/orders/:id/prepared', markKitchenOrderPreparedController);
 routes.post('/orders/:id/stations/:stationId/confirm', confirmKitchenStationController);
+// Recall: devolver a la cola un pedido cerrado por error.
 routes.post('/orders/:id/recall', recallKitchenOrderController);
 
 export default routes;

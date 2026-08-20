@@ -1,6 +1,6 @@
 {
-  "id": "3bdd841d-c0f6-4b14-894c-3e4e14310be8",
-  "prevId": "4d3f5fba-f8d4-45a9-8427-567cd8bc9d4b",
+  "id": "e207f656-e1b9-4d12-a6b3-fda7d05ddf98",
+  "prevId": "2d55ea6f-e96a-4920-9132-5f457619ccfe",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10057,12 +10057,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "document_prefix": {
-          "name": "document_prefix",
-          "type": "varchar(1)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "document_type": {
           "name": "document_type",
           "type": "varchar(20)",
@@ -10094,20 +10088,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "price_incl_tax": {
-          "name": "price_incl_tax",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "tax_rate": {
-          "name": "tax_rate",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'18'"
         },
         "is_active": {
           "name": "is_active",
@@ -10152,6 +10132,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "billing_series_type_series_idx": {
+          "name": "billing_series_type_series_idx",
+          "columns": [
+            {
+              "expression": "document_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -10170,15 +10171,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "billing_series_series_unique": {
-          "name": "billing_series_series_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "series"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

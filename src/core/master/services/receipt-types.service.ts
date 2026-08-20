@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull, or, ne } from 'drizzle-orm';
 import { masterDb } from '../../../db';
 import { receiptTypes } from '../../../db/master/schema';
 import type { CreateReceiptTypeInput, UpdateReceiptTypeInput } from '../validations/receipt-types.validation';
@@ -23,16 +23,28 @@ export const getReceiptTypeById = async (id: number) => {
 };
 
 export const createReceiptType = async (data: CreateReceiptTypeInput) => {
-  const [existingCode] = await masterDb
+  const countryCondition = data.countryId ? eq(receiptTypes.countryId, data.countryId) : isNull(receiptTypes.countryId);
+
+  const existing = await masterDb
     .select()
     .from(receiptTypes)
     .where(and(
-      eq(receiptTypes.code, data.code),
-      eq(receiptTypes.countryId, data.countryId)
+      countryCondition,
+      or(
+        eq(receiptTypes.code, data.code),
+        data.documentPrefix ? eq(receiptTypes.documentPrefix, data.documentPrefix) : undefined
+      )
     ));
 
-  if (existingCode) {
-    throw new Error('El código ya está registrado para este país');
+  if (existing.length > 0) {
+    const duplicateCode = existing.find(rt => rt.code === data.code);
+    if (duplicateCode) {
+      throw new Error('El código ya está registrado para este país (o globalmente)');
+    }
+    const duplicatePrefix = existing.find(rt => data.documentPrefix && rt.documentPrefix === data.documentPrefix);
+    if (duplicatePrefix) {
+      throw new Error('El prefijo ya está registrado para este país (o globalmente)');
+    }
   }
 
   const [newReceiptType] = await masterDb
@@ -51,20 +63,38 @@ export const updateReceiptType = async (id: number, data: UpdateReceiptTypeInput
 
   if (!existing) throw new Error('Tipo de comprobante no encontrado');
 
-  if ((data.code && data.code !== existing.code) || (data.countryId && data.countryId !== existing.countryId)) {
+  if (
+    (data.code && data.code !== existing.code) || 
+    (data.countryId !== undefined && data.countryId !== existing.countryId) ||
+    (data.documentPrefix !== undefined && data.documentPrefix !== existing.documentPrefix)
+  ) {
     const codeToCheck = data.code ?? existing.code;
-    const countryIdToCheck = data.countryId ?? existing.countryId;
+    const countryIdToCheck = data.countryId !== undefined ? data.countryId : existing.countryId;
+    const prefixToCheck = data.documentPrefix !== undefined ? data.documentPrefix : existing.documentPrefix;
 
-    const [existingCode] = await masterDb
+    const countryCondition = countryIdToCheck ? eq(receiptTypes.countryId, countryIdToCheck) : isNull(receiptTypes.countryId);
+
+    const existingConflicts = await masterDb
       .select()
       .from(receiptTypes)
       .where(and(
-        eq(receiptTypes.code, codeToCheck),
-        eq(receiptTypes.countryId, countryIdToCheck)
+        ne(receiptTypes.id, id),
+        countryCondition,
+        or(
+          eq(receiptTypes.code, codeToCheck),
+          prefixToCheck ? eq(receiptTypes.documentPrefix, prefixToCheck) : undefined
+        )
       ));
 
-    if (existingCode && existingCode.id !== id) {
-      throw new Error('El código ya está registrado para este país');
+    if (existingConflicts.length > 0) {
+      const duplicateCode = existingConflicts.find(rt => rt.code === codeToCheck);
+      if (duplicateCode) {
+        throw new Error('El código ya está registrado para este país (o globalmente)');
+      }
+      const duplicatePrefix = existingConflicts.find(rt => prefixToCheck && rt.documentPrefix === prefixToCheck);
+      if (duplicatePrefix) {
+        throw new Error('El prefijo ya está registrado para este país (o globalmente)');
+      }
     }
   }
 

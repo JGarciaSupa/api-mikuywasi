@@ -2,7 +2,7 @@ import { eq, and, desc, like, or, gte, lte, count, sql, isNull, inArray } from '
 import {
   billingDocuments,
   billingDocumentLines,
-  billingSeries,
+  cashRegisterDocumentSeries,
   branches,
   brands,
   orders,
@@ -14,7 +14,8 @@ import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 import { getActiveSessionForUser } from './cash.service';
-import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType } from './billing-series.service';
+import { resolveForRegister } from '../config-local/activation.service';
+import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
 
@@ -382,15 +383,16 @@ export async function previewDocument(
   }
 
   const resolvedSeries = await resolveActiveSeriesOrThrow(order.branchId, documentType, userId);
-  const [series] = await db.select().from(billingSeries).where(eq(billingSeries.id, resolvedSeries.id));
+  const [series] = await db.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, resolvedSeries.id));
   if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
 
   const ois = splitId != null
     ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), eq(orderItems.splitId, splitId)))
     : await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.splitId)));
 
-  const priceInclTax = series.priceInclTax;
-  const taxRate = toNum(series.taxRate);
+  const docType = series.receiptTypeCode ? documentTypeFromReceiptCode(series.receiptTypeCode) : 'nota_de_venta';
+  const priceInclTax = docType === 'boleta' || docType === 'nota_de_venta';
+  const taxRate = 18;
 
   const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
 
@@ -398,7 +400,12 @@ export async function previewDocument(
 
   return {
     order,
-    series,
+    series: {
+      ...series,
+      documentType: docType,
+      priceInclTax,
+      taxRate: String(taxRate),
+    },
     lines: lineCalcs,
     totals: { subtotal: summary.subtotal, taxAmount: summary.totalTaxAmount, total: summary.total },
     nextDocumentNumber: `${series.series}-${padSequential(series.lastSequential + 1)}`,
@@ -492,17 +499,18 @@ export async function createDocument(input: CreateDocumentInput) {
   const documentTaxRate = resolveDocumentTaxRate(lineCalcs, taxRate);
 
   // Transacción: reservar correlativo + insertar documento + líneas
-  const { docId } = await db.transaction(async (tx) => {
+  const { docId, isActiveFacturacion } = await db.transaction(async (tx) => {
     const [series] = await tx
       .select()
-      .from(billingSeries)
-      .where(eq(billingSeries.id, resolvedSeries.id))
+      .from(cashRegisterDocumentSeries)
+      .where(eq(cashRegisterDocumentSeries.id, resolvedSeries.id))
       .for('update');
 
     if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
-    if (series.documentType !== input.documentType) {
+    const docType = series.receiptTypeCode ? documentTypeFromReceiptCode(series.receiptTypeCode) : 'nota_de_venta';
+    if (docType !== input.documentType) {
       throw new Error(
-        `La serie '${series.series}' es de tipo '${series.documentType}', no '${input.documentType}'`
+        `La serie '${series.series}' es de tipo '${docType}', no '${input.documentType}'`
       );
     }
 
@@ -510,9 +518,9 @@ export async function createDocument(input: CreateDocumentInput) {
     const documentNumber = `${series.series}-${padSequential(sequential)}`;
 
     await tx
-      .update(billingSeries)
+      .update(cashRegisterDocumentSeries)
       .set({ lastSequential: sequential, updatedAt: new Date() })
-      .where(eq(billingSeries.id, series.id));
+      .where(eq(cashRegisterDocumentSeries.id, series.id));
 
     const [doc] = await tx
       .insert(billingDocuments)
@@ -557,11 +565,11 @@ export async function createDocument(input: CreateDocumentInput) {
 
     await tx.insert(billingDocumentLines).values(lineRows);
 
-    return { docId: doc.id };
+    return { docId: doc.id, isActiveFacturacion: series.isActiveFacturacion };
   });
 
   // Emisión electrónica SUNAT (fuera de la transacción — el correlativo ya está consumido)
-  if (input.documentType === 'factura' || input.documentType === 'boleta') {
+  if (isActiveFacturacion && (input.documentType === 'factura' || input.documentType === 'boleta')) {
     const [savedDoc] = await db
       .select()
       .from(billingDocuments)
@@ -839,6 +847,14 @@ export async function retryDocument(id: number) {
     throw new Error('El documento ya fue aceptado por SUNAT');
   }
 
+  const [series] = await db
+    .select({ isActiveFacturacion: cashRegisterDocumentSeries.isActiveFacturacion })
+    .from(cashRegisterDocumentSeries)
+    .where(eq(cashRegisterDocumentSeries.id, doc.seriesId));
+  if (series && !series.isActiveFacturacion) {
+    throw new Error('La facturación electrónica está deshabilitada para este tipo de documento en la caja');
+  }
+
   const lines = await db
     .select()
     .from(billingDocumentLines)
@@ -903,6 +919,14 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
   if (doc.status === 'voided') throw new Error('No se puede corregir un documento anulado');
   if (doc.documentType === 'nota_de_venta') throw new Error('Las notas de venta no se envían a SUNAT');
   if (doc.sunatStatus === 'ACEPTADO') throw new Error('El documento ya fue aceptado por SUNAT');
+
+  const [series] = await db
+    .select({ isActiveFacturacion: cashRegisterDocumentSeries.isActiveFacturacion })
+    .from(cashRegisterDocumentSeries)
+    .where(eq(cashRegisterDocumentSeries.id, doc.seriesId));
+  if (series && !series.isActiveFacturacion) {
+    throw new Error('La facturación electrónica está deshabilitada para este tipo de documento en la caja');
+  }
 
   await validateBuyerDocument(
     doc.branchId,
@@ -986,7 +1010,7 @@ export async function getDocumentPdf(id: number): Promise<Buffer> {
 
 // ── Receipt (datos enriquecidos para generar PDF/ticket) ──────────────────────
 
-export async function getDocumentReceipt(id: number) {
+export async function getDocumentReceipt(id: number, userId?: number) {
   const db = getTenantDb();
 
   const [doc] = await db
@@ -1023,6 +1047,15 @@ export async function getDocumentReceipt(id: number) {
       : doc.buyerDocType === 'DNI' ? 'D.N.I'
         : doc.buyerDocType === 'CE' ? 'C.E.'
           : doc.buyerDocType ?? null;
+
+  // Resolve activations
+  let effectiveActivations: Record<string, boolean> = {};
+  if (userId) {
+    const activeSession = await getActiveSessionForUser(userId);
+    if (activeSession?.registerId) {
+      effectiveActivations = await resolveForRegister(activeSession.registerId);
+    }
+  }
 
   let paymentSummary: {
     paymentMethod: string | null;
@@ -1071,8 +1104,21 @@ export async function getDocumentReceipt(id: number) {
     }
   }
 
+  // Filter buyer data based on PRINT_CUSTOMER_HEADER
+  const hideCustomerData = effectiveActivations['PRINT_CUSTOMER_HEADER'] === false;
+  let finalDoc = doc;
+  if (hideCustomerData) {
+    finalDoc = {
+      ...doc,
+      buyerName: null,
+      buyerDocType: null,
+      buyerDocNumber: null,
+      buyerAddress: null,
+    };
+  }
+
   return {
-    document: doc,
+    document: finalDoc,
     lines,
     emisor,
     branch: {
@@ -1192,18 +1238,33 @@ async function ensureCreditNoteSeries(
 ): Promise<number> {
   const seriesCode = doc.documentType === 'factura' ? 'FC01' : 'BC01';
 
+  const [originalSeries] = await db
+    .select({ registerId: cashRegisterDocumentSeries.registerId })
+    .from(cashRegisterDocumentSeries)
+    .where(eq(cashRegisterDocumentSeries.id, doc.seriesId))
+    .limit(1);
+
+  const registerId = originalSeries?.registerId;
+  if (!registerId) {
+    throw new Error('No se pudo encontrar la caja del comprobante original');
+  }
+
   const [existing] = await db
     .select()
-    .from(billingSeries)
-    .where(eq(billingSeries.series, seriesCode))
+    .from(cashRegisterDocumentSeries)
+    .where(and(
+      eq(cashRegisterDocumentSeries.registerId, registerId),
+      eq(cashRegisterDocumentSeries.series, seriesCode),
+      eq(cashRegisterDocumentSeries.receiptTypeCode, '07')
+    ))
     .limit(1);
 
   if (existing) {
     if (!existing.isActive) {
       const [updated] = await db
-        .update(billingSeries)
+        .update(cashRegisterDocumentSeries)
         .set({ isActive: true, updatedAt: new Date() })
-        .where(eq(billingSeries.id, existing.id))
+        .where(eq(cashRegisterDocumentSeries.id, existing.id))
         .returning();
       return updated.id;
     }
@@ -1211,16 +1272,18 @@ async function ensureCreditNoteSeries(
   }
 
   const [created] = await db
-    .insert(billingSeries)
+    .insert(cashRegisterDocumentSeries)
     .values({
-      branchId: doc.branchId,
-      documentType: 'nota_de_credito',
+      registerId,
+      receiptTypeCode: '07',
       series: seriesCode,
-      priceInclTax: true,
-      taxRate: doc.taxRate,
       description: doc.documentType === 'factura'
         ? 'Nota de crédito para facturas'
         : 'Nota de crédito para boletas',
+      initialSequential: 1,
+      lastSequential: 0,
+      isActiveFacturacion: true,
+      isActive: true,
     })
     .returning();
 
@@ -1585,12 +1648,13 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
   const { docId } = await db.transaction(async (tx) => {
     const [series] = await tx
       .select()
-      .from(billingSeries)
-      .where(eq(billingSeries.id, input.seriesId))
+      .from(cashRegisterDocumentSeries)
+      .where(eq(cashRegisterDocumentSeries.id, input.seriesId))
       .for('update');
 
     if (!series || !series.isActive) throw new Error('Serie NC no encontrada o inactiva');
-    if (series.documentType !== 'nota_de_credito') {
+    const docType = series.receiptTypeCode ? documentTypeFromReceiptCode(series.receiptTypeCode) : 'nota_de_venta';
+    if (docType !== 'nota_de_credito') {
       throw new Error(`La serie '${series.series}' no es de tipo nota_de_credito`);
     }
 
@@ -1598,9 +1662,9 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
     const documentNumber = `${series.series}-${padSequential(sequential)}`;
 
     await tx
-      .update(billingSeries)
+      .update(cashRegisterDocumentSeries)
       .set({ lastSequential: sequential, updatedAt: new Date() })
-      .where(eq(billingSeries.id, series.id));
+      .where(eq(cashRegisterDocumentSeries.id, series.id));
 
     const [doc] = await tx
       .insert(billingDocuments)
@@ -1804,16 +1868,19 @@ export async function emitirNotaCreditoExterna(input: CreateNotaCreditoExternaIn
   if (res.success) {
     const [serie] = await db
       .select()
-      .from(billingSeries)
-      .where(eq(billingSeries.series, input.serieNC))
+      .from(cashRegisterDocumentSeries)
+      .where(and(
+        eq(cashRegisterDocumentSeries.series, input.serieNC),
+        eq(cashRegisterDocumentSeries.receiptTypeCode, '07')
+      ))
       .limit(1);
     if (serie) {
       const correlativo = parseInt(input.correlativoNC, 10);
       if (correlativo > serie.lastSequential) {
         await db
-          .update(billingSeries)
+          .update(cashRegisterDocumentSeries)
           .set({ lastSequential: correlativo, updatedAt: new Date() })
-          .where(eq(billingSeries.id, serie.id));
+          .where(eq(cashRegisterDocumentSeries.id, serie.id));
       }
     }
   }

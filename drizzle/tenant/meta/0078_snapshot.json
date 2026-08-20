@@ -1,6 +1,6 @@
 {
-  "id": "3bdd841d-c0f6-4b14-894c-3e4e14310be8",
-  "prevId": "4d3f5fba-f8d4-45a9-8427-567cd8bc9d4b",
+  "id": "bfe59c10-393f-45c1-ab7e-2fa85c9539c0",
+  "prevId": "a7f82223-5d11-4dcd-8c7f-cbfab95486ad",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -829,6 +829,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -1343,6 +1349,36 @@
           "primaryKey": false,
           "notNull": false
         },
+        "motivo": {
+          "name": "motivo",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason_id": {
+          "name": "reason_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_date": {
+          "name": "deleted_date",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by_id": {
+          "name": "deleted_by_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorized_by_id": {
+          "name": "authorized_by_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1575,6 +1611,32 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "orders_deleted_by_id_users_id_fk": {
+          "name": "orders_deleted_by_id_users_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "users",
+          "columnsFrom": [
+            "deleted_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_authorized_by_id_users_id_fk": {
+          "name": "orders_authorized_by_id_users_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "users",
+          "columnsFrom": [
+            "authorized_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1587,6 +1649,158 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.orders_items_deleted": {
+      "name": "orders_items_deleted",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "varchar(12)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_item_id": {
+          "name": "order_item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason_id": {
+          "name": "reason_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "motivo": {
+          "name": "motivo",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by_id": {
+          "name": "deleted_by_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorized_by_id": {
+          "name": "authorized_by_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orders_items_deleted_order_idx": {
+          "name": "orders_items_deleted_order_idx",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_items_deleted_item_idx": {
+          "name": "orders_items_deleted_item_idx",
+          "columns": [
+            {
+              "expression": "order_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orders_items_deleted_order_id_orders_id_fk": {
+          "name": "orders_items_deleted_order_id_orders_id_fk",
+          "tableFrom": "orders_items_deleted",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "orders_items_deleted_order_item_id_order_items_id_fk": {
+          "name": "orders_items_deleted_order_item_id_order_items_id_fk",
+          "tableFrom": "orders_items_deleted",
+          "tableTo": "order_items",
+          "columnsFrom": [
+            "order_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "orders_items_deleted_deleted_by_id_users_id_fk": {
+          "name": "orders_items_deleted_deleted_by_id_users_id_fk",
+          "tableFrom": "orders_items_deleted",
+          "tableTo": "users",
+          "columnsFrom": [
+            "deleted_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_items_deleted_authorized_by_id_users_id_fk": {
+          "name": "orders_items_deleted_authorized_by_id_users_id_fk",
+          "tableFrom": "orders_items_deleted",
+          "tableTo": "users",
+          "columnsFrom": [
+            "authorized_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -10013,10 +10227,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "billing_documents_series_id_billing_series_id_fk": {
-          "name": "billing_documents_series_id_billing_series_id_fk",
+        "billing_documents_series_id_cash_register_document_series_id_fk": {
+          "name": "billing_documents_series_id_cash_register_document_series_id_fk",
           "tableFrom": "billing_documents",
-          "tableTo": "billing_series",
+          "tableTo": "cash_register_document_series",
           "columnsFrom": [
             "series_id"
           ],
@@ -10041,8 +10255,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.billing_series": {
-      "name": "billing_series",
+    "public.cash_register_document_series": {
+      "name": "cash_register_document_series",
       "schema": "",
       "columns": {
         "id": {
@@ -10051,21 +10265,9 @@
           "primaryKey": true,
           "notNull": true
         },
-        "branch_id": {
-          "name": "branch_id",
+        "register_id": {
+          "name": "register_id",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document_prefix": {
-          "name": "document_prefix",
-          "type": "varchar(1)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "document_type": {
-          "name": "document_type",
-          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
         },
@@ -10074,6 +10276,12 @@
           "type": "varchar(10)",
           "primaryKey": false,
           "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
         },
         "receipt_type_code": {
           "name": "receipt_type_code",
@@ -10095,121 +10303,12 @@
           "notNull": true,
           "default": 0
         },
-        "price_incl_tax": {
-          "name": "price_incl_tax",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "tax_rate": {
-          "name": "tax_rate",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'18'"
-        },
-        "is_active": {
-          "name": "is_active",
+        "is_active_facturacion": {
+          "name": "is_active_facturacion",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": true
-        },
-        "description": {
-          "name": "description",
-          "type": "varchar(200)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "billing_series_branch_idx": {
-          "name": "billing_series_branch_idx",
-          "columns": [
-            {
-              "expression": "branch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "billing_series_branch_id_branches_id_fk": {
-          "name": "billing_series_branch_id_branches_id_fk",
-          "tableFrom": "billing_series",
-          "tableTo": "branches",
-          "columnsFrom": [
-            "branch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "billing_series_series_unique": {
-          "name": "billing_series_series_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "series"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.cash_register_document_series": {
-      "name": "cash_register_document_series",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "register_id": {
-          "name": "register_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document_type": {
-          "name": "document_type",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "series_id": {
-          "name": "series_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
         },
         "is_active": {
           "name": "is_active",
@@ -10234,8 +10333,8 @@
         }
       },
       "indexes": {
-        "cash_reg_doc_series_register_doctype_idx": {
-          "name": "cash_reg_doc_series_register_doctype_idx",
+        "cash_reg_doc_series_register_receipt_type_idx": {
+          "name": "cash_reg_doc_series_register_receipt_type_idx",
           "columns": [
             {
               "expression": "register_id",
@@ -10244,7 +10343,7 @@
               "nulls": "last"
             },
             {
-              "expression": "document_type",
+              "expression": "receipt_type_code",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -10255,11 +10354,17 @@
           "method": "btree",
           "with": {}
         },
-        "cash_reg_doc_series_series_idx": {
-          "name": "cash_reg_doc_series_series_idx",
+        "cash_reg_doc_series_type_series_idx": {
+          "name": "cash_reg_doc_series_type_series_idx",
           "columns": [
             {
-              "expression": "series_id",
+              "expression": "receipt_type_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -10298,19 +10403,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "cash_register_document_series_series_id_billing_series_id_fk": {
-          "name": "cash_register_document_series_series_id_billing_series_id_fk",
-          "tableFrom": "cash_register_document_series",
-          "tableTo": "billing_series",
-          "columnsFrom": [
-            "series_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

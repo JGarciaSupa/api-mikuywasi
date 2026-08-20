@@ -6,6 +6,7 @@ import {
   getWaiterTablesStatusController,
   editOrderItemController,
   cancelOrderController,
+  annulOrderItemController,
   getWaiterOrderController,
   updateWaiterOrderStatusController,
   updateWaiterOrderPaymentStatusController,
@@ -25,6 +26,7 @@ routes.patch('/orders/:id/status', updateWaiterOrderStatusController);
 routes.patch('/orders/:id/payment-status', updateWaiterOrderPaymentStatusController);
 routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
 routes.patch('/orders/:id/items', editOrderItemController);
+routes.post('/orders/:id/items/:itemId/annul', annulOrderItemController);
 routes.post('/orders/:id/cancel', cancelOrderController);
 
 export default routes;

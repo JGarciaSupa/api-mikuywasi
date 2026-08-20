@@ -38,9 +38,9 @@ const activationsData = [
 	},
 	{
 		id: 4,
-		code: "TRANSFER_SEARCH_BY_ORDER_NUMBER",
-		name: "Buscar pedido por número al transferir",
-		description: "Establece la búsqueda por número de pedido como opción predeterminada durante las transferencias.",
+		code: "ALLOW_CHANGE_ORDER_TYPE",
+		name: "Permitir modificar el tipo de pedido",
+		description: "Permite cambiar el tipo de pedido durante su gestión.",
 		category: "Pedidos",
 		defaultEnabled: false,
 		order: 4,
@@ -49,9 +49,9 @@ const activationsData = [
 	},
 	{
 		id: 5,
-		code: "ALLOW_CHANGE_ORDER_TYPE",
-		name: "Permitir modificar el tipo de pedido",
-		description: "Permite cambiar el tipo de pedido durante su gestión.",
+		code: "ALLOW_SPLIT_PRODUCT",
+		name: "Permitir desglosar productos en dos partes",
+		description: "Permite dividir un producto en dos partes al registrarlo en un pedido.",
 		category: "Pedidos",
 		defaultEnabled: false,
 		order: 5,
@@ -59,10 +59,10 @@ const activationsData = [
 		module: "caja_chica"
 	},
 	{
-		id: 6,
-		code: "ALLOW_SPLIT_PRODUCT",
-		name: "Permitir desglosar productos en dos partes",
-		description: "Permite dividir un producto en dos partes al registrarlo en un pedido.",
+		id: 14,
+		code: "ENABLE_TABLE_MOVE",
+		name: "Mover pedidos entre mesas",
+		description: "Permite mover un pedido completo o productos seleccionados de una mesa a otra (fusiona si la mesa destino ya tiene pedido).",
 		category: "Pedidos",
 		defaultEnabled: false,
 		order: 6,
@@ -70,7 +70,7 @@ const activationsData = [
 		module: "caja_chica"
 	},
 	{
-		id: 7,
+		id: 6,
 		code: "PASSWORD_DELETE_ORDER",
 		name: "Solicitar contraseña para eliminar pedidos",
 		description: "Requiere una contraseña para eliminar un pedido.",
@@ -81,7 +81,7 @@ const activationsData = [
 		module: "caja_chica"
 	},
 	{
-		id: 8,
+		id: 7,
 		code: "PASSWORD_DELETE_PRODUCT",
 		name: "Solicitar contraseña para eliminar productos",
 		description: "Requiere una contraseña para eliminar un producto de un pedido.",
@@ -92,7 +92,7 @@ const activationsData = [
 		module: "caja_chica"
 	},
 	{
-		id: 9,
+		id: 8,
 		code: "password_close_shift",
 		name: "Solicitar contraseña al cerrar el turno",
 		description: "Requiere una contraseña para realizar el cierre de turno.",
@@ -103,7 +103,7 @@ const activationsData = [
 		module: "caja_chica"
 	},
 	{
-		id: 12,
+		id: 9,
 		code: "print_prebill_footer_image",
 		name: "Imprimir imagen en el pie de la precuenta",
 		description: "Imprime el logotipo o imagen configurada en el pie de la precuenta.",
@@ -114,7 +114,7 @@ const activationsData = [
 		module: "impresion"
 	},
 	{
-		id: 14,
+		id: 10,
 		code: "PRINT_CUSTOMER_HEADER",
 		name: "Imprimir datos del cliente en la cabecera del documento",
 		description: "Incluye los datos del cliente en la cabecera del documento impreso.",
@@ -136,7 +136,7 @@ const activationsData = [
 		module: "impresion"
 	},
 	{
-		id: 10,
+		id: 11,
 		code: "PRINT_PREBILL_NOTES",
 		name: "Imprimir observaciones en la precuenta",
 		description: "Incluye las observaciones del pedido en la impresión de la precuenta.",
@@ -147,7 +147,7 @@ const activationsData = [
 		module: "impresion"
 	},
 	{
-		id: 11,
+		id: 12,
 		code: "PRINT_PREBILL_HEADER_IMAGE",
 		name: "Imprimir imagen en la cabecera de la precuenta",
 		description: null,
@@ -158,7 +158,7 @@ const activationsData = [
 		module: "impresion"
 	},
 	{
-		id: 15,
+		id: 13,
 		code: "print_valued_courtesies",
 		name: "Imprimir cortesías valorizadas",
 		description: "Muestra el valor económico de las cortesías en los documentos impresos.",
@@ -171,31 +171,31 @@ const activationsData = [
 ];
 
 async function seedActivations() {
-  console.log('🌱 Iniciando seeder de Activaciones...');
-  try {
-    for (const act of activationsData) {
-      await masterDb
-        .insert(activations)
-        .values(act)
-        .onConflictDoUpdate({
-          target: activations.code,
-          set: {
-            name: act.name,
-            description: act.description,
-            module: act.module,
-            category: act.category,
-            defaultEnabled: act.defaultEnabled,
-            order: act.order,
-            isActive: act.isActive,
-          },
-        });
-    }
-    console.log('✅ Activaciones insertadas exitosamente.');
-  } catch (error) {
-    console.error('❌ Error al insertar activaciones:', error);
-  } finally {
-    process.exit(0);
-  }
+	console.log('🌱 Iniciando seeder de Activaciones...');
+	try {
+		for (const act of activationsData) {
+			await masterDb
+				.insert(activations)
+				.values(act)
+				.onConflictDoUpdate({
+					target: activations.code,
+					set: {
+						name: act.name,
+						description: act.description,
+						module: act.module,
+						category: act.category,
+						defaultEnabled: act.defaultEnabled,
+						order: act.order,
+						isActive: act.isActive,
+					},
+				});
+		}
+		console.log('✅ Activaciones insertadas exitosamente.');
+	} catch (error) {
+		console.error('❌ Error al insertar activaciones:', error);
+	} finally {
+		process.exit(0);
+	}
 }
 
 seedActivations();

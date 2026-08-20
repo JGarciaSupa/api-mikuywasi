@@ -130,13 +130,48 @@ export const cancelOrderController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const result = await waiterOrderService.cancelOrder(orderId, getAuditActor(c));
+    const body = await c.req.json().catch(() => ({}));
+    const result = await waiterOrderService.cancelOrder(orderId, getAuditActor(c), {
+      reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
+      motivo: body?.motivo,
+      password: body?.password,
+    });
     return c.json({ success: true, data: result });
   } catch (error: any) {
-    const status = error.message?.includes('no encontrado') ? 404
-      : error.message?.includes('No se puede') ? 422
-        : 500;
-    return c.json({ success: false, message: error.message || 'Error al cancelar el pedido' }, status as any);
+    const msg = error.message || 'Error al cancelar el pedido';
+    const status = /no encontrado/i.test(msg) ? 404
+      : /Contraseña de autorización inválida|usuario autorizado/i.test(msg) ? 403
+      : /motivo|No se puede/i.test(msg) ? 422
+      : 500;
+    return c.json({ success: false, message: msg }, status as any);
+  }
+};
+
+/**
+ * POST /api/admin/waiter/orders/:id/items/:itemId/annul
+ * Anula (soft-delete) un ítem ya enviado, con motivo y/o contraseña según activaciones.
+ */
+export const annulOrderItemController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    const itemId = Number(c.req.param('itemId'));
+    if (!orderId || !itemId || isNaN(itemId)) {
+      return c.json({ success: false, message: 'Pedido e ítem requeridos' }, 400);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const result = await waiterOrderService.annulOrderItem(orderId, itemId, getAuditActor(c), {
+      reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
+      motivo: body?.motivo,
+      password: body?.password,
+    }, body?.quantity != null ? Number(body.quantity) : undefined);
+    return c.json({ success: true, data: result });
+  } catch (error: any) {
+    const msg = error.message || 'Error al anular el ítem';
+    const status = /no encontrado/i.test(msg) ? 404
+      : /Contraseña de autorización inválida|usuario autorizado/i.test(msg) ? 403
+      : /motivo|ya está|bloqueado|No se puede/i.test(msg) ? 422
+      : 500;
+    return c.json({ success: false, message: msg }, status as any);
   }
 };
 

@@ -406,6 +406,7 @@ export const receiptTypes = pgTable('receipt_types', {
   countryId: integer('country_id').references(() => countries.id, { onDelete: 'cascade' }),
   code: varchar('code', { length: 50 }).notNull(), // Ej: '01' (Factura), '03' (Boleta), 'INTERNO'
   name: varchar('name', { length: 100 }).notNull(), // Ej: 'Factura Electrónica', 'Nota de Venta'
+  documentPrefix: varchar('document_prefix', { length: 1 }),
   description: varchar('description', { length: 255 }),
   // Flag para identificar comprobantes globales (no ligados a ningún país, ej. Tickets Internos).
   isGlobal: boolean('is_global').default(false).notNull(),

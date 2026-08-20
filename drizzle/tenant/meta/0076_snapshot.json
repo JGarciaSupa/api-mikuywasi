@@ -1,6 +1,6 @@
 {
-  "id": "3bdd841d-c0f6-4b14-894c-3e4e14310be8",
-  "prevId": "4d3f5fba-f8d4-45a9-8427-567cd8bc9d4b",
+  "id": "a2cd013e-101e-4baa-b819-c0de2d25676a",
+  "prevId": "399fd897-41fa-40ea-b409-a62f4123df5e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10013,10 +10013,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "billing_documents_series_id_billing_series_id_fk": {
-          "name": "billing_documents_series_id_billing_series_id_fk",
+        "billing_documents_series_id_cash_register_document_series_id_fk": {
+          "name": "billing_documents_series_id_cash_register_document_series_id_fk",
           "tableFrom": "billing_documents",
-          "tableTo": "billing_series",
+          "tableTo": "cash_register_document_series",
           "columnsFrom": [
             "series_id"
           ],
@@ -10041,8 +10041,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.billing_series": {
-      "name": "billing_series",
+    "public.cash_register_document_series": {
+      "name": "cash_register_document_series",
       "schema": "",
       "columns": {
         "id": {
@@ -10051,21 +10051,9 @@
           "primaryKey": true,
           "notNull": true
         },
-        "branch_id": {
-          "name": "branch_id",
+        "register_id": {
+          "name": "register_id",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document_prefix": {
-          "name": "document_prefix",
-          "type": "varchar(1)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "document_type": {
-          "name": "document_type",
-          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
         },
@@ -10074,6 +10062,12 @@
           "type": "varchar(10)",
           "primaryKey": false,
           "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
         },
         "receipt_type_code": {
           "name": "receipt_type_code",
@@ -10095,121 +10089,12 @@
           "notNull": true,
           "default": 0
         },
-        "price_incl_tax": {
-          "name": "price_incl_tax",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "tax_rate": {
-          "name": "tax_rate",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'18'"
-        },
-        "is_active": {
-          "name": "is_active",
+        "is_active_facturacion": {
+          "name": "is_active_facturacion",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": true
-        },
-        "description": {
-          "name": "description",
-          "type": "varchar(200)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "billing_series_branch_idx": {
-          "name": "billing_series_branch_idx",
-          "columns": [
-            {
-              "expression": "branch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "billing_series_branch_id_branches_id_fk": {
-          "name": "billing_series_branch_id_branches_id_fk",
-          "tableFrom": "billing_series",
-          "tableTo": "branches",
-          "columnsFrom": [
-            "branch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "billing_series_series_unique": {
-          "name": "billing_series_series_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "series"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.cash_register_document_series": {
-      "name": "cash_register_document_series",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "register_id": {
-          "name": "register_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document_type": {
-          "name": "document_type",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "series_id": {
-          "name": "series_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
         },
         "is_active": {
           "name": "is_active",
@@ -10234,8 +10119,8 @@
         }
       },
       "indexes": {
-        "cash_reg_doc_series_register_doctype_idx": {
-          "name": "cash_reg_doc_series_register_doctype_idx",
+        "cash_reg_doc_series_register_receipt_type_idx": {
+          "name": "cash_reg_doc_series_register_receipt_type_idx",
           "columns": [
             {
               "expression": "register_id",
@@ -10244,7 +10129,7 @@
               "nulls": "last"
             },
             {
-              "expression": "document_type",
+              "expression": "receipt_type_code",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -10255,11 +10140,17 @@
           "method": "btree",
           "with": {}
         },
-        "cash_reg_doc_series_series_idx": {
-          "name": "cash_reg_doc_series_series_idx",
+        "cash_reg_doc_series_type_series_idx": {
+          "name": "cash_reg_doc_series_type_series_idx",
           "columns": [
             {
-              "expression": "series_id",
+              "expression": "receipt_type_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -10298,19 +10189,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "cash_register_document_series_series_id_billing_series_id_fk": {
-          "name": "cash_register_document_series_series_id_billing_series_id_fk",
-          "tableFrom": "cash_register_document_series",
-          "tableTo": "billing_series",
-          "columnsFrom": [
-            "series_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

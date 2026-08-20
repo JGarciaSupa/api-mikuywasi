@@ -49,6 +49,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.cambiar_estado_pago', name: 'Cambiar estado de pago', description: 'Actualizar el estado de pago del pedido.', order: 4 },
       { code: 'pedidos.crear', name: 'Crear pedidos', description: 'Crear un nuevo pedido.', order: 5 },
       { code: 'pedidos.transferir', name: 'Transferir pedidos', description: 'Transferir un pedido generado a la caja para cobrarlo (bloquea la edición) y regresarlo.', order: 6 },
+      { code: 'pedidos.mover_mesa', name: 'Mover pedidos entre mesas', description: 'Mover un pedido completo o productos seleccionados de una mesa a otra (fusiona si la destino tiene pedido).', order: 7 },
     ],
   },
   {
@@ -170,6 +171,17 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'mozo.cancelar_pedido', name: 'Cancelar pedido', description: 'Cancelar un pedido activo.', order: 5 },
     ],
   },
+  {
+    code: 'seguridad',
+    name: 'Seguridad',
+    description: 'Autorizaciones sensibles mediante contraseña (el usuario con la acción puede autorizar con su clave).',
+    icon: 'ShieldCheck',
+    order: 9,
+    subActions: [
+      { code: 'seguridad.autorizar_eliminar_pedido', name: 'Autorizar eliminar pedidos', description: 'Su contraseña autoriza la eliminación/anulación de un pedido.', order: 1 },
+      { code: 'seguridad.autorizar_eliminar_producto', name: 'Autorizar eliminar productos', description: 'Su contraseña autoriza la anulación de un producto ya enviado.', order: 2 },
+    ],
+  },
 ];
 
 const RBAC_ROLES: SeedRole[] = [
@@ -188,6 +200,7 @@ const RBAC_ROLES: SeedRole[] = [
       'pedidos.ver_detalle',
       'pedidos.cambiar_estado_pago',
       'pedidos.transferir',
+      'pedidos.mover_mesa',
       'caja.ver_sesiones',
       'caja.abrir_sesion',
       'caja.cerrar_sesion',
@@ -219,6 +232,7 @@ const RBAC_ROLES: SeedRole[] = [
       'mozo.cancelar_pedido',
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
+      'pedidos.mover_mesa',
       // Caja: el mozo puede abrir/cerrar su propio turno (obligatorio para crear pedidos).
       // Sin caja.ver_contabilidad: no ve saldos, totales ni movimientos.
       'caja.ver_sesiones',
@@ -247,7 +261,7 @@ const RBAC_ROLES: SeedRole[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────
-// FASE 1: Limpiar tablas RBAC de cada tenant
+// FASE DE LIMPIEZA OPIONAL (Omitida por defecto para no eliminar datos existentes)
 // ─────────────────────────────────────────────────────────────
 
 async function cleanTenantRbac(tenant: { dbName: string; server: { dbHost: string; dbPort: number; dbUser: string; dbPassword: string } }) {
@@ -269,10 +283,6 @@ async function cleanTenantRbac(tenant: { dbName: string; server: { dbHost: strin
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// FASE 2: Limpiar tablas RBAC del master
-// ─────────────────────────────────────────────────────────────
-
 async function cleanMasterRbac() {
   // Orden respeta FKs
   await masterDb.delete(tenantFeatureGrants);
@@ -285,77 +295,116 @@ async function cleanMasterRbac() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FASE 3: Insertar nuevos datos RBAC en master
+// FASE DE SIEMBRA DE DATOS RBAC (Incremental / Idempotente)
 // ─────────────────────────────────────────────────────────────
 
 async function seedRbacData(): Promise<{ subActionIdByCode: Map<string, number>; roleIdByCode: Map<string, number> }> {
   const subActionIdByCode = new Map<string, number>();
   const roleIdByCode = new Map<string, number>();
 
+  let createdActionsCount = 0;
+  let existingActionsCount = 0;
+  let createdSubActionsCount = 0;
+  let existingSubActionsCount = 0;
+
   // Actions + sub-actions
   for (const actionSeed of RBAC_ACTIONS) {
-    const [createdAction] = await masterDb
-      .insert(actions)
-      .values({
-        code: actionSeed.code,
-        name: actionSeed.name,
-        description: actionSeed.description,
-        icon: actionSeed.icon,
-        order: actionSeed.order,
-        isActive: true,
-      })
-      .returning();
+    let [existingAction] = await masterDb
+      .select()
+      .from(actions)
+      .where(eq(actions.code, actionSeed.code));
 
-    for (const subSeed of actionSeed.subActions) {
-      const [createdSub] = await masterDb
-        .insert(subActions)
+    if (!existingAction) {
+      [existingAction] = await masterDb
+        .insert(actions)
         .values({
-          actionId: createdAction.id,
-          code: subSeed.code,
-          name: subSeed.name,
-          description: subSeed.description,
-          order: subSeed.order,
+          code: actionSeed.code,
+          name: actionSeed.name,
+          description: actionSeed.description,
+          icon: actionSeed.icon,
+          order: actionSeed.order,
           isActive: true,
         })
         .returning();
+      createdActionsCount++;
+    } else {
+      existingActionsCount++;
+    }
 
-      subActionIdByCode.set(subSeed.code, createdSub.id);
+    for (const subSeed of actionSeed.subActions) {
+      let [existingSub] = await masterDb
+        .select()
+        .from(subActions)
+        .where(eq(subActions.code, subSeed.code));
+
+      if (!existingSub) {
+        [existingSub] = await masterDb
+          .insert(subActions)
+          .values({
+            actionId: existingAction.id,
+            code: subSeed.code,
+            name: subSeed.name,
+            description: subSeed.description,
+            order: subSeed.order,
+            isActive: true,
+          })
+          .returning();
+        createdSubActionsCount++;
+      } else {
+        existingSubActionsCount++;
+      }
+
+      subActionIdByCode.set(subSeed.code, existingSub.id);
     }
   }
 
-  console.log(`   ✓ ${RBAC_ACTIONS.length} acciones y ${subActionIdByCode.size} sub-acciones creadas`);
+  console.log(`   ✓ Acciones: ${createdActionsCount} creadas, ${existingActionsCount} ya existían`);
+  console.log(`   ✓ Sub-acciones: ${createdSubActionsCount} creadas, ${existingSubActionsCount} ya existían`);
+
+  let createdRolesCount = 0;
+  let existingRolesCount = 0;
 
   // Base roles + permisos
   for (const roleSeed of RBAC_ROLES) {
-    const [createdRole] = await masterDb
-      .insert(baseRoles)
-      .values({
-        code: roleSeed.code,
-        name: roleSeed.name,
-        description: roleSeed.description,
-        isActive: true,
-      })
-      .returning();
+    let [existingRole] = await masterDb
+      .select()
+      .from(baseRoles)
+      .where(eq(baseRoles.code, roleSeed.code));
 
-    roleIdByCode.set(roleSeed.code, createdRole.id);
+    if (!existingRole) {
+      [existingRole] = await masterDb
+        .insert(baseRoles)
+        .values({
+          code: roleSeed.code,
+          name: roleSeed.name,
+          description: roleSeed.description,
+          isActive: true,
+        })
+        .returning();
+      createdRolesCount++;
+    } else {
+      existingRolesCount++;
+    }
+
+    roleIdByCode.set(roleSeed.code, existingRole.id);
 
     const permRows = roleSeed.subActionCodes
       .map((code) => subActionIdByCode.get(code))
       .filter((id): id is number => id !== undefined)
-      .map((subActionId) => ({ baseRoleId: createdRole.id, subActionId }));
+      .map((subActionId) => ({ baseRoleId: existingRole.id, subActionId }));
 
     if (permRows.length > 0) {
-      await masterDb.insert(baseRolePermissions).values(permRows);
+      await masterDb.insert(baseRolePermissions).values(permRows).onConflictDoNothing();
     }
   }
 
-  console.log(`   ✓ ${RBAC_ROLES.length} roles base creados`);
+  console.log(`   ✓ Roles base: ${createdRolesCount} creados, ${existingRolesCount} ya existían`);
 
   return { subActionIdByCode, roleIdByCode };
 }
 
 // ─────────────────────────────────────────────────────────────
-// FASE 4: Otorgar todo a los tenants existentes + sync
+// FASE DE GRANTS Y SYNC: Otorgar todo a los tenants + sync
 // ─────────────────────────────────────────────────────────────
 
 async function grantAndSyncAllTenants() {
@@ -397,34 +446,21 @@ async function grantAndSyncAllTenants() {
 // ─────────────────────────────────────────────────────────────
 
 async function run() {
-  console.log('\n🚀 [RBAC SEED] Iniciando migración completa de RBAC...\n');
+  console.log('\n🚀 [RBAC SEED] Iniciando siembra/sincronización incremental de RBAC...\n');
 
   try {
-    // FASE 1
-    console.log('📦 Fase 1 — Limpiando tablas RBAC de tenants...');
-    const allTenants = await masterDb.query.tenants.findMany({ with: { server: true } });
-    for (const tenant of allTenants) {
-      await cleanTenantRbac(tenant as any);
-    }
-    console.log(`   Total tenants limpiados: ${allTenants.length}\n`);
-
-    // FASE 2
-    console.log('🗑️  Fase 2 — Limpiando tablas RBAC del master...');
-    await cleanMasterRbac();
-    console.log();
-
-    // FASE 3
-    console.log('✍️  Fase 3 — Insertando nuevos datos RBAC...');
+    // FASE 1: Verificar e insertar nuevas acciones, sub-acciones y roles sin borrar existentes
+    console.log('✍️  Fase 1 — Sincronizando acciones, sub-acciones y roles base...');
     await seedRbacData();
     console.log();
 
-    // FASE 4
-    console.log('🔗 Fase 4 — Otorgando grants y sincronizando tenants...');
+    // FASE 2: Otorgar grants a tenants y sincronizar BDs locales
+    console.log('🔗 Fase 2 — Otorgando nuevos grants y sincronizando tenants...');
     await grantAndSyncAllTenants();
     console.log();
 
-    console.log('✅ [RBAC SEED] Migración completada con éxito.');
-    console.log('   Los tenants nuevos recibirán todos los grants automáticamente al crearse.\n');
+    console.log('✅ [RBAC SEED] Sincronización completada con éxito.');
+    console.log('   Los registros existentes se preservaron y los nuevos fueron añadidos.\n');
     process.exit(0);
   } catch (error: any) {
     console.error('\n❌ [RBAC SEED] Error:', error?.message || error);

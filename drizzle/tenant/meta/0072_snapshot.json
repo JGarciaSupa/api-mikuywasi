@@ -1,6 +1,6 @@
 {
-  "id": "3bdd841d-c0f6-4b14-894c-3e4e14310be8",
-  "prevId": "4d3f5fba-f8d4-45a9-8427-567cd8bc9d4b",
+  "id": "aac0204c-5188-4461-8805-5c17f513913e",
+  "prevId": "3bdd841d-c0f6-4b14-894c-3e4e14310be8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10152,6 +10152,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "billing_series_prefix_series_idx": {
+          "name": "billing_series_prefix_series_idx",
+          "columns": [
+            {
+              "expression": "document_prefix",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "series",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -10170,15 +10191,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "billing_series_series_unique": {
-          "name": "billing_series_series_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "series"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -28,6 +28,7 @@ routes.get('/', async (c) => {
         id: receiptTypes.id,
         code: receiptTypes.code,
         name: receiptTypes.name,
+        documentPrefix: receiptTypes.documentPrefix,
         isGlobal: receiptTypes.isGlobal,
       })
       .from(receiptTypes)
@@ -51,6 +52,7 @@ routes.get('/', async (c) => {
         id: receiptTypes.id,
         code: receiptTypes.code,
         name: receiptTypes.name,
+        documentPrefix: receiptTypes.documentPrefix,
         isGlobal: receiptTypes.isGlobal,
       })
       .from(receiptTypes)

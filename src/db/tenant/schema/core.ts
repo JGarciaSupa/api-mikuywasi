@@ -488,6 +488,13 @@ export const orders = pgTable('orders', {
 		amount?: number;
 	}[]>(),
 
+	// Anulación del pedido (status='cancelled'). Se llenan al anular.
+	motivo: varchar('motivo', { length: 200 }),
+	reasonId: integer('reason_id'), // FK lógica a reasons (motivo del catálogo, si aplica)
+	deletedDate: timestamp('deleted_date', { withTimezone: true }),
+	deletedById: integer('deleted_by_id').references(() => users.id), // ejecutó la anulación
+	authorizedById: integer('authorized_by_id').references(() => users.id), // autorizó por contraseña
+
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -548,16 +555,44 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
-	// Avance de preparación en cocina (SIGG 2.7). preparedQty >= quantity = línea lista;
-	// preparedAt/preparedById son el momento y quién la dejó lista (se limpian si se
-	// deshace el avance).
+	// ─── Preparación en cocina (KDS) ─────────────────────────────────────────
+	// Unidades de la línea que cocina ya terminó. 0 = pendiente; >= quantity = línea
+	// lista. Se guarda la cantidad (no un booleano) para poder sacar 2 de 3 hamburguesas
+	// sin mentir sobre el estado del resto.
 	preparedQty: integer('prepared_qty').default(0).notNull(),
+	// Momento en que la línea quedó COMPLETA (preparedQty >= quantity). NULL mientras
+	// esté pendiente o parcial — y vuelve a NULL si cocina deshace la marca.
 	preparedAt: timestamp('prepared_at', { withTimezone: true }),
 	preparedById: integer('prepared_by_id').references(() => users.id),
-	// Cuándo entró la línea al pedido: distingue las adiciones del mozo (agregadas
-	// bastante después de creado el pedido) de los ítems originales.
+	// Cuándo entró la línea al pedido. Las adiciones posteriores del mozo tienen su
+	// propio cronómetro en cocina, distinto al del pedido completo.
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+	// Soft-delete: cuando se anula un ítem enviado se marca aquí (la fila no se borra).
+	// Las lecturas operativas (totales, cocina, descarga) excluyen deleted_at != null.
+	deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => ({
+	// La cocina consulta siempre "ítems de estos pedidos y su avance de preparación".
+	orderPreparedIdx: index('order_items_order_prepared_idx').on(table.orderId, table.preparedQty),
+}));
+
+// Log de ítems anulados (soft-delete). El order_item permanece con deleted_at seteado;
+// aquí queda el detalle: motivo, quién ejecutó y quién autorizó por contraseña.
+export const ordersItemsDeleted = pgTable('orders_items_deleted', {
+	id: serial('id').primaryKey(),
+	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+	orderItemId: integer('order_item_id').notNull().references(() => orderItems.id, { onDelete: 'cascade' }),
+	// Cantidad anulada en este evento. En anulación total = cantidad completa de la línea;
+	// en anulación parcial = solo la porción anulada (la línea conserva el resto).
+	quantity: integer('quantity'),
+	reasonId: integer('reason_id'), // FK lógica a reasons (si el motivo vino del catálogo)
+	motivo: varchar('motivo', { length: 200 }),
+	deletedById: integer('deleted_by_id').references(() => users.id),      // ejecutó
+	authorizedById: integer('authorized_by_id').references(() => users.id), // autorizó por contraseña
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	orderIdx: index('orders_items_deleted_order_idx').on(table.orderId),
+	itemIdx: index('orders_items_deleted_item_idx').on(table.orderItemId),
+}));
 
 // ==========================================
 // 🎨 PERSONALIZACIÓN DE INTERFAZ WEB/WEBAPP

@@ -1,0 +1,1 @@
+ALTER TABLE "receipt_types" ADD COLUMN "document_prefix" varchar(1);
