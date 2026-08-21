@@ -1,4 +1,4 @@
-import { eq, asc, and, ne, desc } from 'drizzle-orm';
+import { eq, asc, and, ne, desc, inArray } from 'drizzle-orm';
 import { cashRegisterDocumentSeries, cashRegisters, billingDocuments } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
@@ -217,17 +217,28 @@ export async function resolveSeriesForRegister(
 ): Promise<ResolvedSeries | null> {
   const db = getTenantDb();
 
-  const targetCode = receiptCodeFromDocumentType(documentType);
-
-  const [row] = await db
+  // OJO: el mapeo código→tipo es muchos-a-uno (cualquier código que no sea
+  // 01/03/07 es una nota de venta interna: '00', 'INTERNO', 'NV', etc.), así que
+  // NO se puede buscar por el único código que devuelve receiptCodeFromDocumentType.
+  // Se filtra en memoria con la MISMA función que usa listAvailableDocumentTypesForRegister,
+  // para que "el tipo está disponible" y "el tipo resuelve serie" nunca se contradigan.
+  const rows = await db
     .select()
     .from(cashRegisterDocumentSeries)
     .where(and(
       eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.receiptTypeCode, targetCode),
       eq(cashRegisterDocumentSeries.isActive, true),
     ))
-    .limit(1);
+    .orderBy(asc(cashRegisterDocumentSeries.id));
+
+  const matches = rows.filter((r) => {
+    const type = r.receiptTypeCode ? documentTypeFromReceiptCode(r.receiptTypeCode) : 'nota_de_venta';
+    return type === documentType;
+  });
+
+  // Si hay varias series internas en la caja, se prefiere la del código canónico.
+  const targetCode = receiptCodeFromDocumentType(documentType);
+  const row = matches.find((r) => r.receiptTypeCode === targetCode) ?? matches[0];
 
   if (!row) return null;
   const priceInclTax = documentType === 'boleta' || documentType === 'nota_de_venta';
@@ -407,11 +418,21 @@ export async function assignSeriesToRegister(_registerId: number, _documentType:
 
 export async function unassignSeriesFromRegister(registerId: number, documentType: DocumentType) {
   const db = getTenantDb();
-  const targetCode = receiptCodeFromDocumentType(documentType);
+
+  // Mismo criterio que resolveSeriesForRegister: el código guardado puede ser
+  // cualquiera que mapee a este documentType (ej. 'INTERNO' → nota_de_venta).
+  const rows = await db
+    .select({ id: cashRegisterDocumentSeries.id, receiptTypeCode: cashRegisterDocumentSeries.receiptTypeCode })
+    .from(cashRegisterDocumentSeries)
+    .where(eq(cashRegisterDocumentSeries.registerId, registerId));
+
+  const ids = rows
+    .filter((r) => (r.receiptTypeCode ? documentTypeFromReceiptCode(r.receiptTypeCode) : 'nota_de_venta') === documentType)
+    .map((r) => r.id);
+
+  if (ids.length === 0) return;
+
   await db
     .delete(cashRegisterDocumentSeries)
-    .where(and(
-      eq(cashRegisterDocumentSeries.registerId, registerId),
-      eq(cashRegisterDocumentSeries.receiptTypeCode, targetCode),
-    ));
+    .where(inArray(cashRegisterDocumentSeries.id, ids));
 }
