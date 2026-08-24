@@ -253,6 +253,7 @@ export const tables = pgTable('restaurant_tables', {
 }, (table) => ({
 	branchIdx: index('restaurant_tables_branch_idx').on(table.branchId),
 	salonIdx: index('restaurant_tables_salon_idx').on(table.salonId),
+	branchNameUniqueIdx: uniqueIndex('restaurant_tables_branch_name_unique_idx').on(table.branchId, table.name),
 }));
 
 // ==========================================

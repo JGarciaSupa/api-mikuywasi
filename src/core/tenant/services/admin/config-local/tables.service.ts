@@ -101,8 +101,12 @@ export async function createTable(data: { name: string; branchId: number; capaci
 
       return newTable;
     } catch (error: any) {
+      const dbError = error.cause || error;
+      if (dbError.code === '23505' && dbError.constraint === 'restaurant_tables_branch_name_unique_idx') {
+        throw new Error('Ya existe una mesa con este nombre en la sucursal');
+      }
       // Si el error es de unicidad (slug o tenant_slug_unique)
-      if (error.code === '23505') {
+      if (dbError.code === '23505') {
         attempts++;
         if (attempts === maxAttempts) {
           throw new Error('No se pudo generar un identificador único para la mesa después de varios intentos');
@@ -131,12 +135,20 @@ export async function updateTable(id: number, data: { name: string; capacity?: n
     await assertSalonInBranch(data.salonId, table.branchId);
   }
 
-  const [updatedTable] = await db
-    .update(tables)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(tables.id, id))
-    .returning();
-  return updatedTable;
+  try {
+    const [updatedTable] = await db
+      .update(tables)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tables.id, id))
+      .returning();
+    return updatedTable;
+  } catch (error: any) {
+    const dbError = error.cause || error;
+    if (dbError.code === '23505' && dbError.constraint === 'restaurant_tables_branch_name_unique_idx') {
+      throw new Error('Ya existe una mesa con este nombre en la sucursal');
+    }
+    throw error;
+  }
 }
 
 /**

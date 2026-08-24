@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "restaurant_tables_branch_name_unique_idx" ON "restaurant_tables" USING btree ("branch_id","name");

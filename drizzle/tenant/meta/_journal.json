@@ -561,6 +561,13 @@
       "when": 1787079412984,
       "tag": "0079_order_items_kitchen_prepared",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1787508686118,
+      "tag": "0080_add_unique_constraint_to_restaurant_tables_name",
+      "breakpoints": true
     }
   ]
 }
