@@ -226,6 +226,8 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
       subtotal: orders.subtotal,
       deliveryFee: orders.deliveryFee,
       tableId: orders.tableId,
+      status: orders.status,
+      paymentStatus: orders.paymentStatus,
     })
     .from(orders)
     .where(eq(orders.id, orderId));
@@ -234,10 +236,20 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
   const retentionAmount = splits.reduce((sum, split) => sum + Number(split.retentionAmount ?? 0), 0);
   const total = baseAmount + retentionAmount;
 
+  // Misma regla que el cobro completo (updateOrderPaymentStatus): cuando TODOS los
+  // splits quedan pagados, el pedido se cierra. No se pisa un anulado ni se reescribe
+  // uno ya cerrado.
+  const shouldComplete =
+    newStatus === 'paid' &&
+    order?.paymentStatus !== 'paid' &&
+    order?.status !== 'cancelled' &&
+    order?.status !== 'completed';
+
   await db
     .update(orders)
     .set({
       paymentStatus: newStatus,
+      ...(shouldComplete ? { status: 'completed' as const } : {}),
       retentionAmount: retentionAmount.toFixed(2),
       total: total.toFixed(2),
       updatedAt: new Date(),

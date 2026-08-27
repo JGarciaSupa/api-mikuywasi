@@ -510,10 +510,21 @@ export const updateOrderPaymentStatus = async (
     paymentMethod !== undefined ? (await findPaymentMethodByName(paymentMethod))?.id ?? null : null
   );
 
+  // Cobrar CIERRA el pedido: al pasar a PAGADO se marca 'completed' en el mismo
+  // UPDATE. Antes esto solo lo hacia la tablet de cocina, asi que un pedido cobrado
+  // y facturado se quedaba en 'ready_for_pickup' indefinidamente.
+  // No se pisa un pedido anulado ni se reescribe uno ya cerrado.
+  const shouldComplete =
+    !wasPaid &&
+    paymentStatus === 'paid' &&
+    order.status !== 'cancelled' &&
+    order.status !== 'completed';
+
   const [updated] = await db
     .update(orders)
     .set({
       paymentStatus: paymentStatus as any,
+      ...(shouldComplete ? { status: 'completed' as const } : {}),
       ...(paymentMethod !== undefined || paymentMethodId !== undefined
         ? { paymentMethod: paymentMethod ?? null, paymentMethodId: resolvedMethodId }
         : {}),
