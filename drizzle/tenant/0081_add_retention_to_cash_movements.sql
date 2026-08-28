@@ -1,0 +1,2 @@
+ALTER TABLE "cash_movements" ADD COLUMN "retention_percentage" numeric(5, 2) DEFAULT '0.00' NOT NULL;--> statement-breakpoint
+ALTER TABLE "cash_movements" ADD COLUMN "retention_amount" numeric(12, 2) DEFAULT '0.00' NOT NULL;

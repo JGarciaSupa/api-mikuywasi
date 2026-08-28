@@ -41,12 +41,13 @@ async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: nu
   const retentionPercentage = Number(split?.retentionPercentage ?? 0);
   const retentionAmount = (total * retentionPercentage) / 100;
 
+  // La retención no se le cobra al cliente: `total` es siempre el subtotal de la cuenta.
   await db
     .update(orderSplits)
     .set({
       subtotal: String(total.toFixed(2)),
       retentionAmount: String(retentionAmount.toFixed(2)),
-      total: String((total + retentionAmount).toFixed(2)),
+      total: String(total.toFixed(2)),
       updatedAt: new Date(),
     })
     .where(eq(orderSplits.id, splitId));
@@ -234,7 +235,9 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
 
   const baseAmount = Number(order?.subtotal ?? 0) + Number(order?.deliveryFee ?? 0);
   const retentionAmount = splits.reduce((sum, split) => sum + Number(split.retentionAmount ?? 0), 0);
-  const total = baseAmount + retentionAmount;
+  // La retención acumulada de las cuentas queda informativa en `retentionAmount`;
+  // el total del pedido nunca la incluye (el cliente no la paga).
+  const total = baseAmount;
 
   // Misma regla que el cobro completo (updateOrderPaymentStatus): cuando TODOS los
   // splits quedan pagados, el pedido se cierra. No se pisa un anulado ni se reescribe
@@ -303,7 +306,8 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
         : {}),
       retentionPercentage: retentionPercentage.toFixed(2),
       retentionAmount: retentionAmount.toFixed(2),
-      total: (baseAmount + retentionAmount).toFixed(2),
+      // La retención no se le cobra al cliente: total = lo que efectivamente paga.
+      total: baseAmount.toFixed(2),
       updatedAt: new Date(),
     })
     .where(eq(orderSplits.id, splitId))

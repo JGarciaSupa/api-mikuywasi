@@ -514,7 +514,12 @@ export async function recordOrderSaleIncome(
 
   // Atribución al turno del cajero que cobró (collectedSessionId), no al del mozo creador.
   const [order] = await db
-    .select({ collectedSessionId: orders.collectedSessionId, paymentMethodId: orders.paymentMethodId })
+    .select({
+      collectedSessionId: orders.collectedSessionId,
+      paymentMethodId: orders.paymentMethodId,
+      retentionPercentage: orders.retentionPercentage,
+      retentionAmount: orders.retentionAmount,
+    })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order?.collectedSessionId) return { created: false, reason: 'no_session_linked' };
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, order.collectedSessionId)).limit(1);
@@ -533,6 +538,8 @@ export async function recordOrderSaleIncome(
         concept: `Venta pedido ${orderId}`,
         amount: round2(data.amount),
         paymentMethod: data.paymentMethod ?? null,
+        retentionPercentage: order.retentionPercentage ?? '0.00',
+        retentionAmount: order.retentionAmount ?? '0.00',
         isCash,
         orderId,
         createdBy: actor?.userName ?? 'sistema',
@@ -541,6 +548,7 @@ export async function recordOrderSaleIncome(
 
     await recomputeSessionTotals(tx, session.id);
 
+    const retentionNote = toNum(order.retentionAmount) > 0 ? ` (retención S/ ${order.retentionAmount})` : '';
     await writeAuditLog({
       tableName: 'cash_movements',
       operation: 'INSERT',
@@ -549,7 +557,7 @@ export async function recordOrderSaleIncome(
       userId: actor?.userId,
       userName: actor?.userName,
       module: 'caja',
-      description: `Ingreso por venta ${orderId} (${data.paymentMethod ?? 'efectivo'}) — S/ ${round2(data.amount)}`,
+      description: `Ingreso por venta ${orderId} (${data.paymentMethod ?? 'efectivo'}) — S/ ${round2(data.amount)}${retentionNote}`,
     });
   });
 
@@ -598,6 +606,8 @@ export async function reverseOrderSaleMovement(
           concept: `Reverso venta ${orderId} (anulada)`,
           amount: income.amount,
           paymentMethod: income.paymentMethod,
+          retentionPercentage: income.retentionPercentage,
+          retentionAmount: income.retentionAmount,
           isCash: income.isCash,
           orderId,
           splitId: income.splitId,
@@ -663,6 +673,8 @@ export async function recordSplitSaleIncome(
         concept: `Venta pedido ${split.orderId} · ${split.label ?? 'cuenta'}`,
         amount: round2(amount),
         paymentMethod: split.paymentMethod ?? null,
+        retentionPercentage: split.retentionPercentage ?? '0.00',
+        retentionAmount: split.retentionAmount ?? '0.00',
         isCash,
         orderId: split.orderId,
         splitId,
@@ -670,6 +682,7 @@ export async function recordSplitSaleIncome(
       })
       .returning();
     await recomputeSessionTotals(tx, session.id);
+    const retentionNote = toNum(split.retentionAmount) > 0 ? ` (retención S/ ${split.retentionAmount})` : '';
     await writeAuditLog({
       tableName: 'cash_movements',
       operation: 'INSERT',
@@ -678,7 +691,7 @@ export async function recordSplitSaleIncome(
       userId: actor?.userId,
       userName: actor?.userName,
       module: 'caja',
-      description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${split.paymentMethod ?? 'efectivo'}) — S/ ${round2(amount)}`,
+      description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${split.paymentMethod ?? 'efectivo'}) — S/ ${round2(amount)}${retentionNote}`,
     });
   });
 
@@ -718,6 +731,8 @@ export async function reverseSplitSaleIncome(
         concept: `Reverso cuenta ${income.orderId ?? ''} (pago revertido)`,
         amount: income.amount,
         paymentMethod: income.paymentMethod,
+        retentionPercentage: income.retentionPercentage,
+        retentionAmount: income.retentionAmount,
         isCash: income.isCash,
         orderId: income.orderId,
         splitId,

@@ -484,7 +484,10 @@ export const updateOrderPaymentStatus = async (
   const retentionAmount = paymentStatus === 'paid'
     ? roundMoney((baseAmount * nextRetentionPercentage) / 100)
     : 0;
-  const total = roundMoney(baseAmount + retentionAmount);
+  // La retención NO se le cobra al cliente: lo que paga siempre es `baseAmount`.
+  // `retentionAmount` queda registrada aparte (arriba, en la orden, y luego en el
+  // movimiento de caja) como lo que el negocio no recibe neto de ese medio de pago.
+  const total = roundMoney(baseAmount);
 
   // Al cobrar, el cajero debe tener un turno de caja abierto.
   // El ingreso irá a ese turno (collectedSessionId), no al del mozo (cashSessionId).
