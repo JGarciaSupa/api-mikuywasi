@@ -575,6 +575,13 @@
       "when": 1787924785562,
       "tag": "0081_add_retention_to_cash_movements",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1788156256459,
+      "tag": "0082_add_printers_and_kitchen_dispatch_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -359,9 +359,32 @@ export const productSalesChannelPricesRelations = relations(productSalesChannelP
 // Cada local tiene sus propias filas — Local 1 sin Bar no ve ni administra el
 // "Bar" de Local 3 (US 1.5: "CRUD de Áreas de Producción... utilizadas por local").
 // Distinto de `storage_areas` (warehouse.ts), que es almacén/inventario, no ruteo de pedidos.
+// ==========================================
+// 🖨️ GESTIÓN DE IMPRESORAS Y HARDWARE
+// ==========================================
+
+export const printers = pgTable('printers', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	name: varchar('name', { length: 100 }).notNull(),
+	connectionType: varchar('connection_type', { length: 30 }).notNull(), // 'network' | 'usb' | 'bluetooth_serial'
+	target: varchar('target', { length: 255 }).notNull(), // '192.168.1.200:9100', 'POS-80', 'COM3'
+	paperColumns: integer('paper_columns').default(48).notNull(), // 32 para 58mm, 42 o 48 para 80mm
+	enableBeep: boolean('enable_beep').default(false).notNull(),
+	cutPaper: boolean('cut_paper').default(true).notNull(),
+	openDrawer: boolean('open_drawer').default(false).notNull(),
+	isActive: boolean('is_active').default(true).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	branchIdx: index('printers_branch_idx').on(table.branchId),
+	activeIdx: index('printers_active_idx').on(table.isActive),
+}));
+
 export const kitchenStations = pgTable('kitchen_stations', {
 	id: serial('id').primaryKey(),
 	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
+	printerId: integer('printer_id').references(() => printers.id, { onDelete: 'set null' }),
 	name: varchar('name', { length: 100 }).notNull(),
 	code: varchar('code', { length: 30 }).notNull(), // Ej: 'BAR', 'COCINA-CALIENTE' — único POR sucursal, no global
 	isActive: boolean('is_active').default(true).notNull(),
@@ -370,6 +393,7 @@ export const kitchenStations = pgTable('kitchen_stations', {
 }, (table) => ({
 	branchCodeUnique: uniqueIndex('kitchen_stations_branch_code_unique_idx').on(table.branchId, table.code),
 	branchIdx: index('kitchen_stations_branch_idx').on(table.branchId),
+	printerIdx: index('kitchen_stations_printer_idx').on(table.printerId),
 	activeIdx: index('kitchen_stations_active_idx').on(table.isActive),
 }));
 
@@ -387,8 +411,14 @@ export const productKitchenStations = pgTable('product_kitchen_stations', {
 	productIdx: index('product_kitchen_stations_product_idx').on(table.productId),
 }));
 
+export const printersRelations = relations(printers, ({ one, many }) => ({
+	branch: one(branches, { fields: [printers.branchId], references: [branches.id] }),
+	kitchenStations: many(kitchenStations),
+}));
+
 export const kitchenStationsRelations = relations(kitchenStations, ({ one }) => ({
 	branch: one(branches, { fields: [kitchenStations.branchId], references: [branches.id] }),
+	printer: one(printers, { fields: [kitchenStations.printerId], references: [printers.id] }),
 }));
 
 export const productKitchenStationsRelations = relations(productKitchenStations, ({ one }) => ({
@@ -556,6 +586,9 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
+	// ─── Despacho a cocina e impresión física ────────────────────────────────
+	sentToKitchen: boolean('sent_to_kitchen').default(false).notNull(),
+	printedAt: timestamp('printed_at', { withTimezone: true }),
 	// ─── Preparación en cocina (KDS) ─────────────────────────────────────────
 	// Unidades de la línea que cocina ya terminó. 0 = pendiente; >= quantity = línea
 	// lista. Se guarda la cantidad (no un booleano) para poder sacar 2 de 3 hamburguesas
@@ -574,6 +607,7 @@ export const orderItems = pgTable('order_items', {
 }, (table) => ({
 	// La cocina consulta siempre "ítems de estos pedidos y su avance de preparación".
 	orderPreparedIdx: index('order_items_order_prepared_idx').on(table.orderId, table.preparedQty),
+	sentToKitchenIdx: index('order_items_sent_to_kitchen_idx').on(table.orderId, table.sentToKitchen),
 }));
 
 // Log de ítems anulados (soft-delete). El order_item permanece con deleted_at seteado;

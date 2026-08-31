@@ -1,4 +1,4 @@
-import { kitchenStations, productKitchenStations, categories, products } from '@/db/tenant/schema';
+import { kitchenStations, productKitchenStations, categories, products, printers } from '@/db/tenant/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getTenantDb } from '@/utils/tenant-context';
@@ -7,14 +7,45 @@ import { getTenantDb } from '@/utils/tenant-context';
 
 export async function listKitchenStations(branchId: number) {
   const db = getTenantDb();
-  return db.select().from(kitchenStations)
+  return db
+    .select({
+      id: kitchenStations.id,
+      branchId: kitchenStations.branchId,
+      printerId: kitchenStations.printerId,
+      name: kitchenStations.name,
+      code: kitchenStations.code,
+      isActive: kitchenStations.isActive,
+      createdAt: kitchenStations.createdAt,
+      updatedAt: kitchenStations.updatedAt,
+      printerName: printers.name,
+      printerTarget: printers.target,
+      printerConnectionType: printers.connectionType,
+    })
+    .from(kitchenStations)
+    .leftJoin(printers, eq(kitchenStations.printerId, printers.id))
     .where(eq(kitchenStations.branchId, branchId))
     .orderBy(asc(kitchenStations.name));
 }
 
 export async function getKitchenStationById(id: number) {
   const db = getTenantDb();
-  const [station] = await db.select().from(kitchenStations).where(eq(kitchenStations.id, id));
+  const [station] = await db
+    .select({
+      id: kitchenStations.id,
+      branchId: kitchenStations.branchId,
+      printerId: kitchenStations.printerId,
+      name: kitchenStations.name,
+      code: kitchenStations.code,
+      isActive: kitchenStations.isActive,
+      createdAt: kitchenStations.createdAt,
+      updatedAt: kitchenStations.updatedAt,
+      printerName: printers.name,
+      printerTarget: printers.target,
+      printerConnectionType: printers.connectionType,
+    })
+    .from(kitchenStations)
+    .leftJoin(printers, eq(kitchenStations.printerId, printers.id))
+    .where(eq(kitchenStations.id, id));
   return station;
 }
 
@@ -68,11 +99,6 @@ export async function deleteKitchenStation(id: number) {
 }
 
 // ─── Asignación de estaciones a productos (excepción, por código) ───────────
-//
-// El producto es tenant-wide (no tiene sucursal propia), así que la excepción se
-// guarda por código y se resuelve dentro de la sucursal en la que cae cada pedido
-// — por eso getStationsForProduct/assign/unassign necesitan branchId: son la
-// "traducción" código↔fila para la sucursal que está mirando el admin ahora mismo.
 
 export async function getStationsForProduct(productId: number, branchId: number) {
   const db = getTenantDb();
@@ -120,20 +146,7 @@ export async function unassignStationFromProduct(productId: number, stationCode:
 }
 
 // ─── Resolución de estaciones efectivas (excepción de producto > categoría) ──
-//
-// Un producto resuelve su(s) estación(es) en cascada, dentro de la sucursal del
-// pedido en curso (branchId):
-//   1. Excepción explícita en product_kitchen_stations (por código; puede ser varias).
-//   2. Código de estación de su subcategoría (categories.kitchenStationCode).
-//   3. Código de estación de la categoría padre de esa subcategoría.
-//   4. Sin asignar (array vacío) → fail-open, se muestra en todas las pantallas.
-// Cada código se traduce a la fila real de kitchen_stations de esa sucursal; si el
-// código no existe ahí (p.ej. una excepción apunta a una estación que ese local no
-// tiene), se descarta esa opción y se sigue con el siguiente nivel de la cascada.
-//
-// Centralizado acá porque kitchen.service.ts lo necesita en dos lugares
-// (getRequiredStationsForOrder y getActiveKitchenOrders) y ya tuvimos un caso
-// real donde esos dos cálculos podían divergir por estar duplicados.
+
 export async function resolveEffectiveStations(
   db: ReturnType<typeof getTenantDb>,
   productIds: number[],
