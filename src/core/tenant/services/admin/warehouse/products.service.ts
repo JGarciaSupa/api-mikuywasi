@@ -1,4 +1,5 @@
-import { products, categories, branches, productSalesChannelPrices } from '@/db/tenant/schema';
+import { products, categories, branches, productSalesChannelPrices, salesChannels } from '@/db/tenant/schema';
+import { type TaxConfig, resolveEffectiveTaxes } from '@/core/tenant/services/shared/taxes.service';
 import { eq, and, ilike, desc, count, inArray, or, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
@@ -37,10 +38,32 @@ async function attachChannelPrices(db: ReturnType<typeof getTenantDb>, rows: any
     byProductId.set(priceRow.productId, list);
   }
 
+  // El override de impuestos del producto solo guarda qué aplica; la tasa vigente
+  // vive en la sucursal del canal. Se resuelve al leer para que la UI y el POS nunca
+  // muestren la tasa que se copió el día que se editó el producto.
+  const channelIds = Array.from(new Set(priceRows.map((r) => r.salesChannelId)));
+  const branchTaxesByChannel = new Map<number, TaxConfig[] | null>();
+  if (channelIds.length) {
+    const channelBranchRows = await db
+      .select({ channelId: salesChannels.id, taxes: branches.taxes })
+      .from(salesChannels)
+      .innerJoin(branches, eq(branches.id, salesChannels.branchId))
+      .where(inArray(salesChannels.id, channelIds));
+    for (const r of channelBranchRows) {
+      branchTaxesByChannel.set(r.channelId, (r.taxes ?? null) as TaxConfig[] | null);
+    }
+  }
+
   return rows.map((row) => ({
     ...row,
     image: getImageUrl(row.image),
-    channelPrices: byProductId.get(row.id) ?? [],
+    channelPrices: (byProductId.get(row.id) ?? []).map((priceRow: any) => ({
+      ...priceRow,
+      taxes: resolveEffectiveTaxes(
+        branchTaxesByChannel.get(priceRow.salesChannelId) ?? null,
+        (priceRow.taxes ?? null) as TaxConfig[] | null,
+      ),
+    })),
   }));
 }
 

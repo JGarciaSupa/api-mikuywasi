@@ -5,6 +5,12 @@ import { getImageUrl } from '../../../../utils/r2';
 import { getTenantDb } from '../../../../utils/tenant-context';
 import { findPaymentMethodByName } from '../admin/config-local/payment-method.service';
 import { assertStockAvailable, adjustProductStock } from '../shared/product-stock.service';
+import {
+  type TaxConfig,
+  normalizeTaxConfigList,
+  resolveEffectiveTaxes,
+  resolveLineTaxes,
+} from '../shared/taxes.service';
 import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
 
 
@@ -15,82 +21,6 @@ function toNum(v: unknown) {
 
 const roundMoney = (val: number) => Number(val.toFixed(2));
 const roundQty = (val: number) => Number(val.toFixed(3));
-
-type TaxConfig = {
-  key: string;
-  label: string;
-  rate: number;
-  isActive: boolean;
-  defaultActive?: boolean;
-  calculationType?: 'percentage' | 'fixed';
-};
-
-const DEFAULT_BRANCH_TAXES: TaxConfig[] = [
-  { key: 'impuesto_1', label: 'Aplica Impuesto 1', rate: 18, defaultActive: true, isActive: true, calculationType: 'percentage' },
-  { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
-  { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
-  { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false, calculationType: 'fixed' },
-];
-
-function normalizeTaxConfigList(taxes?: TaxConfig[] | null): TaxConfig[] {
-  const source = Array.isArray(taxes) && taxes.length > 0 ? taxes : DEFAULT_BRANCH_TAXES;
-  const byKey = new Map(source.map((tax) => [tax.key, tax]));
-
-  return DEFAULT_BRANCH_TAXES.map((base) => {
-    const tax = byKey.get(base.key);
-    if (!tax) return base;
-    return {
-      key: tax.key || base.key,
-      label: tax.label || base.label,
-      rate: Number.isFinite(Number(tax.rate)) ? Number(tax.rate) : base.rate,
-      defaultActive: tax.defaultActive ?? base.defaultActive,
-      isActive: tax.isActive ?? tax.defaultActive ?? base.isActive,
-      calculationType: tax.calculationType ?? base.calculationType,
-    };
-  });
-}
-
-function isFixedTax(tax: TaxConfig) {
-  return tax.calculationType === 'fixed' || tax.key === 'icbper';
-}
-
-function resolveLineTaxes(grossAmount: number, quantity: number, taxes: TaxConfig[]) {
-  const activeTaxes = normalizeTaxConfigList(taxes).filter((tax) => tax.isActive);
-  const percentageTaxes = activeTaxes.filter((tax) => !isFixedTax(tax));
-  const fixedTaxes = activeTaxes.filter((tax) => isFixedTax(tax));
-
-  const fixedTotal = fixedTaxes.reduce((sum, tax) => sum + (toNum(tax.rate) * quantity), 0);
-  const percentageRateTotal = percentageTaxes.reduce((sum, tax) => sum + toNum(tax.rate), 0);
-  const baseAmount = percentageRateTotal > 0
-    ? roundMoney((grossAmount - fixedTotal) / (1 + (percentageRateTotal / 100)))
-    : roundMoney(grossAmount - fixedTotal);
-
-  const taxesWithAmount = activeTaxes.map((tax) => {
-    const amount = isFixedTax(tax)
-      ? roundMoney(toNum(tax.rate) * quantity)
-      : roundMoney(baseAmount * (toNum(tax.rate) / 100));
-
-    return {
-      key: tax.key,
-      label: tax.label,
-      rate: toNum(tax.rate),
-      isActive: true,
-      defaultActive: tax.defaultActive,
-      calculationType: tax.calculationType,
-      amount,
-    };
-  });
-
-  const totalTaxAmount = roundMoney(taxesWithAmount.reduce((sum, tax) => sum + toNum(tax.amount), 0));
-  const subtotal = roundMoney(grossAmount - totalTaxAmount);
-
-  return {
-    subtotal,
-    totalTaxAmount,
-    lineTotal: roundMoney(grossAmount),
-    taxSnapshot: taxesWithAmount,
-  };
-}
 
 // Costo unitario de receta por producto: suma(qty insumo × precio promedio) ÷ porciones
 // de la receta de venta activa. Se congela en order_items.unit_cost al crear el pedido,
@@ -611,8 +541,11 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
             (packagingFee * quantity)
           );
 
-          const sourceTaxes = normalizeTaxConfigList(
-            (channelPrice?.taxes?.length ? channelPrice.taxes : branchTaxConfigs) as TaxConfig[]
+          // El override por producto/canal solo activa o desactiva impuestos; la tasa
+          // vigente sale siempre de la sucursal (ver resolveEffectiveTaxes).
+          const sourceTaxes = resolveEffectiveTaxes(
+            branchTaxConfigs,
+            (channelPrice?.taxes ?? null) as TaxConfig[] | null,
           );
           const lineTax = resolveLineTaxes(grossLine, quantity, sourceTaxes);
 

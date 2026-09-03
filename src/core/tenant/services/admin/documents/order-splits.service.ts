@@ -2,6 +2,7 @@ import { eq, and, inArray, sql } from 'drizzle-orm';
 import { orders, orderItems, orderSplits, tables } from '../../../../../db/tenant/schema';
 
 import { getTenantDb } from '../../../../../utils/tenant-context';
+import { type TaxSnapshotEntry, prorateTaxSnapshot } from '../../shared/taxes.service';
 import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
@@ -398,15 +399,27 @@ export async function splitItemQuantity(
   const newTotalPrice = (pricePerUnit * qty).toFixed(2);
   const remainTotalPrice = (pricePerUnit * remainQty).toFixed(2);
 
+  // El importe se reparte por cantidad, así que los impuestos se prorratean con la
+  // misma razón. Sin esto la mitad nueva sale sin taxSnapshot y su comprobante cae
+  // al IGV por defecto en vez de usar los impuestos con los que se vendió.
+  const snapshot = item.taxSnapshot as TaxSnapshotEntry[] | null;
+  const newTaxSnapshot = prorateTaxSnapshot(snapshot, qty / item.quantity);
+  const remainTaxSnapshot = prorateTaxSnapshot(snapshot, remainQty / item.quantity);
+
   await db
     .update(orderItems)
-    .set({ quantity: remainQty, totalPrice: remainTotalPrice })
+    .set({
+      quantity: remainQty,
+      totalPrice: remainTotalPrice,
+      ...(remainTaxSnapshot ? { taxSnapshot: remainTaxSnapshot as any } : {}),
+    })
     .where(eq(orderItems.id, itemId));
 
   await db.insert(orderItems).values({
     orderId,
     splitId: targetSplitId,
     productId: item.productId,
+    salesChannelId: item.salesChannelId,
     productName: item.productName,
     unitPrice: item.unitPrice,
     quantity: qty,
@@ -414,6 +427,7 @@ export async function splitItemQuantity(
     packagingFee: item.packagingFee,
     notes: item.notes,
     totalPrice: newTotalPrice,
+    taxSnapshot: newTaxSnapshot as any,
   });
 
   const splitsToRecalc = new Set<number>();

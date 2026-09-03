@@ -1,6 +1,7 @@
 import { eq, asc, and, ne, desc, inArray } from 'drizzle-orm';
-import { cashRegisterDocumentSeries, cashRegisters, billingDocuments } from '../../../../../db/tenant/schema';
+import { cashRegisterDocumentSeries, cashRegisters, billingDocuments, branches } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
+import { type TaxConfig, resolveBranchMainTaxRate } from '../../shared/taxes.service';
 
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
 // El pivote acepta además nota_de_credito (documento fiscal auto).
@@ -43,14 +44,32 @@ export interface UpdateSeriesInput {
   isActive?: boolean;
 }
 
-function addVirtualFields(s: any) {
+// Tasa principal configurada en la sucursal (branches.taxes). Reemplaza el 18 fijo
+// que hacía que toda serie facturara al IGV peruano por defecto sin importar la
+// configuración de impuestos de la sede.
+export async function getBranchTaxRate(branchId: number | null | undefined): Promise<number> {
+  if (!branchId) return resolveBranchMainTaxRate(null);
+  const db = getTenantDb();
+  const [branch] = await db.select({ taxes: branches.taxes }).from(branches).where(eq(branches.id, branchId)).limit(1);
+  return resolveBranchMainTaxRate((branch?.taxes ?? null) as TaxConfig[] | null);
+}
+
+// Tasa de la sucursal a la que pertenece la caja dueña de la serie.
+async function getTaxRateForRegister(registerId: number | null | undefined): Promise<number> {
+  if (!registerId) return resolveBranchMainTaxRate(null);
+  const db = getTenantDb();
+  const [row] = await db.select({ branchId: cashRegisters.branchId }).from(cashRegisters).where(eq(cashRegisters.id, registerId)).limit(1);
+  return getBranchTaxRate(row?.branchId);
+}
+
+function addVirtualFields(s: any, taxRate?: number) {
   if (!s) return s;
   const docType = s.receiptTypeCode ? documentTypeFromReceiptCode(s.receiptTypeCode) : 'nota_de_venta';
   return {
     ...s,
     documentType: docType,
     priceInclTax: docType === 'boleta' || docType === 'nota_de_venta',
-    taxRate: '18',
+    taxRate: String(taxRate ?? 0),
     // Mapped properties for backward compatibility
     isActive: s.isActive,
   };
@@ -79,7 +98,8 @@ export async function listSeries(branchId?: number) {
       .where(eq(cashRegisters.branchId, branchId))
       .orderBy(asc(cashRegisterDocumentSeries.receiptTypeCode), asc(cashRegisterDocumentSeries.series));
 
-    return rows.map(addVirtualFields);
+    const branchRate = await getBranchTaxRate(branchId);
+    return rows.map((row) => addVirtualFields(row, branchRate));
   }
 
   const rows = await db
@@ -87,13 +107,19 @@ export async function listSeries(branchId?: number) {
     .from(cashRegisterDocumentSeries)
     .orderBy(asc(cashRegisterDocumentSeries.receiptTypeCode), asc(cashRegisterDocumentSeries.series));
 
-  return rows.map(addVirtualFields);
+  const rateByRegister = new Map<number, number>();
+  for (const row of rows) {
+    if (!rateByRegister.has(row.registerId)) {
+      rateByRegister.set(row.registerId, await getTaxRateForRegister(row.registerId));
+    }
+  }
+  return rows.map((row) => addVirtualFields(row, rateByRegister.get(row.registerId)));
 }
 
 export async function getSeriesById(id: number) {
   const db = getTenantDb();
   const [row] = await db.select().from(cashRegisterDocumentSeries).where(eq(cashRegisterDocumentSeries.id, id));
-  return row ? addVirtualFields(row) : null;
+  return row ? addVirtualFields(row, await getTaxRateForRegister(row.registerId)) : null;
 }
 
 function validateSeriesFormat(documentType: string, series: string): void {
@@ -194,7 +220,7 @@ export async function updateSeries(id: number, input: UpdateSeriesInput) {
     .where(eq(cashRegisterDocumentSeries.id, id))
     .returning();
 
-  return addVirtualFields(row);
+  return addVirtualFields(row, await getTaxRateForRegister(row.registerId));
 }
 
 // ── Series por caja (Caja ↔ Documento ↔ Serie) ─────────────────────────────────
@@ -213,7 +239,7 @@ export interface ResolvedSeries {
 export async function resolveSeriesForRegister(
   registerId: number,
   documentType: DocumentType,
-  _branchId: number,
+  branchId: number,
 ): Promise<ResolvedSeries | null> {
   const db = getTenantDb();
 
@@ -248,7 +274,7 @@ export async function resolveSeriesForRegister(
     documentType,
     lastSequential: row.lastSequential,
     priceInclTax,
-    taxRate: '18',
+    taxRate: String(await getBranchTaxRate(branchId)),
     source: 'register',
   };
 }
@@ -393,7 +419,7 @@ export async function createOrLinkRegisterDocument(input: CreateRegisterDocument
         updatedAt: new Date(),
       }).where(eq(cashRegisterDocumentSeries.id, existingSeries.id)).returning();
 
-      return addVirtualFields(updated);
+      return addVirtualFields(updated, await getTaxRateForRegister(updated.registerId));
     }
 
     // No existe → crear la serie
@@ -408,7 +434,7 @@ export async function createOrLinkRegisterDocument(input: CreateRegisterDocument
       isActiveFacturacion: input.isActiveFacturacion ?? true,
     }).returning();
 
-    return addVirtualFields(created);
+    return addVirtualFields(created, await getTaxRateForRegister(created.registerId));
   });
 }
 

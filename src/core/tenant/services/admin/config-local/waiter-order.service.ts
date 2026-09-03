@@ -14,6 +14,8 @@ import {
   productExtras,
   reasons,
   ordersItemsDeleted,
+  branches,
+  productSalesChannelPrices,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -24,6 +26,13 @@ import { resolveForRegister } from './activation.service';
 import { authorizeByPassword } from './../documents/security-auth.service';
 import type { AuditActor } from './../warehouse/types';
 import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
+import {
+  type TaxConfig,
+  type TaxSnapshotEntry,
+  aggregateTaxBreakdown,
+  resolveEffectiveTaxes,
+  resolveLineTaxes,
+} from './../../shared/taxes.service';
 
 const EDITABLE_STATUSES = ['pending', 'confirmed', 'preparing'] as const;
 type EditableStatus = (typeof EDITABLE_STATUSES)[number];
@@ -48,6 +57,53 @@ function assertNotTransferred(
       `El pedido ${orderId} está transferido a caja y bloqueado. Debe regresarse para editarlo.`
     );
   }
+}
+
+
+// ── Impuestos de la línea ──────────────────────────────────────────────────────
+
+// Resuelve precio e impuestos de un producto igual que lo hace createOrder, para que
+// un ítem agregado después a la comanda no quede con otro precio ni sin taxSnapshot.
+async function resolveChannelPricing(
+  db: ReturnType<typeof getTenantDb>,
+  order: { branchId: number; salesChannelId: number | null },
+  product: typeof products.$inferSelect,
+) {
+  const [branch] = await db.select({ taxes: branches.taxes }).from(branches).where(eq(branches.id, order.branchId)).limit(1);
+
+  const [channelPrice] = order.salesChannelId
+    ? await db.select().from(productSalesChannelPrices).where(and(
+        eq(productSalesChannelPrices.salesChannelId, order.salesChannelId),
+        eq(productSalesChannelPrices.productId, product.id),
+      )).limit(1)
+    : [undefined];
+
+  const unitPrice = toNum(
+    channelPrice?.isActive
+      ? (channelPrice.discountPrice ?? channelPrice.price)
+      : (product.discountPrice ?? product.price)
+  );
+
+  return {
+    unitPrice,
+    packagingFee: toNum(product.packagingFee ?? 0),
+    taxes: resolveEffectiveTaxes(
+      (branch?.taxes ?? null) as TaxConfig[] | null,
+      (channelPrice?.taxes ?? null) as TaxConfig[] | null,
+    ),
+  };
+}
+
+// Recalcula los importes de un taxSnapshot ya congelado contra un nuevo bruto de línea
+// (cambio de cantidad, anulación parcial). Conserva las tasas históricas del snapshot:
+// no vuelve a leer la sucursal, porque el ítem ya se vendió con esas tasas.
+function rescaleTaxSnapshot(
+  snapshot: TaxSnapshotEntry[] | null | undefined,
+  grossAmount: number,
+  quantity: number,
+): TaxSnapshotEntry[] | null {
+  if (!snapshot?.length) return null;
+  return resolveLineTaxes(grossAmount, quantity, snapshot as TaxConfig[]).taxSnapshot;
 }
 
 // ── Helpers de receta/stock ────────────────────────────────────────────────────
@@ -137,12 +193,20 @@ async function recalcOrderTotals(
     : roundMoney(((subtotal + deliveryFee) * toNum((order as any)?.retentionPercentage ?? '0')) / 100);
   const total = roundMoney(subtotal + deliveryFee + retentionAmount);
 
+  // Re-agrega el desglose de impuestos desde los taxSnapshot vigentes: sin esto el
+  // pedido conserva el breakdown del momento de creación y deja de cuadrar con las
+  // líneas apenas se agrega, anula o cambia de cantidad un ítem.
+  const taxBreakdown = aggregateTaxBreakdown(
+    ois.map((i) => i.taxSnapshot as TaxSnapshotEntry[] | null)
+  );
+
   await db
     .update(orders)
     .set({
       subtotal: String(roundMoney(subtotal)),
       retentionAmount: String(retentionAmount),
       total: String(total),
+      taxBreakdown: taxBreakdown as any,
       updatedAt: new Date(),
     })
     .where(eq(orders.id, orderId));
@@ -199,21 +263,32 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
         return extra ? s + toNum(extra.price) * sel.qty : s;
       }, 0);
 
-      const unitPrice = toNum(product.price);
-      const totalPrice = roundMoney(unitPrice * input.quantity! + alternativesExtra + extrasTotal);
+      // Mismo criterio de precio e impuestos que createOrder: precio del canal de
+      // venta del pedido (no el precio base del producto) y taxSnapshot congelado.
+      const pricing = await resolveChannelPricing(db, order, product);
+      const unitPrice = pricing.unitPrice;
+      const totalPrice = roundMoney(
+        unitPrice * input.quantity! +
+        alternativesExtra +
+        extrasTotal +
+        pricing.packagingFee * input.quantity!
+      );
+      const lineTax = resolveLineTaxes(totalPrice, input.quantity!, pricing.taxes);
 
       const [newItem] = await db
         .insert(orderItems)
         .values({
           orderId,
           productId: product.id,
+          salesChannelId: order.salesChannelId ?? null,
           productName: product.name,
           unitPrice: String(unitPrice),
           quantity: input.quantity,
           selectedAlternatives: input.selectedAlternatives ?? [],
-          packagingFee: '0',
+          packagingFee: String(pricing.packagingFee),
           notes: input.notes ?? null,
           totalPrice: String(totalPrice),
+          taxSnapshot: lineTax.taxSnapshot,
         })
         .returning();
 
@@ -350,10 +425,19 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
       const unitPrice = toNum(oi.unitPrice);
       const newTotalPrice = roundMoney(unitPrice * input.quantity);
+      const newTaxSnapshot = rescaleTaxSnapshot(
+        oi.taxSnapshot as TaxSnapshotEntry[] | null,
+        newTotalPrice,
+        input.quantity,
+      );
 
       const [updatedItem] = await db
         .update(orderItems)
-        .set({ quantity: input.quantity, totalPrice: String(newTotalPrice) })
+        .set({
+          quantity: input.quantity,
+          totalPrice: String(newTotalPrice),
+          ...(newTaxSnapshot ? { taxSnapshot: newTaxSnapshot as any } : {}),
+        })
         .where(eq(orderItems.id, input.orderItemId))
         .returning();
 
@@ -578,8 +662,17 @@ export async function annulOrderItem(
     // Anulación parcial: la línea conserva el resto; se recalcula su total por la nueva cantidad.
     const remaining = oi.quantity - annulQty;
     const newTotalPrice = roundMoney(toNum(oi.unitPrice) * remaining);
+    const newTaxSnapshot = rescaleTaxSnapshot(
+      oi.taxSnapshot as TaxSnapshotEntry[] | null,
+      newTotalPrice,
+      remaining,
+    );
     await db.update(orderItems)
-      .set({ quantity: remaining, totalPrice: String(newTotalPrice) })
+      .set({
+        quantity: remaining,
+        totalPrice: String(newTotalPrice),
+        ...(newTaxSnapshot ? { taxSnapshot: newTaxSnapshot as any } : {}),
+      })
       .where(eq(orderItems.id, orderItemId));
   } else {
     // Anulación total: soft-delete de la línea (la fila se conserva con deleted_at).

@@ -16,6 +16,7 @@ import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer,
 import { getActiveSessionForUser } from './cash.service';
 import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
+import { type TaxSnapshotEntry, aggregateTaxBreakdown, resolveTipoAfectacion } from '../../shared/taxes.service';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
 
@@ -185,6 +186,9 @@ function montoEnLetras(monto: number, moneda = 'SOLES'): string {
 }
 
 interface LineCalc {
+  // Vínculo con la línea del pedido que originó esta línea del comprobante.
+  // Es lo que permite recuperar después el desglose por impuesto (tax_snapshot).
+  orderItemId: number | null;
   productId: number | null;
   productName: string;
   quantity: number;
@@ -199,6 +203,10 @@ interface LineCalc {
   priceInclTax: boolean;
   taxRate: number;
   igvAmount: number;
+  // Afectación SUNAT (catálogo 07) de la línea: '10' gravada, '20' exonerada.
+  // Depende de los impuestos realmente activos, que el producto puede desactivar
+  // por canal de venta — no de que el documento sea boleta o factura.
+  tipoAfectacion: '10' | '20';
   taxSnapshot?: {
     key: string;
     label: string;
@@ -242,6 +250,7 @@ function calcLine(
   const altNames = selectedAlternatives.map((a) => a.name).join(', ');
 
   return {
+    orderItemId: null,
     productId,
     productName,
     quantity,
@@ -256,6 +265,7 @@ function calcLine(
     priceInclTax,
     taxRate,
     igvAmount: taxAmount,
+    tipoAfectacion: rate > 0 ? '10' : '20',
   };
 }
 
@@ -276,6 +286,7 @@ function resolveLineCalcFromSnapshot(oi: typeof orderItems.$inferSelect): LineCa
   const mainPercentageTax = activeTaxes.find((tax) => tax.key === 'impuesto_1') ?? percentageTaxes[0] ?? null;
 
   return {
+    orderItemId: oi.id,
     productId: oi.productId ?? null,
     productName: oi.productName,
     quantity: oi.quantity,
@@ -290,12 +301,13 @@ function resolveLineCalcFromSnapshot(oi: typeof orderItems.$inferSelect): LineCa
     priceInclTax: true,
     taxRate: mainPercentageTax ? toNum(mainPercentageTax.rate) : percentageRateTotal,
     igvAmount: percentageTaxAmount,
+    tipoAfectacion: resolveTipoAfectacion(activeTaxes),
     taxSnapshot: activeTaxes,
   };
 }
 
 function resolveLineCalc(oi: typeof orderItems.$inferSelect, priceInclTax: boolean, taxRate: number): LineCalc {
-  return resolveLineCalcFromSnapshot(oi) ?? calcLine(
+  const calc = resolveLineCalcFromSnapshot(oi) ?? calcLine(
     oi.productId ?? null,
     oi.productName,
     oi.quantity,
@@ -306,6 +318,7 @@ function resolveLineCalc(oi: typeof orderItems.$inferSelect, priceInclTax: boole
     priceInclTax,
     taxRate
   );
+  return { ...calc, orderItemId: oi.id };
 }
 
 function resolveDocumentTaxRate(lineCalcs: LineCalc[], fallbackRate: number) {
@@ -392,7 +405,7 @@ export async function previewDocument(
 
   const docType = series.receiptTypeCode ? documentTypeFromReceiptCode(series.receiptTypeCode) : 'nota_de_venta';
   const priceInclTax = docType === 'boleta' || docType === 'nota_de_venta';
-  const taxRate = 18;
+  const taxRate = toNum(resolvedSeries.taxRate);
 
   const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
 
@@ -407,6 +420,7 @@ export async function previewDocument(
       taxRate: String(taxRate),
     },
     lines: lineCalcs,
+    taxBreakdown: aggregateTaxBreakdown(lineCalcs.map((l) => l.taxSnapshot as TaxSnapshotEntry[] | undefined)),
     totals: { subtotal: summary.subtotal, taxAmount: summary.totalTaxAmount, total: summary.total },
     nextDocumentNumber: `${series.series}-${padSequential(series.lastSequential + 1)}`,
   };
@@ -551,6 +565,7 @@ export async function createDocument(input: CreateDocumentInput) {
 
     const lineRows = lineCalcs.map((l) => ({
       documentId: doc.id,
+      orderItemId: l.orderItemId,
       productId: l.productId,
       productName: l.productName,
       quantity: l.quantity,
@@ -629,8 +644,12 @@ async function emitirYActualizarDoc(
         fecha_emision: new Date(doc.issuedAt!).toISOString().replace('Z', '-05:00'),
         moneda: doc.currency,
       },
+      // Las operaciones se separan por afectación: un producto con el impuesto
+      // desactivado es exonerado, y declararlo dentro de `gravadas` es una
+      // observación de SUNAT (el IGV informado no cuadra con la base gravada).
       totales: {
-        gravadas: toNum(doc.subtotal),
+        gravadas: roundMoney(lineCalcs.filter((l) => l.tipoAfectacion === '10').reduce((sum, l) => sum + l.subtotal, 0)),
+        exoneradas: roundMoney(lineCalcs.filter((l) => l.tipoAfectacion === '20').reduce((sum, l) => sum + l.subtotal, 0)),
         igv: roundMoney(lineCalcs.reduce((sum, l) => sum + (l.igvAmount ?? l.taxAmount), 0)),
         total_impuestos: toNum(doc.taxAmount),
         valor_venta: toNum(doc.subtotal),
@@ -658,9 +677,11 @@ async function emitirYActualizarDoc(
           valor_unitario: valorUnitario,
           valor_venta: l.subtotal,
           base_igv: l.subtotal,
-          porcentaje_igv: mainPercentageTax ? toNum(mainPercentageTax.rate) : taxRate,
+          porcentaje_igv: l.tipoAfectacion === '20'
+            ? 0
+            : (mainPercentageTax ? toNum(mainPercentageTax.rate) : taxRate),
           igv: roundMoney(l.igvAmount ?? l.taxAmount),
-          tipo_afectacion: '10',
+          tipo_afectacion: l.tipoAfectacion,
           total_impuestos: l.taxAmount,
           precio_unitario: precioUnitario,
           ...(icbperTax ? { icbper: toNum(icbperTax.amount), factor_icbper: toNum(icbperTax.rate) } : {}),
@@ -875,6 +896,7 @@ export async function retryDocument(id: number) {
     }
 
     return {
+      orderItemId: l.orderItemId ?? null,
       productId: l.productId ?? null,
       productName: l.productName,
       quantity: l.quantity,
@@ -889,6 +911,9 @@ export async function retryDocument(id: number) {
       priceInclTax: true,
       taxRate,
       igvAmount: toNum(l.taxAmount),
+      // Línea sin taxSnapshot (documento previo a los impuestos por producto):
+      // se infiere de si llevó impuesto o no.
+      tipoAfectacion: (toNum(l.taxAmount) > 0 ? '10' : '20') as '10' | '20',
     };
   });
 
@@ -967,6 +992,7 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
     }
 
     return {
+      orderItemId: l.orderItemId ?? null,
       productId: l.productId ?? null,
       productName: l.productName,
       quantity: l.quantity,
@@ -981,6 +1007,9 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
       priceInclTax: true,
       taxRate,
       igvAmount: toNum(l.taxAmount),
+      // Línea sin taxSnapshot (documento previo a los impuestos por producto):
+      // se infiere de si llevó impuesto o no.
+      tipoAfectacion: (toNum(l.taxAmount) > 0 ? '10' : '20') as '10' | '20',
     };
   });
 
@@ -1020,10 +1049,29 @@ export async function getDocumentReceipt(id: number, userId?: number) {
 
   if (!doc) return null;
 
-  const lines = await db
+  const rawLines = await db
     .select()
     .from(billingDocumentLines)
     .where(eq(billingDocumentLines.documentId, id));
+
+  // Desglose por impuesto: la tabla del documento guarda un solo `tax_amount`, así que
+  // el detalle (IGV / ICBPER / impuesto_2·3) se toma del taxSnapshot del ítem del pedido.
+  // Se une por billing_document_lines.order_item_id — la línea exacta que se facturó —
+  // y no por el pedido completo, para que editar OTROS ítems no altere un comprobante
+  // ya emitido. Si la línea no tiene ítem asociado (ej. nota de crédito externa) o el
+  // ítem no tiene snapshot, queda sin desglose y el PDF cae al total agregado.
+  const receiptItemIds = rawLines.map((l) => l.orderItemId).filter((v): v is number => v != null);
+  const receiptItems = receiptItemIds.length
+    ? await db.select({ id: orderItems.id, taxSnapshot: orderItems.taxSnapshot })
+        .from(orderItems).where(inArray(orderItems.id, receiptItemIds))
+    : [];
+  const snapshotByItemId = new Map(receiptItems.map((r) => [r.id, r.taxSnapshot as TaxSnapshotEntry[] | null]));
+
+  const lines = rawLines.map((l) => ({
+    ...l,
+    taxes: (l.orderItemId != null ? snapshotByItemId.get(l.orderItemId) : null) ?? null,
+  }));
+  const taxBreakdown = aggregateTaxBreakdown(lines.map((l) => l.taxes));
 
   // Datos de la sucursal para el encabezado del comprobante
   const [branch] = await db
@@ -1120,6 +1168,7 @@ export async function getDocumentReceipt(id: number, userId?: number) {
   return {
     document: finalDoc,
     lines,
+    taxBreakdown,
     emisor,
     branch: {
       name: branch?.name ?? '',
@@ -1200,6 +1249,8 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
     })
     .where(eq(billingDocuments.id, id));
 
+  await releaseOrderItemLinks(db, id);
+
   // Cancelar pedido asociado si se solicitó (revierte descuento de stock)
   if (cancelOrder) {
     const { updateOrderStatus } = await import('../documents/order.service');
@@ -1208,6 +1259,21 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;
+}
+
+// Un pedido anulado puede volver a facturarse (el guard de duplicados excluye los
+// documentos 'voided'), pero billing_document_lines.order_item_id tiene índice único:
+// si el documento anulado conserva el vínculo, la re-emisión choca con 23505. Al
+// anular se libera el vínculo — el documento anulado conserva sus importes y solo
+// pierde el desglose por impuesto, que ya no se imprime.
+async function releaseOrderItemLinks(
+  db: TenantDb,
+  documentId: number,
+): Promise<void> {
+  await db
+    .update(billingDocumentLines)
+    .set({ orderItemId: null })
+    .where(eq(billingDocumentLines.documentId, documentId));
 }
 
 async function createCreditNoteForVoid(
@@ -1737,6 +1803,7 @@ export async function createNotaCredito(input: CreateNotaCreditoInput) {
         updatedAt: new Date(),
       })
       .where(eq(billingDocuments.id, docId));
+    await releaseOrderItemLinks(db, docId);
   }
 
   const finalLines = await db.select().from(billingDocumentLines).where(eq(billingDocumentLines.documentId, docId));
