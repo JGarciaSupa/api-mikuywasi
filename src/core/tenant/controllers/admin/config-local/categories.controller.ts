@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   createCategory,
   deleteCategory,
@@ -21,7 +22,7 @@ export const getAllCategoriesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las categorías'
+      message: safeMessage(error, 'Error al obtener las categorías')
     }, 500);
   }
 };
@@ -49,7 +50,7 @@ export const getCategoryByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener la categoría'
+      message: safeMessage(error, 'Error al obtener la categoría')
     }, 500);
   }
 };
@@ -66,7 +67,7 @@ export const createCategoryController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear la categoría'
+      message: safeMessage(error, 'Error al crear la categoría')
     }, 400);
   }
 };
@@ -97,7 +98,7 @@ export const updateCategoryController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar la categoría'
+      message: safeMessage(error, 'Error al actualizar la categoría')
     }, 400);
   }
 };
@@ -126,7 +127,7 @@ export const deleteCategoryController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar la categoría'
+      message: safeMessage(error, 'Error al eliminar la categoría')
     }, 400);
   }
 };
@@ -144,7 +145,7 @@ export const reorderCategoriesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al reordenar las categorías'
+      message: safeMessage(error, 'Error al reordenar las categorías')
     }, 400);
   }
 };
@@ -171,7 +172,7 @@ export const getSubcategoriesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las subcategorías'
+      message: safeMessage(error, 'Error al obtener las subcategorías')
     }, 500);
   }
 };

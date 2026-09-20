@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as kitchenStationService from '../../../services/admin/config-local/kitchen-station.service';
 
 // ─── Catálogo ────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ export const listKitchenStationsController = async (c: Context) => {
     const data = await kitchenStationService.listKitchenStations(branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener las estaciones de cocina' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener las estaciones de cocina') }, 500);
   }
 };
 
@@ -24,7 +25,7 @@ export const getKitchenStationByIdController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Estación no encontrada' }, 404);
     return c.json({ success: true, data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Estación no encontrada' }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Estación no encontrada') }, 404);
   }
 };
 
@@ -34,7 +35,7 @@ export const createKitchenStationController = async (c: Context) => {
     const result = await kitchenStationService.createKitchenStation(data);
     return c.json({ success: true, message: 'Estación creada con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear la estación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear la estación') }, 400);
   }
 };
 
@@ -46,7 +47,7 @@ export const updateKitchenStationController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Estación no encontrada' }, 404);
     return c.json({ success: true, message: 'Estación actualizada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar la estación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar la estación') }, 400);
   }
 };
 
@@ -57,7 +58,7 @@ export const deleteKitchenStationController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Estación no encontrada' }, 404);
     return c.json({ success: true, message: 'Estación eliminada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar la estación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar la estación') }, 400);
   }
 };
 
@@ -74,7 +75,7 @@ export const getProductKitchenStationsController = async (c: Context) => {
     const data = await kitchenStationService.getStationsForProduct(productId, branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener las estaciones del producto' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener las estaciones del producto') }, 500);
   }
 };
 
@@ -88,7 +89,7 @@ export const assignStationToProductController = async (c: Context) => {
     const result = await kitchenStationService.assignStationToProduct(productId, String(stationCode));
     return c.json({ success: true, data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al asignar la estación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al asignar la estación') }, 400);
   }
 };
 
@@ -102,6 +103,6 @@ export const unassignStationFromProductController = async (c: Context) => {
     await kitchenStationService.unassignStationFromProduct(productId, stationCode);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al remover la estación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al remover la estación') }, 400);
   }
 };

@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as reasonService from '../../../services/admin/config-local/reason.service';
 
 type ReasonType = 'courtesy' | 'order_cancel' | 'document_void' | 'discount';
@@ -20,7 +21,7 @@ export const listReasonsController = async (c: Context) => {
     const data = await reasonService.listReasons(branchId, typeQuery);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener los motivos' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener los motivos') }, 500);
   }
 };
 
@@ -31,7 +32,7 @@ export const getReasonByIdController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Motivo no encontrado' }, 404);
     return c.json({ success: true, data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Motivo no encontrado' }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Motivo no encontrado') }, 404);
   }
 };
 
@@ -41,7 +42,7 @@ export const createReasonController = async (c: Context) => {
     const result = await reasonService.createReason(data);
     return c.json({ success: true, message: 'Motivo creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el motivo' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el motivo') }, 400);
   }
 };
 
@@ -53,7 +54,7 @@ export const updateReasonController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Motivo no encontrado' }, 404);
     return c.json({ success: true, message: 'Motivo actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el motivo' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el motivo') }, 400);
   }
 };
 
@@ -64,6 +65,6 @@ export const deleteReasonController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Motivo no encontrado' }, 404);
     return c.json({ success: true, message: 'Motivo eliminado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el motivo' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el motivo') }, 400);
   }
 };

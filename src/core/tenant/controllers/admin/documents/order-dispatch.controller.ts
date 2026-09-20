@@ -1,4 +1,5 @@
 import { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as dispatchService from '../../../services/admin/documents/order-dispatch.service';
 
 export async function getOrderDispatchPayloadController(c: Context) {
@@ -15,7 +16,7 @@ export async function getOrderDispatchPayloadController(c: Context) {
     const data = await dispatchService.getOrderDispatchPayload(orderId, branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener payload de despacho' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener payload de despacho') }, 500);
   }
 }
 
@@ -32,6 +33,6 @@ export async function markOrderItemsDispatchedController(c: Context) {
     const result = await dispatchService.markOrderItemsDispatched(orderId, body.itemIds);
     return c.json({ success: true, message: 'Ítems marcados como despachados a cocina', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al marcar ítems como despachados' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al marcar ítems como despachados') }, 500);
   }
 }

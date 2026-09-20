@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as transferService from '../../../services/admin/documents/order-transfer.service';
 import { getCurrentUserId } from '@/utils/permissions';
 
@@ -13,7 +14,7 @@ export const listTransferableOrdersController = async (c: Context) => {
     const data = await transferService.listTransferableOrders(userId, search);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al listar pedidos transferibles' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al listar pedidos transferibles') }, 500);
   }
 };
 

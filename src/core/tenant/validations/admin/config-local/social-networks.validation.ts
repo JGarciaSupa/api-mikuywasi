@@ -6,7 +6,7 @@ export const createSocialNetworkSchema = z.object({
     message: 'Plataforma no válida'
   }),
   url: z.string({ error: 'La URL es requerida' }).url({ message: 'Formato de URL inválido' }),
-  order: z.number().int().optional().default(0),
+  order: z.number().int().min(0, 'El orden no puede ser negativo').optional().default(0),
   isActive: z.boolean().optional().default(true),
 });
 

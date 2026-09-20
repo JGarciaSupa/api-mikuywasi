@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as tenantsService from '../services/tenants.service';
 
 export const getAllTenantsController = async (c: Context) => {
@@ -20,7 +21,7 @@ export const getAllTenantsController = async (c: Context) => {
       }
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener tenants', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener tenants'), data: null }, 500);
   }
 };
 
@@ -30,7 +31,7 @@ export const getTenantByIdController = async (c: Context) => {
     const result = await tenantsService.getTenantById(id);
     return c.json({ success: true, message: 'Tenant obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Tenant no encontrado', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Tenant no encontrado'), data: null }, 404);
   }
 };
 
@@ -40,7 +41,7 @@ export const getTenantBySlugController = async (c: Context) => {
     const result = await tenantsService.getTenantBySlug(slug);
     return c.json({ success: true, message: 'Tenant obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Tenant no encontrado', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Tenant no encontrado'), data: null }, 404);
   }
 };
 
@@ -50,7 +51,7 @@ export const createTenantController = async (c: Context) => {
     const result = await tenantsService.createTenant(data);
     return c.json({ success: true, message: 'Tenant creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el tenant', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el tenant'), data: null }, 400);
   }
 };
 
@@ -61,7 +62,7 @@ export const updateTenantController = async (c: Context) => {
     const result = await tenantsService.updateTenant(id, data);
     return c.json({ success: true, message: 'Tenant actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el tenant', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el tenant'), data: null }, 400);
   }
 };
 
@@ -72,7 +73,7 @@ export const renewSubscriptionController = async (c: Context) => {
     const result = await tenantsService.renewSubscription(id, data);
     return c.json({ success: true, message: 'Suscripción renovada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al renovar la suscripción', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al renovar la suscripción'), data: null }, 400);
   }
 };
 
@@ -82,7 +83,7 @@ export const deleteTenantController = async (c: Context) => {
     const result = await tenantsService.deleteTenant(id);
     return c.json({ success: true, message: result.message || 'Tenant eliminado correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el tenant', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el tenant'), data: null }, 400);
   }
 };
 
@@ -98,7 +99,7 @@ export const getTenantUsersController = async (c: Context) => {
       data: result,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener usuarios', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener usuarios'), data: null }, 500);
   }
 };
 
@@ -113,7 +114,7 @@ export const createTenantUserController = async (c: Context) => {
       data: result,
     }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear usuario'), data: null }, 400);
   }
 };
 
@@ -129,7 +130,7 @@ export const updateTenantUserController = async (c: Context) => {
       data: result,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar usuario'), data: null }, 400);
   }
 };
 
@@ -144,7 +145,7 @@ export const updateTenantUserPasswordController = async (c: Context) => {
       message: result.message,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar contraseña', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar contraseña'), data: null }, 400);
   }
 };
 
@@ -158,6 +159,6 @@ export const deleteTenantUserController = async (c: Context) => {
       message: result.message,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar usuario'), data: null }, 400);
   }
 };

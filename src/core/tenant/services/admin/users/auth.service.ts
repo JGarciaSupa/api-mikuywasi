@@ -1,4 +1,4 @@
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, isNull } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { users, refreshTokens, userBranches, branches } from '@/db/tenant/schema';
 import { generateAccessToken } from '@/utils/jwt';
@@ -40,7 +40,7 @@ export async function login(username: string, password: string, userAgent?: stri
 
   const db = getTenantDb();
   const user = await db.query.users.findFirst({
-    where: eq(users.username, username.trim()),
+    where: and(eq(users.username, username.trim()), isNull(users.deletedAt)),
   });
 
   console.log("Users: ", user);
@@ -126,9 +126,9 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     .set({ isRevoked: true })
     .where(eq(refreshTokens.id, matchedToken.id));
 
-  // 4. Obtener usuario
+  // 4. Obtener usuario (excluir eliminados lógicamente)
   const user = await db.query.users.findFirst({
-    where: eq(users.id, matchedToken.userId),
+    where: and(eq(users.id, matchedToken.userId), isNull(users.deletedAt)),
   });
 
   if (!user) {

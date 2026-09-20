@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as sunatService from '../../../services/admin/documents/sunat.service';
 import { z } from 'zod';
 
@@ -29,7 +30,7 @@ export const searchDocumentController = async (c: Context) => {
     console.error("Error fetching SUNAT data:", error);
     return c.json({ 
       success: false, 
-      message: error.message || "Error interno del servidor" 
+      message: safeMessage(error, 'Error interno del servidor') 
     }, 500);
   }
 };

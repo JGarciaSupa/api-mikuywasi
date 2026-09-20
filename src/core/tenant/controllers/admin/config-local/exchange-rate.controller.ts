@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   createExchangeRate,
   deleteExchangeRate,
@@ -19,7 +20,7 @@ export const getAllExchangeRatesController = async (c: Context) => {
     const results = await getAllExchangeRates(branchId);
     return c.json({ success: true, data: results });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener los tipos de cambio' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener los tipos de cambio') }, 500);
   }
 };
 
@@ -33,7 +34,7 @@ export const getExchangeRateByIdController = async (c: Context) => {
 
     return c.json({ success: true, data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener el tipo de cambio' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener el tipo de cambio') }, 500);
   }
 };
 
@@ -43,7 +44,7 @@ export const createExchangeRateController = async (c: Context) => {
     const result = await createExchangeRate(data);
     return c.json({ success: true, message: 'Tipo de cambio creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el tipo de cambio' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el tipo de cambio') }, 400);
   }
 };
 
@@ -58,7 +59,7 @@ export const updateExchangeRateController = async (c: Context) => {
     if (!result) return c.json({ success: false, message: 'Tipo de cambio no encontrado' }, 404);
     return c.json({ success: true, message: 'Tipo de cambio actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el tipo de cambio' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el tipo de cambio') }, 400);
   }
 };
 
@@ -72,6 +73,6 @@ export const deleteExchangeRateController = async (c: Context) => {
 
     return c.json({ success: true, message: 'Tipo de cambio eliminado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el tipo de cambio' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el tipo de cambio') }, 400);
   }
 };

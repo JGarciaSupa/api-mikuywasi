@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as reportsService from '../../../services/admin/documents/cash-reports.service';
 import type { CashReportFilters } from '../../../services/admin/documents/cash-reports.service';
 
@@ -65,7 +66,7 @@ const handle = (
     return c.json({ success: true, data });
   } catch (err: any) {
     console.error(`Error in cash reports (${errorMessage}):`, err);
-    return c.json({ success: false, message: err.message || errorMessage }, 500);
+    return c.json({ success: false, message: safeMessage(err, 'Error interno del servidor') || errorMessage }, 500);
   }
 };
 

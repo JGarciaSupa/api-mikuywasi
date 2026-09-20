@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage, InUseError } from '@/utils/errors';
 import {
   createSalesChannel,
   deleteSalesChannel,
@@ -23,7 +24,7 @@ export const getAllSalesChannelsController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los canales de venta'
+      message: safeMessage(error, 'Error al obtener los canales de venta')
     }, 500);
   }
 };
@@ -48,7 +49,7 @@ export const getSalesChannelByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el canal de venta'
+      message: safeMessage(error, 'Error al obtener el canal de venta')
     }, 500);
   }
 };
@@ -65,7 +66,7 @@ export const createSalesChannelController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear el canal de venta'
+      message: safeMessage(error, 'Error al crear el canal de venta')
     }, 400);
   }
 };
@@ -96,7 +97,7 @@ export const updateSalesChannelController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el canal de venta'
+      message: safeMessage(error, 'Error al actualizar el canal de venta')
     }, 400);
   }
 };
@@ -112,7 +113,8 @@ export const deleteSalesChannelController = async (c: Context) => {
       return c.json({ success: false, message: 'ID inválido' }, 400);
     }
 
-    const result = await deleteSalesChannel(id);
+    const force = c.req.query('force') === 'true';
+    const result = await deleteSalesChannel(id, force);
     if (!result) {
       return c.json({ success: false, message: 'Canal de venta no encontrado' }, 404);
     }
@@ -123,9 +125,17 @@ export const deleteSalesChannelController = async (c: Context) => {
       data: result
     });
   } catch (error: any) {
+    if (error instanceof InUseError) {
+      return c.json({
+        success: false,
+        requiresConfirmation: true,
+        references: error.references,
+        message: error.message
+      }, 409);
+    }
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar el canal de venta'
+      message: safeMessage(error, 'Error al eliminar el canal de venta')
     }, 400);
   }
 };

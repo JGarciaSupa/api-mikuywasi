@@ -1,8 +1,9 @@
-import { salons, tables } from '@/db/tenant/schema';
-import { eq, sql } from 'drizzle-orm';
+import { salons, tables, orders } from '@/db/tenant/schema';
+import { eq, sql, count } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getTenantDb } from '@/utils/tenant-context';
 import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
+import { InUseError } from '@/utils/errors';
 
 /**
  * Verificar que el salón exista y pertenezca a la sucursal de la mesa.
@@ -168,12 +169,31 @@ export async function updateTablePosition(id: number, data: { posX: number; posY
 /**
  * Eliminar una mesa
  */
-export async function deleteTable(id: number) {
+export async function deleteTable(id: number, force = false) {
   const db = getTenantDb();
-  const [deletedTable] = await db
-    .delete(tables)
-    .where(eq(tables.id, id))
-    .returning();
+
+  const [existing] = await db.select({ id: tables.id }).from(tables).where(eq(tables.id, id));
+  if (!existing) throw new Error('Mesa no encontrada');
+
+  // Contar pedidos que referencian esta mesa.
+  const [{ refs }] = await db
+    .select({ refs: count() })
+    .from(orders)
+    .where(eq(orders.tableId, id));
+
+  if (refs > 0 && !force) {
+    throw new InUseError(
+      `Esta mesa está asociada a ${refs} pedido(s). Si la eliminas, esos pedidos conservarán el nombre de la mesa pero perderán el vínculo. ¿Deseas eliminarla de todas formas?`,
+      refs,
+    );
+  }
+
+  // Forzado (o sin referencias): se desvincula de los pedidos (conservan tableName) y se elimina.
+  if (refs > 0) {
+    await db.update(orders).set({ tableId: null }).where(eq(orders.tableId, id));
+  }
+
+  const [deletedTable] = await db.delete(tables).where(eq(tables.id, id)).returning();
   return deletedTable;
 }
 

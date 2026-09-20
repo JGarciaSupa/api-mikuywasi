@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as ReceiptTypesService from '../services/receipt-types.service';
 
 export const getReceiptTypes = async (c: Context) => {
@@ -6,7 +7,7 @@ export const getReceiptTypes = async (c: Context) => {
     const data = await ReceiptTypesService.getReceiptTypes();
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };
 
@@ -16,7 +17,7 @@ export const getReceiptTypeById = async (c: Context) => {
     const data = await ReceiptTypesService.getReceiptTypeById(id);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 404);
   }
 };
 
@@ -26,7 +27,7 @@ export const createReceiptType = async (c: Context) => {
     const data = await ReceiptTypesService.createReceiptType(body);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -37,7 +38,7 @@ export const updateReceiptType = async (c: Context) => {
     const data = await ReceiptTypesService.updateReceiptType(id, body);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -47,6 +48,6 @@ export const deleteReceiptType = async (c: Context) => {
     const data = await ReceiptTypesService.deleteReceiptType(id);
     return c.json({ success: true, ...data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };

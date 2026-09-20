@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as brandsService from '../../../services/admin/config-local/brands.service';
 
 export const getAllBrandsController = async (c: Context) => {
@@ -6,7 +7,7 @@ export const getAllBrandsController = async (c: Context) => {
     const data = await brandsService.getAllBrands();
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener marcas' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener marcas') }, 500);
   }
 };
 
@@ -17,7 +18,7 @@ export const getBrandByIdController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al obtener marca' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener marca') }, status as any);
   }
 };
 
@@ -27,7 +28,7 @@ export const createBrandController = async (c: Context) => {
     const data = await brandsService.createBrand(body);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear marca' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear marca') }, 400);
   }
 };
 
@@ -39,7 +40,7 @@ export const updateBrandController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 400;
-    return c.json({ success: false, message: error.message || 'Error al actualizar marca' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar marca') }, status as any);
   }
 };
 
@@ -50,7 +51,7 @@ export const deleteBrandController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 400;
-    return c.json({ success: false, message: error.message || 'Error al eliminar marca' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar marca') }, status as any);
   }
 };
 
@@ -66,7 +67,7 @@ export const updateBrandLogoController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 400;
-    return c.json({ success: false, message: error.message || 'Error al actualizar logo' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar logo') }, status as any);
   }
 };
 
@@ -77,6 +78,6 @@ export const deleteBrandLogoController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 400;
-    return c.json({ success: false, message: error.message || 'Error al eliminar logo' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar logo') }, status as any);
   }
 };

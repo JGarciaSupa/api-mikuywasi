@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   createBanner,
   deleteBanner,
@@ -20,7 +21,7 @@ export const getAllBannersController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los banners'
+      message: safeMessage(error, 'Error al obtener los banners')
     }, 500);
   }
 };
@@ -48,7 +49,7 @@ export const getBannerByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el banner'
+      message: safeMessage(error, 'Error al obtener el banner')
     }, 500);
   }
 };
@@ -74,7 +75,7 @@ export const createBannerController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear el banner'
+      message: safeMessage(error, 'Error al crear el banner')
     }, 400);
   }
 };
@@ -104,7 +105,7 @@ export const updateBannerController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el banner'
+      message: safeMessage(error, 'Error al actualizar el banner')
     }, 400);
   }
 };
@@ -130,7 +131,7 @@ export const deleteBannerController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar el banner'
+      message: safeMessage(error, 'Error al eliminar el banner')
     }, 400);
   }
 };
@@ -148,7 +149,7 @@ export const reorderBannersController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al reordenar los banners'
+      message: safeMessage(error, 'Error al reordenar los banners')
     }, 400);
   }
 };

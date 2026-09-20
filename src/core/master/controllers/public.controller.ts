@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { safeMessage } from '@/utils/errors';
 import redisApi from "@/redis/index";
 
 export const getTenantBySlug = async (c: Context) => {
@@ -10,6 +11,6 @@ export const getTenantBySlug = async (c: Context) => {
       success: true, message: 'Tenant obtenido con éxito', data
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Tenant no encontrado', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Tenant no encontrado'), data: null }, 404);
   }
 };

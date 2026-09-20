@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { getClientIp } from '../../../../../utils/ip';
 import { login, refreshAccessToken, logout, getProfile, updateProfile, updatePassword, AuthError } from '../../../services/admin/users/auth.service';
@@ -85,7 +86,7 @@ export async function loginController(c: Context) {
     if (error instanceof AuthError) {
       return c.json({
         status: false,
-        message: error.message
+        message: safeMessage(error, 'Error interno del servidor')
       }, error.status as any);
     }
     console.error("Login Error:", error);
@@ -153,7 +154,7 @@ export async function refreshController(c: Context) {
     if (error instanceof AuthError) {
       return c.json({
         status: false,
-        message: error.message
+        message: safeMessage(error, 'Error interno del servidor')
       }, error.status as any);
     }
     return c.json({
@@ -203,7 +204,7 @@ export async function profileController(c: Context) {
     return c.json({ status: true, message: 'Perfil obtenido exitosamente', data: user });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ status: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: safeMessage(error, 'Error interno del servidor') }, error.status as any);
     }
     return c.json({ status: false, message: 'Error interno del servidor' }, 500);
   }
@@ -224,7 +225,7 @@ export async function updateProfileController(c: Context) {
     return c.json({ status: true, message: 'Perfil actualizado correctamente', data: user });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ status: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: safeMessage(error, 'Error interno del servidor') }, error.status as any);
     }
     console.error("Update Profile Error:", error);
     return c.json({ status: false, message: 'Error interno del servidor' }, 500);
@@ -244,7 +245,7 @@ export async function updatePasswordController(c: Context) {
     return c.json({ status: true, message: 'Contraseña actualizada correctamente' });
   } catch (error) {
     if (error instanceof AuthError) {
-      return c.json({ status: false, message: error.message }, error.status as any);
+      return c.json({ status: false, message: safeMessage(error, 'Error interno del servidor') }, error.status as any);
     }
     console.error("Update Password Error:", error);
     return c.json({ status: false, message: 'Error interno del servidor' }, 500);

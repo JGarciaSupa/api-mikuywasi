@@ -1,5 +1,5 @@
-import { users, userRoles, roles } from '@/db/tenant/schema';
-import { eq, and, like, desc, count } from 'drizzle-orm';
+import { users, userRoles, roles, refreshTokens } from '@/db/tenant/schema';
+import { eq, and, like, desc, count, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
 import type { CreateStaffInput, UpdateStaffInput, StaffQueryInput } from '../../../validations/admin/users/staff.validation';
@@ -8,14 +8,49 @@ export async function createStaff(data: CreateStaffInput, imageFile?: File) {
   const db = getTenantDb();
 
   const [existing] = await db.select().from(users).where(eq(users.username, data.username));
-  if (existing) throw new Error('El username ya está en uso');
 
+  // Ya existe un usuario ACTIVO con ese username → conflicto real.
+  if (existing && !existing.deletedAt) {
+    throw new Error('El username ya está en uso');
+  }
+
+  const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
+
+  // Existe pero fue eliminado lógicamente → reactivar con los nuevos datos.
+  if (existing && existing.deletedAt) {
+    let imageKey = existing.image;
+    if (imageFile) {
+      if (existing.image) await deleteFromR2(existing.image);
+      imageKey = await uploadToR2(imageFile, 'profile', 250);
+    }
+
+    const [reactivated] = await db
+      .update(users)
+      .set({
+        name: data.name,
+        password: hashedPassword,
+        image: imageKey,
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, existing.id))
+      .returning();
+
+    // Reasignar rol: reemplaza el que tuviera antes de ser eliminado.
+    await db.delete(userRoles).where(eq(userRoles.userId, existing.id));
+    if (data.roleId) {
+      await db.insert(userRoles).values({ userId: existing.id, roleId: data.roleId });
+    }
+
+    const { password: _, ...safeUser } = reactivated;
+    return { ...safeUser, image: getImageUrl(safeUser.image), reactivated: true };
+  }
+
+  // Alta normal.
   let imageKey = null;
   if (imageFile) {
     imageKey = await uploadToR2(imageFile, 'profile', 250);
   }
-
-  const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
 
   const [newUser] = await db.insert(users).values({
     username: data.username,
@@ -32,7 +67,7 @@ export async function createStaff(data: CreateStaffInput, imageFile?: File) {
   }
 
   const { password: _, ...safeUser } = newUser;
-  return { ...safeUser, image: getImageUrl(safeUser.image) };
+  return { ...safeUser, image: getImageUrl(safeUser.image), reactivated: false };
 }
 
 export async function getStaffList(currentUserId: number, params: StaffQueryInput) {
@@ -40,6 +75,7 @@ export async function getStaffList(currentUserId: number, params: StaffQueryInpu
   const offset = (params.page - 1) * params.limit;
 
   const whereClause = and(
+    isNull(users.deletedAt), // excluir usuarios eliminados lógicamente
     params.name ? like(users.name, `%${params.name}%`) : undefined,
     params.roleCode ? eq(roles.code, params.roleCode) : undefined
   );
@@ -131,10 +167,20 @@ export async function deleteStaff(id: number) {
 
   const [existingUser] = await db.select().from(users).where(eq(users.id, id));
   if (!existingUser) throw new Error('Usuario no encontrado');
+  if (existingUser.deletedAt) throw new Error('El usuario ya está eliminado');
 
-  if (existingUser.image) await deleteFromR2(existingUser.image);
+  // Borrado lógico: se marca deletedAt y se conserva la fila (username, historial,
+  // referencias de auditoría/pedidos quedan intactas). Se puede reactivar al
+  // volver a darlo de alta con el mismo username.
+  const [deletedUser] = await db
+    .update(users)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning();
 
-  const [deletedUser] = await db.delete(users).where(eq(users.id, id)).returning();
+  // Cerrar sesiones activas: revocar sus refresh tokens para que no pueda renovar.
+  await db.update(refreshTokens).set({ isRevoked: true }).where(eq(refreshTokens.userId, id));
+
   const { password: _, ...safeUser } = deletedUser;
   return safeUser;
 }

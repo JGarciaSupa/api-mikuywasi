@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as reportsService from '../../../services/admin/users/user-reports.service';
 import type { UserReportFilters } from '../../../services/admin/users/user-reports.service';
 
@@ -66,7 +67,7 @@ export const getUserReportSummaryController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (err: any) {
     console.error('Error in user report summary:', err);
-    return c.json({ success: false, message: err.message || 'Error al obtener el reporte del usuario' }, 500);
+    return c.json({ success: false, message: safeMessage(err, 'Error al obtener el reporte del usuario') }, 500);
   }
 };
 
@@ -81,6 +82,6 @@ export const getUserReportRankingController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (err: any) {
     console.error('Error in user report ranking:', err);
-    return c.json({ success: false, message: err.message || 'Error al obtener el ranking de usuarios' }, 500);
+    return c.json({ success: false, message: safeMessage(err, 'Error al obtener el ranking de usuarios') }, 500);
   }
 };

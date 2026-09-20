@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as billingService from '../../../services/admin/documents/billing.service';
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
 import { convertirCertificado } from '../../../../../utils/facturador-client';
@@ -12,7 +13,7 @@ export const listSeriesController = async (c: Context) => {
     const data = await billingSeriesService.listSeries(branchId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al listar series' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al listar series') }, 500);
   }
 };
 
@@ -23,7 +24,7 @@ export const createSeriesController = async (c: Context) => {
     return c.json({ success: true, data: row }, 201);
   } catch (error: any) {
     const status = error.message?.includes('unique') || error.code === '23505' ? 409 : 500;
-    return c.json({ success: false, message: error.message || 'Error al crear serie' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear serie') }, status as any);
   }
 };
 
@@ -35,7 +36,7 @@ export const updateSeriesController = async (c: Context) => {
     return c.json({ success: true, data: row });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al actualizar serie' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar serie') }, status as any);
   }
 };
 
@@ -49,7 +50,7 @@ export const deleteSeriesController = async (c: Context) => {
       error.message?.includes('no encontrada') ? 404 :
         error.message?.includes('documentos activos') ? 409 :
           500;
-    return c.json({ success: false, message: error.message || 'Error al eliminar serie' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar serie') }, status as any);
   }
 };
 
@@ -61,7 +62,7 @@ export const listRegisterSeriesController = async (c: Context) => {
     const data = await billingSeriesService.listSeriesForRegister(registerId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al listar series de la caja' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al listar series de la caja') }, 500);
   }
 };
 
@@ -73,7 +74,7 @@ export const assignRegisterSeriesController = async (c: Context) => {
     return c.json({ success: true, data: row });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') || error.message?.includes('no encontrado') ? 404 : 422;
-    return c.json({ success: false, message: error.message || 'Error al asignar serie a la caja' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al asignar serie a la caja') }, status as any);
   }
 };
 
@@ -102,7 +103,7 @@ export const createRegisterDocumentController = async (c: Context) => {
     const status = error.message?.includes('no encontrada') || error.message?.includes('no encontrado') ? 404
       : error.message?.includes('ya está en uso') || error.message?.includes('Ya existe') ? 409
       : 422;
-    return c.json({ success: false, message: error.message || 'Error al crear el documento de la caja' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el documento de la caja') }, status as any);
   }
 };
 
@@ -113,7 +114,7 @@ export const unassignRegisterSeriesController = async (c: Context) => {
     await billingSeriesService.unassignSeriesFromRegister(registerId, documentType);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al quitar serie de la caja' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al quitar serie de la caja') }, 500);
   }
 };
 
@@ -137,7 +138,7 @@ export const listDocumentsController = async (c: Context) => {
     });
     return c.json({ success: true, ...result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al listar documentos' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al listar documentos') }, 500);
   }
 };
 
@@ -148,7 +149,7 @@ export const getAvailableDocumentTypesController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('turno de caja') ? 422 : 500;
-    return c.json({ success: false, message: error.message || 'Error al obtener tipos de comprobante disponibles' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener tipos de comprobante disponibles') }, status as any);
   }
 };
 
@@ -159,7 +160,7 @@ export const getDocumentController = async (c: Context) => {
     if (!doc) return c.json({ success: false, message: 'Documento no encontrado' }, 404);
     return c.json({ success: true, data: doc });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener documento' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener documento') }, 500);
   }
 };
 
@@ -170,7 +171,7 @@ export const getRelatedDocumentsController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al obtener documentos relacionados' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener documentos relacionados') }, status as any);
   }
 };
 
@@ -192,7 +193,7 @@ export const previewDocumentController = async (c: Context) => {
       : error.message?.includes('pagada') || error.message?.includes('pagado') ? 422
       : error.message?.includes('turno de caja') || error.message?.includes('serie configurada') ? 422
       : 500;
-    return c.json({ success: false, message: error.message || 'Error al previsualizar documento' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al previsualizar documento') }, status as any);
   }
 };
 
@@ -216,7 +217,7 @@ export const createDocumentController = async (c: Context) => {
             || error.message?.includes('Tipo de documento') || error.message?.includes('formato inválido')
             || error.message?.includes('debe tener') ? 422 :
             500;
-    return c.json({ success: false, message: error.message || 'Error al crear documento' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear documento') }, status as any);
   }
 };
 
@@ -232,7 +233,7 @@ export const voidDocumentController = async (c: Context) => {
         error.message?.includes('No se puede') ? 422 :
           error.message?.includes('motivo') ? 400 :
             500;
-    return c.json({ success: false, message: error.message || 'Error al anular documento' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al anular documento') }, status as any);
   }
 };
 
@@ -246,7 +247,7 @@ export const checkVoidStatusController = async (c: Context) => {
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('Solo se puede') || error.message?.includes('no tiene') ? 422 :
           500;
-    return c.json({ success: false, message: error.message || 'Error al consultar estado de baja' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al consultar estado de baja') }, status as any);
   }
 };
 
@@ -260,7 +261,7 @@ export const retryVoidSunatController = async (c: Context) => {
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('Solo se puede') || error.message?.includes('no fue aceptado') || error.message?.includes('ya fue enviada') ? 422 :
           500;
-    return c.json({ success: false, message: error.message || 'Error al reintentar comunicación de baja' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al reintentar comunicación de baja') }, status as any);
   }
 };
 
@@ -274,7 +275,7 @@ export const retryDocumentController = async (c: Context) => {
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('anulado') || error.message?.includes('aceptado') || error.message?.includes('notas de venta') ? 422 :
           500;
-    return c.json({ success: false, message: error.message || 'Error al reintentar envío' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al reintentar envío') }, status as any);
   }
 };
 
@@ -309,7 +310,7 @@ export const correctAndRetryController = async (c: Context) => {
         error.message?.includes('aceptado') || error.message?.includes('anulado') || error.message?.includes('notas') ? 422 :
           error.message?.includes('requiere') ? 400 :
             500;
-    return c.json({ success: false, message: error.message || 'Error al corregir el documento' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al corregir el documento') }, status as any);
   }
 };
 
@@ -320,7 +321,7 @@ export const diagnoseDocumentController = async (c: Context) => {
     return c.json({ success: true, data: result });
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al diagnosticar documento' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al diagnosticar documento') }, status as any);
   }
 };
 
@@ -332,7 +333,7 @@ export const getDocumentReceiptController = async (c: Context) => {
     if (!data) return c.json({ success: false, message: 'Documento no encontrado' }, 404);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener datos del comprobante' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener datos del comprobante') }, 500);
   }
 };
 
@@ -348,7 +349,7 @@ export const getDocumentPdfController = async (c: Context) => {
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('no tiene') ? 422 :
           500;
-    return c.json({ success: false, message: error.message || 'Error al obtener PDF' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener PDF') }, status as any);
   }
 };
 
@@ -387,7 +388,7 @@ export const createNotaCreditoDirectaController = async (c: Context) => {
       error.message?.includes('no encontrado') ? 404 :
       error.message?.includes('anulado') || error.message?.includes('aceptado') || error.message?.includes('Solo') ? 422 :
       500;
-    return c.json({ success: false, message: error.message || 'Error al emitir Nota de Crédito' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al emitir Nota de Crédito') }, status as any);
   }
 };
 
@@ -403,6 +404,6 @@ export const createNotaCreditoExternaController = async (c: Context) => {
     }
     return c.json({ success: true, data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al emitir Nota de Crédito externa' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al emitir Nota de Crédito externa') }, 500);
   }
 };

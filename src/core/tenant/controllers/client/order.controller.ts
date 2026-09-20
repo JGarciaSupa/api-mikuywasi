@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as tenantService from '../../services/client/tenant.service';
 
 /**
@@ -60,7 +61,7 @@ export const getOrderByTrackingCodeController = async (c: Context) => {
     console.error('Error in getOrderByTrackingCodeController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el detalle del pedido'
+      message: safeMessage(error, 'Error al obtener el detalle del pedido')
     }, 500);
   }
 };

@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as dbServersService from '../services/db-servers.service';
 //Lobito Consulting!!
 export const getAllDbServersController = async (c: Context) => {
@@ -20,7 +21,7 @@ export const getAllDbServersController = async (c: Context) => {
       },
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener servidores', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener servidores'), data: null }, 500);
   }
 };
 
@@ -30,7 +31,7 @@ export const getDbServerByIdController = async (c: Context) => {
     const result = await dbServersService.getDbServerById(id);
     return c.json({ success: true, message: 'Servidor obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Servidor no encontrado', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Servidor no encontrado'), data: null }, 404);
   }
 };
 
@@ -40,7 +41,7 @@ export const createDbServerController = async (c: Context) => {
     const result = await dbServersService.createDbServer(data);
     return c.json({ success: true, message: 'Servidor registrado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el servidor', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el servidor'), data: null }, 400);
   }
 };
 
@@ -51,7 +52,7 @@ export const updateDbServerController = async (c: Context) => {
     const result = await dbServersService.updateDbServer(id, data);
     return c.json({ success: true, message: 'Servidor actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el servidor', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el servidor'), data: null }, 400);
   }
 };
 
@@ -61,6 +62,6 @@ export const deleteDbServerController = async (c: Context) => {
     const result = await dbServersService.deleteDbServer(id);
     return c.json({ success: true, message: result.message || 'Servidor eliminado correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el servidor', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el servidor'), data: null }, 400);
   }
 };

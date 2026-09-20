@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as IdentityDocumentTypesService from '../services/identity-document-types.service';
 
 export const getIdentityDocumentTypes = async (c: Context) => {
@@ -6,7 +7,7 @@ export const getIdentityDocumentTypes = async (c: Context) => {
     const data = await IdentityDocumentTypesService.getIdentityDocumentTypes();
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };
 
@@ -16,7 +17,7 @@ export const getIdentityDocumentTypeById = async (c: Context) => {
     const data = await IdentityDocumentTypesService.getIdentityDocumentTypeById(id);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 404);
   }
 };
 
@@ -26,7 +27,7 @@ export const createIdentityDocumentType = async (c: Context) => {
     const data = await IdentityDocumentTypesService.createIdentityDocumentType(body);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -37,7 +38,7 @@ export const updateIdentityDocumentType = async (c: Context) => {
     const data = await IdentityDocumentTypesService.updateIdentityDocumentType(id, body);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -47,6 +48,6 @@ export const deleteIdentityDocumentType = async (c: Context) => {
     const data = await IdentityDocumentTypesService.deleteIdentityDocumentType(id);
     return c.json({ success: true, ...data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };

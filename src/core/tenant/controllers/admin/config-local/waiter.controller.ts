@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as tenantService from '../../../services/client/tenant.service';
 import * as waiterOrderService from '../../../services/admin/config-local/waiter-order.service';
 import * as orderService from '../../../services/admin/documents/order.service';
@@ -23,7 +24,7 @@ export const getWaiterMenuController = async (c: Context) => {
     return c.json(
       {
         success: false,
-        message: error.message || 'Error al obtener el menú',
+        message: safeMessage(error, 'Error al obtener el menú'),
       },
       500,
     );
@@ -91,7 +92,7 @@ export const getWaiterTablesStatusController = async (c: Context) => {
     return c.json(
       {
         success: false,
-        message: error.message || 'Error al obtener estado de mesas',
+        message: safeMessage(error, 'Error al obtener estado de mesas'),
       },
       500,
     );
@@ -116,7 +117,7 @@ export const editOrderItemController = async (c: Context) => {
     const status = error.message?.includes('no encontrado') ? 404
       : error.message?.includes('No se puede') ? 422
         : 500;
-    return c.json({ success: false, message: error.message || 'Error al editar el pedido' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al editar el pedido') }, status as any);
   }
 };
 
@@ -191,7 +192,7 @@ export const getWaiterOrderController = async (c: Context) => {
     }
     return c.json({ success: true, data: order });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener el pedido' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener el pedido') }, 500);
   }
 };
 
@@ -215,7 +216,7 @@ export const updateWaiterOrderStatusController = async (c: Context) => {
     }
     return c.json({ success: true, data: updated });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar estado' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar estado') }, 500);
   }
 };
 
@@ -236,7 +237,7 @@ export const updateWaiterOrderWaiterController = async (c: Context) => {
     }
     return c.json({ success: true, data: updated });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el mozo del pedido' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el mozo del pedido') }, 500);
   }
 };
 
@@ -267,6 +268,6 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
     }
     return c.json({ success: true, data: updated });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar estado de pago' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar estado de pago') }, 500);
   }
 };

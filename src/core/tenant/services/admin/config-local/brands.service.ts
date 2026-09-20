@@ -1,5 +1,5 @@
-import { brands } from '@/db/tenant/schema';
-import { eq } from 'drizzle-orm';
+import { brands, branches } from '@/db/tenant/schema';
+import { eq, count } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { masterDb } from '@/db';
@@ -71,6 +71,13 @@ export async function deleteBrand(id: number) {
   const allBrands = await db.select({ id: brands.id }).from(brands);
   if (allBrands.length <= 1) {
     throw new Error('No se puede eliminar la única marca del negocio');
+  }
+
+  // Las sucursales exigen marca (FK NOT NULL): no se puede eliminar una marca con
+  // sucursales asignadas sin dejarlas huérfanas. Se bloquea con mensaje claro.
+  const [{ refs: branchRefs }] = await db.select({ refs: count() }).from(branches).where(eq(branches.brandId, id));
+  if (branchRefs > 0) {
+    throw new Error(`No se puede eliminar: la marca tiene ${branchRefs} sucursal(es) asignada(s). Reasígnalas o elimínalas primero.`);
   }
 
   const [deleted] = await db.delete(brands).where(eq(brands.id, id)).returning();

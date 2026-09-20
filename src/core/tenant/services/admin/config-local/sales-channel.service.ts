@@ -1,6 +1,7 @@
-import { salesChannels } from '@/db/tenant/schema';
-import { eq, asc, or, isNull } from 'drizzle-orm';
+import { salesChannels, orders, orderItems } from '@/db/tenant/schema';
+import { eq, asc, or, isNull, count } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
+import { InUseError } from '@/utils/errors';
 
 /**
  * Obtener todos los canales de venta del tenant.
@@ -74,11 +75,26 @@ export async function updateSalesChannel(id: number, data: any) {
 /**
  * Eliminar un canal de venta
  */
-export async function deleteSalesChannel(id: number) {
+export async function deleteSalesChannel(id: number, force = false) {
   const db = getTenantDb();
-  const [deleted] = await db
-    .delete(salesChannels)
-    .where(eq(salesChannels.id, id))
-    .returning();
+
+  const [existing] = await db.select({ id: salesChannels.id }).from(salesChannels).where(eq(salesChannels.id, id));
+  if (!existing) throw new Error('Canal de venta no encontrado');
+
+  const [{ refs: orderRefs }] = await db.select({ refs: count() }).from(orders).where(eq(orders.salesChannelId, id));
+  const [{ refs: itemRefs }] = await db.select({ refs: count() }).from(orderItems).where(eq(orderItems.salesChannelId, id));
+  const refs = orderRefs + itemRefs;
+
+  if (refs > 0 && !force) {
+    throw new InUseError(
+      `Este canal de venta está asociado a ${refs} registro(s) de pedidos. Si lo eliminas, esos pedidos conservarán el nombre del canal pero perderán el vínculo. ¿Deseas eliminarlo de todas formas?`,
+      refs,
+    );
+  }
+
+  if (orderRefs > 0) await db.update(orders).set({ salesChannelId: null }).where(eq(orders.salesChannelId, id));
+  if (itemRefs > 0) await db.update(orderItems).set({ salesChannelId: null }).where(eq(orderItems.salesChannelId, id));
+
+  const [deleted] = await db.delete(salesChannels).where(eq(salesChannels.id, id)).returning();
   return deleted;
 }

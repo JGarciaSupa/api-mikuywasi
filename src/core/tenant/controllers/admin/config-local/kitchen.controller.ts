@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as kitchenService from '../../../services/admin/config-local/kitchen.service';
 
 /** El usuario que ejecuta la acción, para dejar trazado quién marcó cada plato. */
@@ -22,7 +23,7 @@ export const getKitchenOrdersController = async (c: Context) => {
     console.error('Error in getKitchenOrdersController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las órdenes de cocina'
+      message: safeMessage(error, 'Error al obtener las órdenes de cocina')
     }, 500);
   }
 };
@@ -65,7 +66,7 @@ export const setKitchenItemPreparedController = async (c: Context) => {
     console.error('Error in setKitchenItemPreparedController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el ítem'
+      message: safeMessage(error, 'Error al actualizar el ítem')
     }, 500);
   }
 };
@@ -83,7 +84,7 @@ export const markKitchenOrderPreparedController = async (c: Context) => {
     console.error('Error in markKitchenOrderPreparedController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al marcar el pedido como listo'
+      message: safeMessage(error, 'Error al marcar el pedido como listo')
     }, 500);
   }
 };
@@ -108,7 +109,7 @@ export const confirmKitchenStationController = async (c: Context) => {
     console.error('Error in confirmKitchenStationController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al confirmar la estación'
+      message: safeMessage(error, 'Error al confirmar la estación')
     }, 500);
   }
 };
@@ -126,7 +127,7 @@ export const recallKitchenOrderController = async (c: Context) => {
     console.error('Error in recallKitchenOrderController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al devolver el pedido a la cola'
+      message: safeMessage(error, 'Error al devolver el pedido a la cola')
     }, 500);
   }
 };
@@ -155,7 +156,7 @@ export const updateKitchenStatusController = async (c: Context) => {
     console.error('Error in updateKitchenStatusController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado'
+      message: safeMessage(error, 'Error al actualizar el estado')
     }, 500);
   }
 };

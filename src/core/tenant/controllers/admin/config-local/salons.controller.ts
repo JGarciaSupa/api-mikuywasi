@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   createSalon,
   deleteSalon,
@@ -24,7 +25,7 @@ export const getAllSalonsController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los salones'
+      message: safeMessage(error, 'Error al obtener los salones')
     }, 500);
   }
 };
@@ -46,7 +47,7 @@ export const createSalonController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear el salón'
+      message: safeMessage(error, 'Error al crear el salón')
     }, 400);
   }
 };
@@ -77,7 +78,7 @@ export const updateSalonController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el salón'
+      message: safeMessage(error, 'Error al actualizar el salón')
     }, 400);
   }
 };
@@ -105,7 +106,7 @@ export const deleteSalonController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar el salón'
+      message: safeMessage(error, 'Error al eliminar el salón')
     }, 400);
   }
 };

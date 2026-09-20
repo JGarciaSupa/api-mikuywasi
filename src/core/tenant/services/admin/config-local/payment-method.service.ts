@@ -1,6 +1,7 @@
-import { paymentMethods } from '@/db/tenant/schema';
-import { eq, asc, or, isNull, ilike } from 'drizzle-orm';
+import { paymentMethods, orders, orderSplits } from '@/db/tenant/schema';
+import { eq, asc, or, isNull, ilike, count } from 'drizzle-orm';
 import { getTenantDb, getTenantContext } from '@/utils/tenant-context';
+import { InUseError } from '@/utils/errors';
 
 /**
  * Busca un método de pago por nombre (case-insensitive). Devuelve la fila o null.
@@ -74,11 +75,27 @@ export async function updatePaymentMethod(id: number, data: any) {
 /**
  * Eliminar un método de pago
  */
-export async function deletePaymentMethod(id: number) {
+export async function deletePaymentMethod(id: number, force = false) {
   const db = getTenantDb();
-  const [deletedPaymentMethod] = await db
-    .delete(paymentMethods)
-    .where(eq(paymentMethods.id, id))
-    .returning();
+
+  const [existing] = await db.select({ id: paymentMethods.id }).from(paymentMethods).where(eq(paymentMethods.id, id));
+  if (!existing) throw new Error('Método de pago no encontrado');
+
+  // Contar referencias en pedidos y splits de pedidos.
+  const [{ refs: orderRefs }] = await db.select({ refs: count() }).from(orders).where(eq(orders.paymentMethodId, id));
+  const [{ refs: splitRefs }] = await db.select({ refs: count() }).from(orderSplits).where(eq(orderSplits.paymentMethodId, id));
+  const refs = orderRefs + splitRefs;
+
+  if (refs > 0 && !force) {
+    throw new InUseError(
+      `Este método de pago está asociado a ${refs} pedido(s). Si lo eliminas, esos pedidos conservarán el nombre del método pero perderán el vínculo. ¿Deseas eliminarlo de todas formas?`,
+      refs,
+    );
+  }
+
+  if (orderRefs > 0) await db.update(orders).set({ paymentMethodId: null }).where(eq(orders.paymentMethodId, id));
+  if (splitRefs > 0) await db.update(orderSplits).set({ paymentMethodId: null }).where(eq(orderSplits.paymentMethodId, id));
+
+  const [deletedPaymentMethod] = await db.delete(paymentMethods).where(eq(paymentMethods.id, id)).returning();
   return deletedPaymentMethod;
 }

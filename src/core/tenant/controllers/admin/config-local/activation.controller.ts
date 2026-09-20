@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as activationService from '../../../services/admin/config-local/activation.service';
 
 function parseRegisterId(raw: string | undefined): number | null {
@@ -18,7 +19,7 @@ export const listActivationsController = async (c: Context) => {
     const data = await activationService.listForRegister(registerId, module);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener las activaciones' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener las activaciones') }, 500);
   }
 };
 
@@ -43,7 +44,7 @@ export const setActivationController = async (c: Context) => {
     const data = await activationService.setForRegister(registerId, code, isEnabled);
     return c.json({ success: true, message: 'Activación actualizada', data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar la activación' }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar la activación') }, 400);
   }
 };
 
@@ -57,6 +58,6 @@ export const resolveActivationsController = async (c: Context) => {
     const data = await activationService.resolveForRegister(registerId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al resolver las activaciones' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al resolver las activaciones') }, 500);
   }
 };

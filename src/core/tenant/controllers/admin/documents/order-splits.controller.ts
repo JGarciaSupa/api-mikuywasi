@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as splitsService from '../../../services/admin/documents/order-splits.service';
 import { getAuditActor } from '@/utils/helpers';
 
@@ -11,7 +12,7 @@ export const listSplitsController = async (c: Context) => {
     const splits = await splitsService.listSplits(orderId);
     return c.json({ success: true, data: splits });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al listar cuentas' }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al listar cuentas') }, 500);
   }
 };
 
@@ -28,7 +29,7 @@ export const createSplitController = async (c: Context) => {
     const status = error.message?.includes('no encontrado') ? 404
       : error.message?.includes('cancelado') || error.message?.includes('completado') ? 422
       : 500;
-    return c.json({ success: false, message: error.message || 'Error al crear cuenta' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear cuenta') }, status as any);
   }
 };
 
@@ -44,7 +45,7 @@ export const updateSplitLabelController = async (c: Context) => {
     return c.json({ success: true, data: split });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al actualizar cuenta' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar cuenta') }, status as any);
   }
 };
 
@@ -68,7 +69,7 @@ export const assignItemsController = async (c: Context) => {
     const status = error.message?.includes('no pertenece') || error.message?.includes('no encontrada') ? 404
       : error.message?.includes('facturada') || error.message?.includes('emitido') ? 422
       : 500;
-    return c.json({ success: false, message: error.message || 'Error al asignar ítems' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al asignar ítems') }, status as any);
   }
 };
 
@@ -94,7 +95,7 @@ export const updateSplitPaymentController = async (c: Context) => {
     return c.json({ success: true, data: split });
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al actualizar pago' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar pago') }, status as any);
   }
 };
 
@@ -117,7 +118,7 @@ export const splitItemQtyController = async (c: Context) => {
       error.message?.includes('no encontrado') || error.message?.includes('no pertenece') ? 404
       : error.message?.includes('menor') || error.message?.includes('entero') ? 422
       : 500;
-    return c.json({ success: false, message: error.message || 'Error al dividir ítem' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al dividir ítem') }, status as any);
   }
 };
 
@@ -134,6 +135,6 @@ export const deleteSplitController = async (c: Context) => {
     const status = error.message?.includes('no encontrada') ? 404
       : error.message?.includes('comprobante') ? 422
       : 500;
-    return c.json({ success: false, message: error.message || 'Error al eliminar cuenta' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar cuenta') }, status as any);
   }
 };

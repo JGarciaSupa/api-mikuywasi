@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as productService from '../../../services/admin/warehouse/products.service';
 
 export const getAllProductsController = async (c: Context) => {
@@ -20,7 +21,7 @@ export const getAllProductsController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los productos'
+      message: safeMessage(error, 'Error al obtener los productos')
     }, 500);
   }
 };
@@ -36,7 +37,7 @@ export const getProductByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el producto'
+      message: safeMessage(error, 'Error al obtener el producto')
     }, 404);
   }
 };
@@ -56,7 +57,7 @@ export const createProductController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear el producto'
+      message: safeMessage(error, 'Error al crear el producto')
     }, 400);
   }
 };
@@ -77,7 +78,7 @@ export const updateProductController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el producto'
+      message: safeMessage(error, 'Error al actualizar el producto')
     }, 400);
   }
 };
@@ -93,7 +94,7 @@ export const deleteProductController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar el producto'
+      message: safeMessage(error, 'Error al eliminar el producto')
     }, 400);
   }
 };

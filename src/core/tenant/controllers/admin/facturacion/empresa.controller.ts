@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as empresaService from '../../../services/admin/facturacion/empresa.service';
 
 // ── Branch-level ─────────────────────────────────────────────────────────────
@@ -11,7 +12,7 @@ export const getBranchEmpresaController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al obtener empresa de sucursal' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener empresa de sucursal') }, status as any);
   }
 };
 
@@ -23,7 +24,7 @@ export const upsertBranchEmpresaController = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al guardar empresa de sucursal' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al guardar empresa de sucursal') }, status as any);
   }
 };
 
@@ -37,7 +38,7 @@ export const reuseBranchEmpresaController = async (c: Context) => {
   } catch (error: any) {
     const status = error.message?.includes('no encontrada') ? 404
       : error.message?.includes('no tiene') || error.message?.includes('misma') ? 422 : 500;
-    return c.json({ success: false, message: error.message || 'Error al reutilizar empresa' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al reutilizar empresa') }, status as any);
   }
 };
 
@@ -48,6 +49,6 @@ export const deleteBranchEmpresaController = async (c: Context) => {
     return c.json({ success: true, message: 'Empresa de facturación de la sucursal eliminada.' });
   } catch (error: any) {
     const status = error.message?.includes('no encontrad') ? 404 : 500;
-    return c.json({ success: false, message: error.message || 'Error al eliminar empresa de sucursal' }, status as any);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar empresa de sucursal') }, status as any);
   }
 };

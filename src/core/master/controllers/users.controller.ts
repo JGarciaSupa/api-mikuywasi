@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import * as usersService from '../services/users.service';
 
@@ -29,7 +30,7 @@ export const loginController = async (c: Context) => {
       }
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al iniciar sesión', data: null }, 401);
+    return c.json({ success: false, message: safeMessage(error, 'Error al iniciar sesión'), data: null }, 401);
   }
 };
 
@@ -65,7 +66,7 @@ export const refreshController = async (c: Context) => {
       }
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al renovar sesión', data: null }, 401);
+    return c.json({ success: false, message: safeMessage(error, 'Error al renovar sesión'), data: null }, 401);
   }
 };
 
@@ -94,7 +95,7 @@ export const logoutController = async (c: Context) => {
       data: null
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al cerrar sesión', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al cerrar sesión'), data: null }, 500);
   }
 };
 
@@ -105,7 +106,7 @@ export const getMeController = async (c: Context) => {
     const result = await usersService.getUserById(payload.id);
     return c.json({ success: true, message: 'Perfil obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener el perfil', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener el perfil'), data: null }, 404);
   }
 };
 
@@ -114,7 +115,7 @@ export const getAllUsersController = async (c: Context) => {
     const result = await usersService.getAllUsers();
     return c.json({ success: true, message: 'Usuarios obtenidos con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener usuarios', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener usuarios'), data: null }, 500);
   }
 };
 
@@ -124,7 +125,7 @@ export const getUserByIdController = async (c: Context) => {
     const result = await usersService.getUserById(id);
     return c.json({ success: true, message: 'Usuario obtenido con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Usuario no encontrado', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Usuario no encontrado'), data: null }, 404);
   }
 };
 
@@ -134,7 +135,7 @@ export const createUserController = async (c: Context) => {
     const result = await usersService.createUser(data);
     return c.json({ success: true, message: 'Usuario creado con éxito', data: result }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al crear el usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear el usuario'), data: null }, 400);
   }
 };
 
@@ -145,7 +146,7 @@ export const updateUserController = async (c: Context) => {
     const result = await usersService.updateUser(id, data);
     return c.json({ success: true, message: 'Usuario actualizado con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar el usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el usuario'), data: null }, 400);
   }
 };
 
@@ -156,7 +157,7 @@ export const updatePasswordController = async (c: Context) => {
     const result = await usersService.updatePassword(payload.id, data);
     return c.json({ success: true, message: result.message || 'Contraseña actualizada correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al cambiar la contraseña', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al cambiar la contraseña'), data: null }, 400);
   }
 };
 
@@ -170,6 +171,6 @@ export const deleteUserController = async (c: Context) => {
     const result = await usersService.deleteUser(id);
     return c.json({ success: true, message: result.message || 'Usuario eliminado correctamente', data: null });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al eliminar el usuario', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el usuario'), data: null }, 400);
   }
 };

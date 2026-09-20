@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage, InUseError } from '@/utils/errors';
 import {
   createTable,
   deleteTable,
@@ -30,7 +31,7 @@ export const getAllTablesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las mesas'
+      message: safeMessage(error, 'Error al obtener las mesas')
     }, 500);
   }
 };
@@ -52,7 +53,7 @@ export const createTableController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear la mesa'
+      message: safeMessage(error, 'Error al crear la mesa')
     }, 400);
   }
 };
@@ -87,7 +88,7 @@ export const updateTableController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar la mesa'
+      message: safeMessage(error, 'Error al actualizar la mesa')
     }, 400);
   }
 };
@@ -122,7 +123,7 @@ export const updateTablePositionController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar la posición de la mesa'
+      message: safeMessage(error, 'Error al actualizar la posición de la mesa')
     }, 400);
   }
 };
@@ -141,7 +142,8 @@ export const deleteTableController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de mesa inválido' }, 400);
     }
 
-    const result = await deleteTable(id);
+    const force = c.req.query('force') === 'true';
+    const result = await deleteTable(id, force);
     if (!result) {
       return c.json({ success: false, message: 'Mesa no encontrada' }, 404);
     }
@@ -152,9 +154,17 @@ export const deleteTableController = async (c: Context) => {
       data: result
     });
   } catch (error: any) {
+    if (error instanceof InUseError) {
+      return c.json({
+        success: false,
+        requiresConfirmation: true,
+        references: error.references,
+        message: error.message
+      }, 409);
+    }
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar la mesa'
+      message: safeMessage(error, 'Error al eliminar la mesa')
     }, 400);
   }
 };
@@ -189,7 +199,7 @@ export const updateTableStatusController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado de la mesa'
+      message: safeMessage(error, 'Error al actualizar el estado de la mesa')
     }, 400);
   }
 };
@@ -207,7 +217,7 @@ export const getTableStatusesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los estados de mesa'
+      message: safeMessage(error, 'Error al obtener los estados de mesa')
     }, 500);
   }
 };

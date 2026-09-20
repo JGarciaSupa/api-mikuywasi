@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   createSocialNetwork,
   deleteSocialNetwork,
@@ -18,7 +19,7 @@ export const getAllSocialNetworksController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las redes sociales'
+      message: safeMessage(error, 'Error al obtener las redes sociales')
     }, 500);
   }
 };
@@ -46,7 +47,7 @@ export const getSocialNetworkByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener la red social'
+      message: safeMessage(error, 'Error al obtener la red social')
     }, 500);
   }
 };
@@ -63,7 +64,7 @@ export const createSocialNetworkController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear la red social'
+      message: safeMessage(error, 'Error al crear la red social')
     }, 400);
   }
 };
@@ -94,7 +95,7 @@ export const updateSocialNetworkController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar la red social'
+      message: safeMessage(error, 'Error al actualizar la red social')
     }, 400);
   }
 };
@@ -123,7 +124,7 @@ export const deleteSocialNetworkController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar la red social'
+      message: safeMessage(error, 'Error al eliminar la red social')
     }, 400);
   }
 };
@@ -141,7 +142,7 @@ export const reorderSocialNetworksController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al reordenar las redes sociales'
+      message: safeMessage(error, 'Error al reordenar las redes sociales')
     }, 400);
   }
 };

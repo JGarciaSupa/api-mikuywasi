@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 
 export const createCategorySchema = z.object({
   name: z.string({ error: 'El nombre es requerido' }).min(1, 'El nombre es requerido').max(50, 'El nombre no puede exceder los 50 caracteres'),
-  order: z.number().int().optional().default(0),
+  order: z.number().int().min(0, 'El orden no puede ser negativo').optional().default(0),
   isActive: z.boolean().optional().default(true),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/, 'Formato de hora de inicio inválido (HH:mm o HH:mm:ss)').optional().nullable(),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/, 'Formato de hora de fin inválido (HH:mm o HH:mm:ss)').optional().nullable(),

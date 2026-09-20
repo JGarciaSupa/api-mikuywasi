@@ -1,3 +1,4 @@
+import { safeMessage } from '@/utils/errors';
 import type { Context } from 'hono';
 import * as rbac from '../services/rbac.service';
 import {
@@ -7,8 +8,7 @@ import {
 
 function jsonError(c: Context, e: unknown, msg: string) {
   console.error(msg, e);
-  const message = e instanceof Error ? e.message : msg;
-  return c.json({ success: false, message }, 400);
+  return c.json({ success: false, message: safeMessage(e, msg) }, 400);
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────

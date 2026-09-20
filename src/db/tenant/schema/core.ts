@@ -139,6 +139,9 @@ export const users = pgTable('users', {
 	password: varchar('password', { length: 255 }).notNull(),
 	name: varchar('name', { length: 255 }).notNull(),
 	image: text('image'),
+	// Borrado lógico: null = activo. Un usuario "eliminado" conserva su fila
+	// (y su username único), y se reactiva si se vuelve a dar de alta.
+	deletedAt: timestamp('deleted_at', { withTimezone: true }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

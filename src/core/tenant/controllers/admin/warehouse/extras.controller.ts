@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as extrasService from '../../../services/admin/warehouse/extras.service';
 
 // ─── Grupos ──────────────────────────────────────────────────────────────────
@@ -10,7 +11,7 @@ export const listExtraGroups = async (c: Context) => {
     const data = await extrasService.listExtraGroups(brandId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };
 
@@ -21,7 +22,7 @@ export const getExtraGroup = async (c: Context) => {
     if (!data) return c.json({ success: false, message: 'Grupo no encontrado' }, 404);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };
 
@@ -32,7 +33,7 @@ export const createExtraGroup = async (c: Context) => {
     const data = await extrasService.createExtraGroup(body);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -43,7 +44,7 @@ export const updateExtraGroup = async (c: Context) => {
     const data = await extrasService.updateExtraGroup(id, body);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -53,7 +54,7 @@ export const deleteExtraGroup = async (c: Context) => {
     await extrasService.deleteExtraGroup(id);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -66,7 +67,7 @@ export const createExtra = async (c: Context) => {
     const data = await extrasService.createExtra({ ...body, groupId });
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -77,7 +78,7 @@ export const updateExtra = async (c: Context) => {
     const data = await extrasService.updateExtra(id, body);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -87,7 +88,7 @@ export const deleteExtra = async (c: Context) => {
     await extrasService.deleteExtra(id);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -99,7 +100,7 @@ export const getProductExtraGroups = async (c: Context) => {
     const data = await extrasService.getExtrasForProduct(productId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };
 
@@ -110,7 +111,7 @@ export const assignGroupToProduct = async (c: Context) => {
     await extrasService.assignGroupToProduct(productId, groupId, extraIds ?? null);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -121,7 +122,7 @@ export const unassignGroupFromProduct = async (c: Context) => {
     await extrasService.unassignGroupFromProduct(productId, groupId);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };
 
@@ -133,6 +134,6 @@ export const getGroupProducts = async (c: Context) => {
     const data = await extrasService.getProductsForGroup(groupId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
   }
 };

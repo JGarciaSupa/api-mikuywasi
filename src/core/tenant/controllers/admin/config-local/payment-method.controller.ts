@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage, InUseError } from '@/utils/errors';
 import {
   createPaymentMethod,
   deletePaymentMethod,
@@ -19,7 +20,7 @@ export const getAllPaymentMethodsController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener los métodos de pago'
+      message: safeMessage(error, 'Error al obtener los métodos de pago')
     }, 500);
   }
 };
@@ -47,7 +48,7 @@ export const getPaymentMethodByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el método de pago'
+      message: safeMessage(error, 'Error al obtener el método de pago')
     }, 500);
   }
 };
@@ -64,7 +65,7 @@ export const createPaymentMethodController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear el método de pago'
+      message: safeMessage(error, 'Error al crear el método de pago')
     }, 400);
   }
 };
@@ -95,7 +96,7 @@ export const updatePaymentMethodController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el método de pago'
+      message: safeMessage(error, 'Error al actualizar el método de pago')
     }, 400);
   }
 };
@@ -111,7 +112,8 @@ export const deletePaymentMethodController = async (c: Context) => {
       return c.json({ success: false, message: 'ID inválido' }, 400);
     }
 
-    const result = await deletePaymentMethod(id);
+    const force = c.req.query('force') === 'true';
+    const result = await deletePaymentMethod(id, force);
     if (!result) {
       return c.json({ success: false, message: 'Método de pago no encontrado' }, 404);
     }
@@ -122,9 +124,17 @@ export const deletePaymentMethodController = async (c: Context) => {
       data: result
     });
   } catch (error: any) {
+    if (error instanceof InUseError) {
+      return c.json({
+        success: false,
+        requiresConfirmation: true,
+        references: error.references,
+        message: error.message
+      }, 409);
+    }
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar el método de pago'
+      message: safeMessage(error, 'Error al eliminar el método de pago')
     }, 400);
   }
 };

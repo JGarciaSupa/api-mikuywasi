@@ -5,6 +5,13 @@ import {
   validateUpdateProduct
 } from '../../../../validations/admin/products.validation';
 import {
+  validateCreateExtraGroup,
+  validateUpdateExtraGroup,
+  validateCreateExtra,
+  validateUpdateExtra,
+  validateAssignGroupToProduct,
+} from '../../../../validations/admin/warehouse/extras.validation';
+import {
   createProductController,
   deleteProductController,
   getAllProductsController,
@@ -31,7 +38,7 @@ routes.delete('/:id', deleteProductController);
 
 // ── Grupos de extras asignados a un producto ─────────────────────────────────
 routes.get('/:id/extra-groups', extras.getProductExtraGroups);
-routes.post('/:id/extra-groups', extras.assignGroupToProduct);
+routes.post('/:id/extra-groups', validateAssignGroupToProduct, extras.assignGroupToProduct);
 routes.delete('/:id/extra-groups/:groupId', extras.unassignGroupFromProduct);
 
 // ── Estaciones de cocina asignadas a un producto (SIGG 2.7) ─────────────────
@@ -43,13 +50,13 @@ routes.delete('/:id/kitchen-stations/:stationCode', unassignStationFromProductCo
 routes.get('/extra-groups/all', extras.listExtraGroups);
 routes.get('/extra-groups/:id', extras.getExtraGroup);
 routes.get('/extra-groups/:id/products', extras.getGroupProducts);
-routes.post('/extra-groups', extras.createExtraGroup);
-routes.patch('/extra-groups/:id', extras.updateExtraGroup);
+routes.post('/extra-groups', validateCreateExtraGroup, extras.createExtraGroup);
+routes.patch('/extra-groups/:id', validateUpdateExtraGroup, extras.updateExtraGroup);
 routes.delete('/extra-groups/:id', extras.deleteExtraGroup);
 
 // ── Extras individuales dentro de un grupo ───────────────────────────────────
-routes.post('/extra-groups/:groupId/extras', extras.createExtra);
-routes.patch('/extra-groups/:groupId/extras/:id', extras.updateExtra);
+routes.post('/extra-groups/:groupId/extras', validateCreateExtra, extras.createExtra);
+routes.patch('/extra-groups/:groupId/extras/:id', validateUpdateExtra, extras.updateExtra);
 routes.delete('/extra-groups/:groupId/extras/:id', extras.deleteExtra);
 
 export default routes;

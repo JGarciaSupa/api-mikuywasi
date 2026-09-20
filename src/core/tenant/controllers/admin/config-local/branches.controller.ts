@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import {
   getAllBranches,
   getBranchById,
@@ -18,7 +19,7 @@ export const getAllBranchesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las sucursales'
+      message: safeMessage(error, 'Error al obtener las sucursales')
     }, 500);
   }
 };
@@ -42,7 +43,7 @@ export const getBranchByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener la sucursal'
+      message: safeMessage(error, 'Error al obtener la sucursal')
     }, 500);
   }
 };
@@ -63,7 +64,7 @@ export const createBranchController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al crear la sucursal'
+      message: safeMessage(error, 'Error al crear la sucursal')
     }, 400);
   }
 };
@@ -93,7 +94,7 @@ export const updateBranchController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar la sucursal'
+      message: safeMessage(error, 'Error al actualizar la sucursal')
     }, 400);
   }
 };
@@ -121,7 +122,7 @@ export const deleteBranchController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al eliminar la sucursal'
+      message: safeMessage(error, 'Error al eliminar la sucursal')
     }, 400);
   }
 };
@@ -137,7 +138,7 @@ export const getMyBranchesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener tus sucursales'
+      message: safeMessage(error, 'Error al obtener tus sucursales')
     }, 500);
   }
 };

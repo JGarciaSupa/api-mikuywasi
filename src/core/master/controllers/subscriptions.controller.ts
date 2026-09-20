@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as subscriptionsService from '../services/subscriptions.service';
 
 export const getAllSubscriptionsController = async (c: Context) => {
@@ -19,7 +20,7 @@ export const getAllSubscriptionsController = async (c: Context) => {
       }
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones', data: null }, 500);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener suscripciones'), data: null }, 500);
   }
 };
 
@@ -29,7 +30,7 @@ export const getSubscriptionByIdController = async (c: Context) => {
     const result = await subscriptionsService.getSubscriptionById(id);
     return c.json({ success: true, message: 'Suscripción obtenida con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Suscripción no encontrada', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Suscripción no encontrada'), data: null }, 404);
   }
 };
 
@@ -39,7 +40,7 @@ export const getSubscriptionsByTenantController = async (c: Context) => {
     const result = await subscriptionsService.getSubscriptionsByTenant(tenantId);
     return c.json({ success: true, message: 'Suscripciones del tenant obtenidas con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al obtener suscripciones', data: null }, 404);
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener suscripciones'), data: null }, 404);
   }
 };
 
@@ -50,7 +51,7 @@ export const updateSubscriptionController = async (c: Context) => {
     const result = await subscriptionsService.updateSubscription(id, data);
     return c.json({ success: true, message: 'Suscripción actualizada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al actualizar la suscripción', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar la suscripción'), data: null }, 400);
   }
 };
 
@@ -60,6 +61,6 @@ export const cancelSubscriptionController = async (c: Context) => {
     const result = await subscriptionsService.cancelSubscription(id);
     return c.json({ success: true, message: 'Suscripción cancelada con éxito', data: result });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message || 'Error al cancelar la suscripción', data: null }, 400);
+    return c.json({ success: false, message: safeMessage(error, 'Error al cancelar la suscripción'), data: null }, 400);
   }
 };

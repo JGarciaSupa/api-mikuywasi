@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { safeMessage } from '@/utils/errors';
 import * as orderService from '../../../services/admin/documents/order.service';
 import { getAuditActor } from '@/utils/helpers';
 import { hasPermissionLive, getCurrentUserId } from '@/utils/permissions';
@@ -62,7 +63,7 @@ export const getOrdersController = async (c: Context) => {
     console.error('Error in getOrdersController:', error);
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener las órdenes',
+      message: safeMessage(error, 'Error al obtener las órdenes'),
     }, 500);
   }
 };
@@ -91,7 +92,7 @@ export const getOrderByIdController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener el detalle',
+      message: safeMessage(error, 'Error al obtener el detalle'),
     }, 500);
   }
 };
@@ -122,7 +123,7 @@ export const updateOrderStatusController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado',
+      message: safeMessage(error, 'Error al actualizar el estado'),
     }, 500);
   }
 };
@@ -149,7 +150,7 @@ export const updateOrderCustomerController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el cliente',
+      message: safeMessage(error, 'Error al actualizar el cliente'),
     }, 500);
   }
 };
@@ -176,7 +177,7 @@ export const updateOrderNotesController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar las notas',
+      message: safeMessage(error, 'Error al actualizar las notas'),
     }, 500);
   }
 };
@@ -203,7 +204,7 @@ export const updateOrderForController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el campo entregar a',
+      message: safeMessage(error, 'Error al actualizar el campo entregar a'),
     }, 500);
   }
 };
@@ -241,7 +242,7 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al actualizar el estado de pago',
+      message: safeMessage(error, 'Error al actualizar el estado de pago'),
     }, 500);
   }
 };
@@ -262,7 +263,7 @@ export const getOrderStatsController = async (c: Context) => {
   } catch (error: any) {
     return c.json({
       success: false,
-      message: error.message || 'Error al obtener estadísticas',
+      message: safeMessage(error, 'Error al obtener estadísticas'),
     }, 500);
   }
 };
