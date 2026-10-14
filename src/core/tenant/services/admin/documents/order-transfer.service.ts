@@ -1,4 +1,4 @@
-import { and, eq, or, ilike, inArray, desc } from 'drizzle-orm';
+import { and, eq, or, ilike, inArray, desc, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   orders,
@@ -72,11 +72,14 @@ async function getChargerUserIds(): Promise<Set<number>> {
 async function getGeneratorUserId(orderId: string): Promise<number | null> {
   const db = getTenantDb();
   const [row] = await db
-    .select({ userId: cashSessions.userId })
+    .select({
+      waiterId: orders.waiterId,
+      sessionUserId: cashSessions.userId,
+    })
     .from(orders)
-    .innerJoin(cashSessions, eq(cashSessions.id, orders.cashSessionId))
+    .leftJoin(cashSessions, eq(cashSessions.id, orders.cashSessionId))
     .where(eq(orders.id, orderId));
-  return row?.userId ?? null;
+  return row?.waiterId ?? row?.sessionUserId ?? null;
 }
 
 // Transferir un pedido generado a la caja del cajero (turno abierto). Setea el estado
@@ -237,13 +240,13 @@ export async function listTransferableOrders(userId: number, search?: string) {
       total: orders.total,
       createdAt: orders.createdAt,
       transferredSessionId: orders.transferredSessionId,
-      generatorUserId: cashSessions.userId,
+      generatorUserId: sql<number | null>`COALESCE(${orders.waiterId}, ${cashSessions.userId})`,
       generatedByName: genUser.name,     // a quién pertenece (mozo que lo generó)
       transferredToName: xferUser.name,  // en qué caja está (si transferido)
     })
     .from(orders)
     .leftJoin(cashSessions, eq(cashSessions.id, orders.cashSessionId))
-    .leftJoin(genUser, eq(genUser.id, cashSessions.userId))
+    .leftJoin(genUser, eq(genUser.id, sql`COALESCE(${orders.waiterId}, ${cashSessions.userId})`))
     .leftJoin(xferSession, eq(xferSession.id, orders.transferredSessionId))
     .leftJoin(xferUser, eq(xferUser.id, xferSession.userId))
     .where(and(...conditions))

@@ -37,23 +37,44 @@ export const getWaiterMenuController = async (c: Context) => {
  */
 export const createWaiterOrderController = async (c: Context) => {
   try {
-    // Regla: el usuario no puede registrar pedidos si no tiene una caja aperturada asociada a él.
     const { userId } = c.get('jwtPayload') ?? {};
-    const activeSession = await cashService.getActiveSessionForUser(userId);
+    const body = await c.req.json();
+
+    // 1. Si el usuario actual tiene su propio turno abierto (ej. cajero creando pedido), usarlo.
+    let activeSession = await cashService.getActiveSessionForUser(userId);
+
+    // 2. Si no tiene turno propio (ej. es un mozo), verificar si envió cashSessionId de una caja abierta de la sede.
+    if (!activeSession && body.cashSessionId) {
+      const session = await cashService.getCashSessionById(body.cashSessionId);
+      if (session && session.status === 'open') {
+        activeSession = session;
+      }
+    }
+
+    // 3. Si aún no hay sesión, buscar la primera caja con turno abierto de la sucursal.
+    if (!activeSession) {
+      activeSession = await cashService.getActiveSessionForBranch(body.branchId);
+    }
+
+    // 4. Si la sucursal NO tiene ninguna caja abierta, bloquear indicando que caja debe aperturar.
     if (!activeSession) {
       return c.json(
         {
           success: false,
-          message: 'No puedes registrar pedidos: no tienes un turno de caja abierto. Abre tu turno para continuar.',
+          message: 'No se puede registrar pedidos: no hay ninguna caja con turno abierto en esta sucursal. El cajero o administrador debe aperturar caja para iniciar las comandas.',
         },
         409,
       );
     }
 
-    const body = await c.req.json();
     await tenantService.validateOrderStockBeforeCreate(body);
-    // Vincular el pedido al turno abierto del usuario (de ahí salen caja + cajero para el ingreso)
-    const result = await tenantService.createOrder({ ...body, cashSessionId: activeSession.id }, 'preparing');
+    // Vincular el pedido al turno activo de la sucursal y asegurar atribución del mozo si no venía en el body
+    const orderPayload = {
+      ...body,
+      waiterId: body.waiterId ?? userId ?? null,
+      cashSessionId: activeSession.id,
+    };
+    const result = await tenantService.createOrder(orderPayload, 'preparing');
 
     const stockWarnings = await tenantService.triggerStockDischargeForOrder((result as any).id);
 

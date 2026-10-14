@@ -19,10 +19,14 @@ export const listCashRegisters = async (c: Context) => {
     const currentUserId = getCurrentUserId(c);
     const registers = await cash.listCashRegisters(branchId);
     const data = registers.map((reg) => {
-      const visibleSessions = canSeeAllSessions
-        ? reg.openSessions
-        : reg.openSessions.filter((s) => s.userId === currentUserId);
-      const sessions = canSeeAccounting ? visibleSessions : visibleSessions.map(stripAccountingFields);
+      // Los campos contables sensibles (saldos, ingresos, egresos) solo los ve quien tiene
+      // permiso de contabilidad (o en su propio turno si es el cajero asignado).
+      // Las sesiones abiertas permanecen visibles como metadatos seguros (status, openedBy, code)
+      // para que mozos y otros cajeros sepan qué cajas están operativas en la sucursal.
+      const sessions = reg.openSessions.map((s) => {
+        const canSeeThisSessionAccounting = canSeeAccounting && (canSeeAllSessions || s.userId === currentUserId);
+        return canSeeThisSessionAccounting ? s : stripAccountingFields(s);
+      });
       return { ...reg, openSessions: sessions };
     });
     return c.json({ success: true, data });

@@ -56,7 +56,7 @@ export async function login(username: string, password: string, userAgent?: stri
   }
 
   // 3. Cargar permisos del usuario (si tiene rol RBAC asignado)
-  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
+  const { roleId, roleCode, permissions, roleName } = await buildPermissionsForUser(user.id);
 
   // 4. Generar access token con permisos embebidos
   const accessToken = await generateAccessToken({
@@ -94,7 +94,9 @@ export async function login(username: string, password: string, userAgent?: stri
     user: {
       ...safeUser,
       image: getImageUrl(safeUser.image),
+      role: roleCode ?? 'guest',
       roleId,
+      roleName: roleName ?? 'Sin rol asignado',
       permissions,
     },
     branches: userBranchesList,
@@ -136,7 +138,7 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
   }
 
   // 5. Generar nuevos tokens (recargar permisos actualizados)
-  const { roleId, roleCode, permissions } = await buildPermissionsForUser(user.id);
+  const { roleId, roleCode, permissions, roleName } = await buildPermissionsForUser(user.id);
   const accessToken = await generateAccessToken({
     userId: user.id,
     role: roleCode ?? 'guest',
@@ -168,7 +170,9 @@ export async function refreshAccessToken(rawRefreshToken: string, userAgent?: st
     user: {
       ...safeUser,
       image: getImageUrl(safeUser.image),
+      role: roleCode ?? 'guest',
       roleId,
+      roleName: roleName ?? 'Sin rol asignado',
       permissions,
     },
     branches: userBranchesList,
@@ -213,8 +217,9 @@ export async function getProfile(userId: number) {
     image: getImageUrl(safeUser.image),
     branches: userBranchesList,
     currentBranch: defaultBranch,
+    role: roleCode ?? 'guest',
     roleId,
-    roleName,
+    roleName: roleName ?? 'Sin rol asignado',
     permissions,
   };
 }

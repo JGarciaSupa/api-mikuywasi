@@ -233,11 +233,6 @@ const RBAC_ROLES: SeedRole[] = [
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
       'pedidos.mover_mesa',
-      // Caja: el mozo puede abrir/cerrar su propio turno (obligatorio para crear pedidos).
-      // Sin caja.ver_contabilidad: no ve saldos, totales ni movimientos.
-      'caja.ver_sesiones',
-      'caja.abrir_sesion',
-      'caja.cerrar_sesion',
     ],
   },
   {

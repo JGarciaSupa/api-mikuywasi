@@ -24,6 +24,7 @@ export const transferOrderController = async (c: Context) => {
     const userId = getCurrentUserId(c);
     if (!userId) return c.json({ success: false, message: 'Usuario no autenticado' }, 401);
     const id = c.req.param('id');
+    if (!id) return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     const data = await transferService.transferOrder(id, userId, getIp(c));
     return c.json({ success: true, message: 'Pedido transferido a tu caja', data });
   } catch (error: any) {
@@ -42,6 +43,7 @@ export const returnOrderController = async (c: Context) => {
     const userId = getCurrentUserId(c);
     if (!userId) return c.json({ success: false, message: 'Usuario no autenticado' }, 401);
     const id = c.req.param('id');
+    if (!id) return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     const data = await transferService.returnOrder(id, userId, getIp(c));
     return c.json({ success: true, message: 'Pedido regresado', data });
   } catch (error: any) {

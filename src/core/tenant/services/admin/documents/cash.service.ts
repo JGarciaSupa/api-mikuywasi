@@ -437,6 +437,20 @@ export async function getActiveSessionForUser(userId?: number) {
   return session ?? null;
 }
 
+// Devuelve la primera sesión/turno de caja ABIERTO de una sucursal (para comandas de mozo), o null.
+export async function getActiveSessionForBranch(branchId?: number) {
+  const db = getTenantDb();
+  if (!branchId) return null;
+  const [row] = await db
+    .select()
+    .from(cashSessions)
+    .innerJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
+    .where(and(eq(cashRegisters.branchId, branchId), eq(cashSessions.status, 'open')))
+    .orderBy(desc(cashSessions.openedAt))
+    .limit(1);
+  return row ? row.cash_sessions : null;
+}
+
 export async function addCashMovement(
   sessionId: number,
   data: {
