@@ -9,6 +9,7 @@ export async function getOrderDispatchPayload(orderId: string, branchId: number)
   const [order] = await db
     .select({
       id: orders.id,
+      trackingCode: orders.trackingCode,
       branchId: orders.branchId,
       tableName: orders.tableName,
       customerName: orders.customerName,
