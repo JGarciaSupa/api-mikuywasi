@@ -563,6 +563,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           computedItems.push({
             productId: product.id,
             productName: product.name,
+            shortName: product.shortName ?? null,
             salesChannelId: resolvedSalesChannelId,
             unitPrice: resolvedUnitPrice.toFixed(2),
             unitCost: recipeUnitCost !== undefined ? recipeUnitCost.toFixed(4) : null,
@@ -650,6 +651,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
               productId: item.productId,
               salesChannelId: item.salesChannelId,
               productName: item.productName,
+              shortName: item.shortName ?? null,
               unitPrice: item.unitPrice,
               unitCost: item.unitCost,
               quantity: item.quantity,

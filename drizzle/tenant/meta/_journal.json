@@ -589,6 +589,13 @@
       "when": 1789943551558,
       "tag": "0083_add_deleted_at_to_users",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792568632976,
+      "tag": "0084_add_short_name_to_products_and_order_items",
+      "breakpoints": true
     }
   ]
 }

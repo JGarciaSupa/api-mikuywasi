@@ -282,6 +282,7 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
           productId: product.id,
           salesChannelId: order.salesChannelId ?? null,
           productName: product.name,
+          shortName: product.shortName ?? null,
           unitPrice: String(unitPrice),
           quantity: input.quantity,
           selectedAlternatives: input.selectedAlternatives ?? [],

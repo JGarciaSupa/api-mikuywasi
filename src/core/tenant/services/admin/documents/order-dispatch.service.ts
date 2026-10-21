@@ -131,6 +131,7 @@ export async function getOrderDispatchPayload(orderId: string, branchId: number)
       id: item.id,
       productId: item.productId,
       productName: item.productName,
+      shortName: item.shortName ?? null,
       quantity: item.quantity,
       notes: item.notes,
       modifiers: [...itemExtras, ...alternativeNames],

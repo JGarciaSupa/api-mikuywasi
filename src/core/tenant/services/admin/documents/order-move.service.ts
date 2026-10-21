@@ -136,6 +136,7 @@ async function moveItems(
       productId: item.productId,
       salesChannelId: item.salesChannelId,
       productName: item.productName,
+      shortName: item.shortName ?? null,
       unitPrice: item.unitPrice,
       quantity: moveQty,
       selectedAlternatives: item.selectedAlternatives,
