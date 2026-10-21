@@ -2,7 +2,13 @@ import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
 import { getAuditActor } from '@/utils/helpers';
 import { writeAuditLog } from '../../../services/admin/warehouse/shared/audit.service';
-import { importProducts } from '../../../services/admin/warehouse/product-import.service';
+import { parseIdParam } from '@/utils/helpers';
+import {
+  importProducts,
+  setProductImage,
+  IMPORT_IMAGE_MAX_BYTES,
+  IMPORT_IMAGE_TYPES,
+} from '../../../services/admin/warehouse/product-import.service';
 import { getProductCapacity } from '../../../services/admin/warehouse/product-limit.service';
 import type { ProductImportInput } from '../../../validations/admin/warehouse/product-import.validation';
 
@@ -58,5 +64,31 @@ export const getProductImportCapacityController = async (c: Context) => {
       success: false,
       message: safeMessage(error, 'Error al obtener la capacidad de productos'),
     }, 500);
+  }
+};
+
+export const uploadImportedProductImageController = async (c: Context) => {
+  try {
+    const id = parseIdParam(c);
+    const body = await c.req.parseBody();
+    const file = body['image'];
+
+    if (!(file instanceof File) || file.size === 0) {
+      return c.json({ success: false, message: 'La imagen es requerida' }, 400);
+    }
+    if (!IMPORT_IMAGE_TYPES.includes(file.type)) {
+      return c.json({ success: false, message: 'Formato no permitido (use JPG, PNG o WEBP)' }, 400);
+    }
+    if (file.size > IMPORT_IMAGE_MAX_BYTES) {
+      return c.json({ success: false, message: 'La imagen supera el máximo de 5 MB' }, 400);
+    }
+
+    const data = await setProductImage(id, file);
+    return c.json({ success: true, message: 'Imagen asignada con éxito', data });
+  } catch (error: any) {
+    return c.json({
+      success: false,
+      message: safeMessage(error, 'Error al subir la imagen del producto'),
+    }, 400);
   }
 };

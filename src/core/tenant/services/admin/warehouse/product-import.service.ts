@@ -1,8 +1,11 @@
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm';
 import { branches, categories, products, productSalesChannelPrices, salesChannels } from '@/db/tenant/schema';
 import { normalizeTaxConfigList } from '@/core/tenant/services/shared/taxes.service';
-import { getTenantDb } from '@/utils/tenant-context';
+import { getTenantDb, getTenantId } from '@/utils/tenant-context';
 import { isInternalError } from '@/utils/errors';
+import { deleteFromR2, getImageUrl, uploadToR2 } from '@/utils/r2';
+import { masterDb } from '@/db';
+import { tenants } from '@/db/master/schema';
 import {
   productImportRowSchema,
   type ProductImportInput,
@@ -84,8 +87,11 @@ export async function importProducts(input: ProductImportInput): Promise<Product
     else if (!rootByName.has(normalizeKey(cat.name))) rootByName.set(normalizeKey(cat.name), cat);
   }
 
-  if (input.defaultCategoryId && !categoryIds.has(input.defaultCategoryId)) {
-    throw new Error('La categoría por defecto no pertenece a la sucursal seleccionada');
+  // Igual que el alta manual (ProductModal): un producto se asigna siempre a una subcategoría.
+  if (input.defaultCategoryId) {
+    const defaultCategory = branchCategories.find((cat) => cat.id === input.defaultCategoryId);
+    if (!defaultCategory) throw new Error('La subcategoría por defecto no pertenece a la sucursal seleccionada');
+    if (!defaultCategory.parentId) throw new Error('La categoría por defecto debe ser una subcategoría');
   }
 
   // Nombres ya visibles en la sucursal: productos de sus categorías o sin categoría.
@@ -136,6 +142,11 @@ export async function importProducts(input: ProductImportInput): Promise<Product
       continue;
     }
 
+    if (row.categoryName && !row.subcategoryName) {
+      results.push({ row: row.row, name: row.name, status: 'failed', message: `Indique la subcategoría de "${row.categoryName}" (los productos se asignan a una subcategoría)` });
+      continue;
+    }
+
     try {
       const outcome = await db.transaction(async (tx) => {
         const newCategories: CategoryRow[] = [];
@@ -180,7 +191,7 @@ export async function importProducts(input: ProductImportInput): Promise<Product
 
         // 2. Crear el producto
         const [product] = await tx.insert(products).values({
-          categoryId: subcategory?.id ?? category?.id ?? input.defaultCategoryId ?? null,
+          categoryId: subcategory?.id ?? input.defaultCategoryId ?? null,
           name: row.name,
           shortName: row.shortName ?? null,
           description: row.description ?? null,
@@ -243,4 +254,46 @@ export async function importProducts(input: ProductImportInput): Promise<Product
     createdCategories,
     results,
   };
+}
+
+// ── Imagen de un producto importado ─────────────────────────────────────────
+
+// Mismo tamaño máximo y carpeta que createProduct/updateProduct (products.service.ts).
+const PRODUCT_IMAGE_MAX_SIZE = 500;
+export const IMPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const IMPORT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * Asigna la imagen a un producto (pensado para el paso final de la importación).
+ * Solo modifica la columna `image`: no aplica defaults ni toca precios, canales ni stock.
+ * Reutiliza uploadToR2 (redimensiona a 500px y convierte a WebP) igual que el alta manual.
+ */
+export async function setProductImage(productId: number, file: File) {
+  const db = getTenantDb();
+
+  const [product] = await db
+    .select({ id: products.id, image: products.image })
+    .from(products)
+    .where(eq(products.id, productId))
+    .limit(1);
+  if (!product) throw new Error('Producto no encontrado');
+
+  const tenant = await masterDb.query.tenants.findFirst({
+    where: eq(tenants.id, getTenantId()),
+    columns: { slug: true },
+  });
+  const imageKey = await uploadToR2(file, `${tenant?.slug || 'general'}/productos`, PRODUCT_IMAGE_MAX_SIZE);
+
+  try {
+    await db.update(products).set({ image: imageKey, updatedAt: new Date() }).where(eq(products.id, productId));
+  } catch (error) {
+    // Si no se pudo guardar en BD, no dejar el archivo huérfano en R2
+    await deleteFromR2(imageKey);
+    throw error;
+  }
+
+  // La imagen anterior (si la había) se elimina solo después de guardar la nueva
+  if (product.image) await deleteFromR2(product.image);
+
+  return { productId, image: getImageUrl(imageKey) };
 }

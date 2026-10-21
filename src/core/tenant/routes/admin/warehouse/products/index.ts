@@ -4,6 +4,7 @@ import { validateProductImport } from '../../../../validations/admin/warehouse/p
 import {
   importProductsController,
   getProductImportCapacityController,
+  uploadImportedProductImageController,
 } from '../../../../controllers/admin/warehouse/product-import.controller';
 import {
   validateCreateProduct,
@@ -39,6 +40,7 @@ routes.get('/', getAllProductsController);
 routes.post('/', validateCreateProduct, createProductController);
 routes.get('/import/capacity', requirePermission('menu', 'menu.gestionar_productos'), getProductImportCapacityController);
 routes.post('/import', requirePermission('menu', 'menu.gestionar_productos'), validateProductImport, importProductsController);
+routes.post('/import/:id/image', requirePermission('menu', 'menu.gestionar_productos'), uploadImportedProductImageController);
 routes.get('/:id', getProductByIdController);
 routes.patch('/:id', validateUpdateProduct, updateProductController);
 routes.delete('/:id', deleteProductController);
