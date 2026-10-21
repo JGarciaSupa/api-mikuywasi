@@ -4,6 +4,12 @@ import { zValidator } from '@hono/zod-validator';
 export const productSchema = z.object({
   categoryId: z.coerce.number().int().optional().nullable(),
   name: z.string({ error: 'El nombre es requerido' }).min(1, 'El nombre es requerido').max(150, 'El nombre no puede exceder los 150 caracteres'),
+  // Nombre resumido para comandas/tickets. Vacío = null (se imprime el nombre completo);
+  // ausente = undefined (en un PATCH no modifica el valor guardado).
+  shortName: z.preprocess(
+    (val) => (typeof val === 'string' ? val.trim() || null : val),
+    z.string().max(35, 'El nombre corto no puede exceder los 35 caracteres').nullable().optional()
+  ),
   description: z.string().optional().nullable(),
   price: z.coerce.string({ error: 'El precio es requerido' }).regex(/^\d+(\.\d{1,2})?$/, 'Precio inválido'),
   discountPrice: z.coerce.string().regex(/^\d+(\.\d{1,2})?$/, 'Precio de descuento inválido').optional().nullable(),

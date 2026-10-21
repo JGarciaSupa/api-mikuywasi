@@ -5,6 +5,7 @@ import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
 import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
+import { getMaxProductsForTenant } from './product-limit.service';
 
 const MAX_SIZE = 500;
 
@@ -174,12 +175,13 @@ export const getProductById = async (id: number) => {
 export const createProduct = async (data: any, imageFile?: File) => {
   const db = getTenantDb();
   const tenantId = getTenantId();
-  // Verificar límite de 150 productos
+  // Verificar límite de productos del plan (150 si el plan no define maxProducts)
+  const maxProducts = await getMaxProductsForTenant();
   const [totalResult] = await db.select({ count: count() })
     .from(products);
 
-  if (totalResult.count >= 150) {
-    throw new Error('Solo se permite un máximo de 150 productos por tenant');
+  if (totalResult.count >= maxProducts) {
+    throw new Error(`Solo se permite un máximo de ${maxProducts} productos por tenant`);
   }
 
   // Obtener el slug del tenant desde la base de datos master

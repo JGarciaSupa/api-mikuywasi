@@ -1,5 +1,10 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
+import { validateProductImport } from '../../../../validations/admin/warehouse/product-import.validation';
+import {
+  importProductsController,
+  getProductImportCapacityController,
+} from '../../../../controllers/admin/warehouse/product-import.controller';
 import {
   validateCreateProduct,
   validateUpdateProduct
@@ -32,6 +37,8 @@ routes.use('*', authMiddleware);
 // ── Productos ────────────────────────────────────────────────────────────────
 routes.get('/', getAllProductsController);
 routes.post('/', validateCreateProduct, createProductController);
+routes.get('/import/capacity', requirePermission('menu', 'menu.gestionar_productos'), getProductImportCapacityController);
+routes.post('/import', requirePermission('menu', 'menu.gestionar_productos'), validateProductImport, importProductsController);
 routes.get('/:id', getProductByIdController);
 routes.patch('/:id', validateUpdateProduct, updateProductController);
 routes.delete('/:id', deleteProductController);

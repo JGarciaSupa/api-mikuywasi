@@ -121,3 +121,86 @@ Elimina un producto y su imagen asociada en R2.
   "message": "Producto eliminado con éxito"
 }
 ```
+
+### 6. Importar Productos (masivo)
+Crea productos en lote para una sucursal. Cada fila se guarda en su propia transacción: una fila con error no deshace las demás.
+
+**POST** `/import`
+
+**Permiso:** `menu.gestionar_productos`
+
+**Body (JSON):**
+```json
+{
+  "branchId": 1,
+  "createMissingCategories": true,
+  "defaultCategoryId": null,
+  "activate": true,
+  "items": [
+    {
+      "row": 2,
+      "name": "Lomo saltado",
+      "shortName": "Lomo saltado",
+      "description": "Con papas fritas y arroz",
+      "price": "38.00",
+      "discountPrice": "",
+      "packagingFee": "1.00",
+      "categoryName": "Fondos",
+      "subcategoryName": "Carnes",
+      "stock": "",
+      "allowSellWithoutStock": "SI",
+      "isActive": "SI",
+      "order": 0
+    }
+  ]
+}
+```
+
+- `items`: entre 1 y 1000 filas. `row` es el número de fila del archivo (para reportar errores).
+- Requeridos por fila: `name` (máx. 150) y `price` (hasta 2 decimales, punto decimal).
+- `shortName` máx. 35 · `categoryName` / `subcategoryName` máx. 50 · `stock` entero ≥ 0 (vacío = sin límite).
+- Booleanos aceptan `SI`/`NO`, `true`/`false`, `1`/`0`. Si `isActive` viene vacío se usa `activate`.
+- Categorías y subcategorías se buscan por nombre (sin distinguir mayúsculas) entre las de la sucursal o globales. Si no existen y `createMissingCategories` es `true`, se crean en la sucursal; si es `false`, la fila falla. Se respeta el máximo de 50 categorías principales.
+- Sin categoría se usa `defaultCategoryId` (debe pertenecer a la sucursal) o queda sin categoría.
+- Cada producto creado recibe un precio por cada canal activo de la sucursal (o global) igual al precio importado, con los impuestos de la sucursal según su `defaultActive`, igual que al crearlo desde el admin.
+- Se omiten (`skipped`) las filas cuyo nombre ya existe en la sucursal o se repite en el archivo.
+- Se respeta el límite de productos del plan (`plans.features.maxProducts`; 150 si el plan no lo define). Las filas que lo superen fallan.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Importación finalizada: 1 creados, 0 omitidos, 0 con error",
+  "data": {
+    "total": 1,
+    "created": 1,
+    "skipped": 0,
+    "failed": 0,
+    "maxProducts": 150,
+    "createdCategories": ["Fondos", "Carnes"],
+    "results": [
+      { "row": 2, "name": "Lomo saltado", "status": "created", "productId": 120 }
+    ]
+  }
+}
+```
+
+`status` de cada fila: `created` | `skipped` | `failed` (con `message`).
+
+### Límite de productos por plan
+Crear (`POST /`) e importar (`POST /import`) usan el mismo límite: la característica numérica `maxProducts` del plan del tenant (configurable desde el super admin en *Planes → Características del Plan*). Si el plan no la define, el límite es 150.
+
+### 7. Capacidad de productos (para importar)
+Devuelve el límite del plan, los productos existentes y cuántos se pueden crear todavía. Lo usa el asistente de importación para avisar antes de importar.
+
+**GET** `/import/capacity`
+
+**Permiso:** `menu.gestionar_productos`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": { "maxProducts": 1000, "current": 120, "remaining": 880 }
+}
+```
