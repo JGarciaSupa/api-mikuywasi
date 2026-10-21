@@ -1,4 +1,4 @@
-import { eq, and, desc, like, or, gte, lte, count, sql, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, like, or, gte, lte, count, sql, isNull, inArray, getTableColumns } from 'drizzle-orm';
 import {
   billingDocuments,
   billingDocumentLines,
@@ -780,23 +780,33 @@ export async function listDocuments(filters: ListDocumentsFilters) {
     conditions.push(
       or(
         like(billingDocuments.documentNumber, `%${filters.search}%`),
-        like(billingDocuments.buyerName, `%${filters.search}%`)
+        like(billingDocuments.buyerName, `%${filters.search}%`),
+        like(orders.trackingCode, `%${filters.search}%`)
       )!
     );
   }
 
   const where = conditions.length ? and(...conditions) : undefined;
 
-  const data = await (where
-    ? db.select().from(billingDocuments).where(where)
-    : db.select().from(billingDocuments))
+  const baseQuery = db
+    .select({
+      ...getTableColumns(billingDocuments),
+      orderTrackingCode: orders.trackingCode,
+    })
+    .from(billingDocuments)
+    .leftJoin(orders, eq(billingDocuments.orderId, orders.id));
+
+  const data = await (where ? baseQuery.where(where) : baseQuery)
     .limit(limit)
     .offset(offset)
     .orderBy(desc(billingDocuments.issuedAt));
 
-  const [{ total }] = await (where
-    ? db.select({ total: count() }).from(billingDocuments).where(where)
-    : db.select({ total: count() }).from(billingDocuments));
+  const countQuery = db
+    .select({ total: count() })
+    .from(billingDocuments)
+    .leftJoin(orders, eq(billingDocuments.orderId, orders.id));
+
+  const [{ total }] = await (where ? countQuery.where(where) : countQuery);
 
   return {
     data,

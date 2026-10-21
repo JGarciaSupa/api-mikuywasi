@@ -260,6 +260,7 @@ export async function getCashSessionById(id: number) {
     .select({
       movement: cashMovements,
       orderTotal: orders.total,
+      orderTrackingCode: orders.trackingCode,
     })
     .from(cashMovements)
     .leftJoin(orders, eq(cashMovements.orderId, orders.id))
@@ -269,7 +270,7 @@ export async function getCashSessionById(id: number) {
   // Libro de caja (ledger): se usan los valores CONGELADOS del movimiento
   // (monto/método tal como se registraron al cobrar). orderTotal va solo como
   // referencia informativa; cambios posteriores al pedido NO alteran el arqueo.
-  const movements = rows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal }));
+  const movements = rows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal, orderTrackingCode: r.orderTrackingCode }));
 
   // Ventas GENERADAS por esta sesión: ingresos de órdenes donde el usuario de
   // esta sesión fue quien creó el pedido (orders.cashSessionId = id).
@@ -278,6 +279,7 @@ export async function getCashSessionById(id: number) {
     .select({
       movement: cashMovements,
       orderTotal: orders.total,
+      orderTrackingCode: orders.trackingCode,
     })
     .from(orders)
     .innerJoin(
@@ -287,7 +289,7 @@ export async function getCashSessionById(id: number) {
     .where(eq(orders.cashSessionId, id))
     .orderBy(desc(cashMovements.createdAt));
 
-  const generatedMovements = generatedRows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal }));
+  const generatedMovements = generatedRows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal, orderTrackingCode: r.orderTrackingCode }));
 
   // Desglose de INGRESOS por método de pago (valores congelados)
   const totalsByMethod: Record<string, number> = {};

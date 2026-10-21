@@ -264,11 +264,13 @@ export const getCashReportMovements = async (
       paymentMethod: cashMovements.paymentMethod,
       isCash: cashMovements.isCash,
       orderId: cashMovements.orderId,
+      orderTrackingCode: orders.trackingCode,
       createdBy: cashMovements.createdBy,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
     .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
+    .leftJoin(orders, eq(cashMovements.orderId, orders.id))
     .where(and(...conditions))
     .orderBy(desc(cashMovements.createdAt))
     .limit(limit);
@@ -321,12 +323,14 @@ export const getCashReportExport = async (filters: CashReportFilters) => {
       paymentMethod: cashMovements.paymentMethod,
       isCash: cashMovements.isCash,
       orderId: cashMovements.orderId,
+      orderTrackingCode: orders.trackingCode,
       reference: cashMovements.reference,
       createdBy: cashMovements.createdBy,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
     .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
+    .leftJoin(orders, eq(cashMovements.orderId, orders.id))
     .where(and(...movementConditions(filters)))
     .orderBy(asc(cashMovements.createdAt))
     .limit(EXPORT_MAX_ROWS);
