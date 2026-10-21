@@ -435,8 +435,8 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           if (salesChannelRow.requireWaiter && !orderData.waiterId) {
             throw new Error('Este canal de venta exige asignar un mozo');
           }
-          if (salesChannelRow.requirePax && !orderData.paxAdults && !orderData.paxChildren) {
-            throw new Error('Este canal de venta exige indicar el número de comensales');
+          if (salesChannelRow.requirePax && (!orderData.paxAdults || Number(orderData.paxAdults) <= 0)) {
+            throw new Error('Este canal de venta exige indicar el número de comensales adultos');
           }
           if (salesChannelRow.requireCustomer && !orderData.customerId) {
             throw new Error('Este canal de venta exige un cliente frecuente');
@@ -446,16 +446,9 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           }
         }
 
-        // Aforo: la suma de pax adultos + niños no puede superar la capacidad de la mesa.
-        if (orderData.tableId) {
-          const totalPax = Number(orderData.paxAdults ?? 0) + Number(orderData.paxChildren ?? 0);
-          if (totalPax > 0) {
-            const [tableRow] = await tx.select().from(tables).where(eq(tables.id, orderData.tableId)).limit(1);
-            if (tableRow && totalPax > (tableRow.capacity ?? Infinity)) {
-              throw new Error(`El número de comensales (${totalPax}) supera la capacidad de la mesa (${tableRow.capacity})`);
-            }
-          }
-        }
+        // Aforo de la mesa: es informativo para la operación del salón, no bloqueante.
+        // Se permite continuar la comanda aunque supere la capacidad para no frenar la atención
+        // en casos de mesas combinadas, sillas auxiliares o niños acompañantes.
 
         const productIds = Array.from(new Set(
           items
