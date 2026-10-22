@@ -305,6 +305,7 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
       createdBy: sql<string | null>`COALESCE(${users.name}, ${billingDocuments.createdBy})`,
     })
     .from(billingDocuments)
+    .leftJoin(orders, eq(billingDocuments.orderId, orders.id))
     .leftJoin(users, eq(users.username, billingDocuments.createdBy))
     .leftJoin(orders, eq(orders.id, billingDocuments.orderId))
     .where(whereClause)
