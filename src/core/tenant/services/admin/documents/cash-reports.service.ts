@@ -1,4 +1,4 @@
-import { cashSessions, cashMovements, cashRegisters, users } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, cashRegisters, users, orders } from '../../../../../db/tenant/schema';
 import { eq, and, desc, asc, sql, count, gte, lte } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 

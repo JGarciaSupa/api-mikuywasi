@@ -841,19 +841,8 @@ export async function listDocuments(filters: ListDocumentsFilters) {
 
   const [{ total }] = await (where ? countQuery.where(where) : countQuery);
 
-  // Código legible del pedido (trackingCode, ej. 20260001) para mostrarlo en lugar del id interno.
-  const orderIds = [...new Set(data.map((doc) => doc.orderId).filter((id): id is string => !!id))];
-  const trackingByOrder = new Map<string, string | null>();
-  if (orderIds.length > 0) {
-    const rows = await db
-      .select({ id: orders.id, trackingCode: orders.trackingCode })
-      .from(orders)
-      .where(inArray(orders.id, orderIds));
-    for (const row of rows) trackingByOrder.set(row.id, row.trackingCode);
-  }
-
   return {
-    data: data.map((doc) => ({ ...doc, orderTrackingCode: doc.orderId ? trackingByOrder.get(doc.orderId) ?? null : null })),
+    data,
     pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
   };
 }

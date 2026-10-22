@@ -307,7 +307,6 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
     .from(billingDocuments)
     .leftJoin(orders, eq(billingDocuments.orderId, orders.id))
     .leftJoin(users, eq(users.username, billingDocuments.createdBy))
-    .leftJoin(orders, eq(orders.id, billingDocuments.orderId))
     .where(whereClause)
     .orderBy(asc(billingDocuments.issuedAt))
     .limit(EXPORT_MAX_ROWS);
