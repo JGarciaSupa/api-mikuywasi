@@ -25,6 +25,7 @@ import { reverseOrderSaleMovement, getActiveSessionForUser } from './../document
 import { resolveForRegister } from './activation.service';
 import { authorizeByPassword } from './../documents/security-auth.service';
 import type { AuditActor } from './../warehouse/types';
+import { clearOrderDiscount } from './../documents/order-discount-clear';
 import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
 import {
   type TaxConfig,
@@ -178,7 +179,7 @@ async function calcIngredientsForProduct(
   return result;
 }
 
-async function recalcOrderTotals(
+export async function recalcOrderTotals(
   db: ReturnType<typeof getTenantDb>,
   orderId: string
 ) {
@@ -233,6 +234,8 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
   assertNotTransferred(order, orderId);
   assertEditable(order.status, orderId);
+  // Editar ítems retira el descuento del pedido (se vuelve a aplicar sobre el pedido nuevo)
+  await clearOrderDiscount(db, orderId);
 
   const [existingDischarge] = await db
     .select()
@@ -623,6 +626,8 @@ export async function annulOrderItem(
     password: 'PASSWORD_DELETE_PRODUCT',
     authSubAction: 'seguridad.autorizar_eliminar_producto',
   });
+  // Anular un ítem retira el descuento del pedido (se vuelve a aplicar sobre lo que queda)
+  await clearOrderDiscount(db, orderId);
 
   // Reversa de stock/descarga por la porción anulada (misma lógica que 'update_qty' al reducir:
   // repone stock e insumos y reduce las líneas de descarga en vez de borrarlas siempre).

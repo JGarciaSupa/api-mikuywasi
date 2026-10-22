@@ -533,6 +533,7 @@ export async function recordOrderSaleIncome(
       paymentMethodId: orders.paymentMethodId,
       retentionPercentage: orders.retentionPercentage,
       retentionAmount: orders.retentionAmount,
+      trackingCode: orders.trackingCode,
     })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order?.collectedSessionId) return { created: false, reason: 'no_session_linked' };
@@ -549,7 +550,7 @@ export async function recordOrderSaleIncome(
       .values({
         sessionId: session.id,
         movementType: 'income',
-        concept: `Venta pedido ${orderId}`,
+        concept: `Venta pedido ${order.trackingCode ?? orderId}`,
         amount: round2(data.amount),
         paymentMethod: data.paymentMethod ?? null,
         retentionPercentage: order.retentionPercentage ?? '0.00',
@@ -573,6 +574,66 @@ export async function recordOrderSaleIncome(
       module: 'caja',
       description: `Ingreso por venta ${orderId} (${data.paymentMethod ?? 'efectivo'}) — S/ ${round2(data.amount)}${retentionNote}`,
     });
+  });
+
+  return { created: true };
+}
+
+// Pago mixto: un ingreso por cada método (cada uno con su isCash y su retención) en el
+// turno del cajero que cobró. Mismo criterio de idempotencia que recordOrderSaleIncome:
+// si el pedido ya tiene un ingreso a nivel pedido, no registra nada.
+export async function recordOrderMultiPaymentIncome(
+  orderId: string,
+  lines: Array<{ amount: number; paymentMethod: string; isCash: boolean; retentionPercentage: string; retentionAmount: string }>,
+  actor?: AuditActor,
+): Promise<{ created: boolean; reason?: string }> {
+  const db = getTenantDb();
+
+  const [existing] = await db
+    .select({ id: cashMovements.id })
+    .from(cashMovements)
+    .where(and(eq(cashMovements.orderId, orderId), eq(cashMovements.movementType, 'income'), isNull(cashMovements.splitId)))
+    .limit(1);
+  if (existing) return { created: false, reason: 'already_recorded' };
+
+  const [order] = await db
+    .select({ collectedSessionId: orders.collectedSessionId, trackingCode: orders.trackingCode })
+    .from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order?.collectedSessionId) return { created: false, reason: 'no_session_linked' };
+  const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, order.collectedSessionId)).limit(1);
+  if (!session) return { created: false, reason: 'session_not_found' };
+  if (session.status !== 'open') return { created: false, reason: 'session_closed' };
+
+  await db.transaction(async (tx) => {
+    for (const [i, line] of lines.entries()) {
+      const [movement] = await tx
+        .insert(cashMovements)
+        .values({
+          sessionId: session.id,
+          movementType: 'income',
+          concept: `Venta pedido ${order.trackingCode ?? orderId} · pago ${i + 1}/${lines.length}`,
+          amount: round2(line.amount),
+          paymentMethod: line.paymentMethod,
+          retentionPercentage: line.retentionPercentage,
+          retentionAmount: line.retentionAmount,
+          isCash: line.isCash,
+          orderId,
+          createdBy: actor?.userName ?? 'sistema',
+        })
+        .returning();
+
+      await writeAuditLog({
+        tableName: 'cash_movements',
+        operation: 'INSERT',
+        recordId: movement.id,
+        afterData: movement,
+        userId: actor?.userId,
+        userName: actor?.userName,
+        module: 'caja',
+        description: `Ingreso por venta ${orderId} (pago mixto ${i + 1}/${lines.length}: ${line.paymentMethod}) — S/ ${round2(line.amount)}`,
+      });
+    }
+    await recomputeSessionTotals(tx, session.id);
   });
 
   return { created: true };
@@ -668,7 +729,7 @@ export async function recordSplitSaleIncome(
   const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId)).limit(1);
   if (!split) return { created: false, reason: 'split_not_found' };
 
-  const [order] = await db.select({ collectedSessionId: orders.collectedSessionId }).from(orders).where(eq(orders.id, split.orderId)).limit(1);
+  const [order] = await db.select({ collectedSessionId: orders.collectedSessionId, trackingCode: orders.trackingCode }).from(orders).where(eq(orders.id, split.orderId)).limit(1);
   const targetSessionId = collectedSessionId ?? order?.collectedSessionId;
   if (!targetSessionId) return { created: false, reason: 'no_session_linked' };
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, targetSessionId)).limit(1);
@@ -684,7 +745,7 @@ export async function recordSplitSaleIncome(
       .values({
         sessionId: session.id,
         movementType: 'income',
-        concept: `Venta pedido ${split.orderId} · ${split.label ?? 'cuenta'}`,
+        concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}`,
         amount: round2(amount),
         paymentMethod: split.paymentMethod ?? null,
         retentionPercentage: split.retentionPercentage ?? '0.00',
@@ -779,7 +840,7 @@ export async function refundOrder(
 ) {
   const db = getTenantDb();
   const [order] = await db
-    .select({ paymentMethodId: orders.paymentMethodId, paymentMethod: orders.paymentMethod, total: orders.total })
+    .select({ paymentMethodId: orders.paymentMethodId, paymentMethod: orders.paymentMethod, total: orders.total, trackingCode: orders.trackingCode })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) throw new Error('Pedido no encontrado');
 
@@ -798,7 +859,7 @@ export async function refundOrder(
       .values({
         sessionId: session.id,
         movementType: 'expense',
-        concept: `Devolución pedido ${orderId}${data.reason ? ` — ${data.reason}` : ''}`,
+        concept: `Devolución pedido ${order.trackingCode ?? orderId}${data.reason ? ` — ${data.reason}` : ''}`,
         amount: round2(amount),
         paymentMethod: order.paymentMethod,
         isCash,

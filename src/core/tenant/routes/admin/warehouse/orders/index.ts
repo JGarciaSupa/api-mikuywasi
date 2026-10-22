@@ -2,6 +2,7 @@ import {
   getOrderDispatchPayloadController,
   markOrderItemsDispatchedController,
 } from '../../../../controllers/admin/documents/order-dispatch.controller';
+import { getOrderVoidTicketController } from '../../../../controllers/admin/documents/order-void-ticket.controller';
 import { Hono } from 'hono';
 import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import {
@@ -61,6 +62,7 @@ routes.get('/reports/export', getOrdersReportExportController);
 // Despacho a cocina e impresión física
 routes.get('/:id/dispatch-payload', getOrderDispatchPayloadController);
 routes.post('/:id/mark-dispatched', markOrderItemsDispatchedController);
+routes.get('/:id/void-ticket', getOrderVoidTicketController);
 
 routes.get('/:id', getOrderByIdController);
 routes.patch('/:id/status', updateOrderStatusController);

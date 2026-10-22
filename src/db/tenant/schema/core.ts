@@ -530,6 +530,16 @@ export const orders = pgTable('orders', {
 	deletedById: integer('deleted_by_id').references(() => users.id), // ejecutó la anulación
 	authorizedById: integer('authorized_by_id').references(() => users.id), // autorizó por contraseña
 
+	// Descuento a nivel pedido (motivo del catálogo reasons type='discount'). El importe se
+	// reparte entre las líneas (order_items.discount_amount) y subtotal/total ya lo restan.
+	discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
+	discountReasonId: integer('discount_reason_id'), // FK lógica a reasons
+	discountMotivo: varchar('discount_motivo', { length: 200 }),
+	discountMode: varchar('discount_mode', { length: 20 }), // percentage | amount | manual
+	discountValue: decimal('discount_value', { precision: 12, scale: 2 }), // % o importe del motivo
+	discountById: integer('discount_by_id').references(() => users.id),
+	discountAt: timestamp('discount_at', { withTimezone: true }),
+
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -591,6 +601,8 @@ export const orderItems = pgTable('order_items', {
 		isActive: boolean;
 		amount?: number;
 	}[]>(),
+	// Parte del descuento del pedido prorrateada a esta línea (total_price ya la resta).
+	discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
 	// ─── Despacho a cocina e impresión física ────────────────────────────────
 	sentToKitchen: boolean('sent_to_kitchen').default(false).notNull(),
 	printedAt: timestamp('printed_at', { withTimezone: true }),

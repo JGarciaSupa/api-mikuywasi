@@ -8,6 +8,7 @@ import {
   orders,
   orderItems,
   orderSplits,
+  orderPayments,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
@@ -365,6 +366,38 @@ async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: numbe
   }
 }
 
+// Emisor de un documento ya emitido: usa el snapshot guardado en billing_documents.
+// Si aún no lo tiene, lo resuelve en vivo y lo congela (best-effort: si falla el
+// guardado, el PDF se genera igual). Solo se congela con RUC válido, para no fijar
+// un emisor vacío cuando el facturador está caído.
+async function resolveDocumentEmisor(
+  db: ReturnType<typeof getTenantDb>,
+  doc: typeof billingDocuments.$inferSelect,
+): Promise<EmisorSnapshot> {
+  if (doc.emisorRuc) {
+    const [brand] = await db.select({ logo: brands.logo }).from(brands).limit(1);
+    return {
+      ruc: doc.emisorRuc,
+      name: doc.emisorName ?? '',
+      address: doc.emisorAddress ?? '',
+      logoUrl: brand?.logo ?? null,
+    };
+  }
+
+  const emisor = await resolveEmisor(db, doc.branchId);
+  if (emisor.ruc) {
+    try {
+      await db
+        .update(billingDocuments)
+        .set({ emisorRuc: emisor.ruc, emisorName: emisor.name, emisorAddress: emisor.address })
+        .where(and(eq(billingDocuments.id, doc.id), isNull(billingDocuments.emisorRuc)));
+    } catch {
+      // No bloquear el PDF si el snapshot no se pudo guardar
+    }
+  }
+  return emisor;
+}
+
 // ── Preview ────────────────────────────────────────────────────────────────────
 
 export async function previewDocument(
@@ -641,7 +674,7 @@ async function emitirYActualizarDoc(
         tipo_doc: tipoDoc as '01' | '03',
         serie: doc.series,
         correlativo: String(doc.sequential).padStart(8, '0'),
-        fecha_emision: new Date(doc.issuedAt!).toISOString().replace('Z', '-05:00'),
+        fecha_emision: limaDateTimeStr(new Date(doc.issuedAt!)),
         moneda: doc.currency,
       },
       // Las operaciones se separan por afectación: un producto con el impuesto
@@ -798,8 +831,19 @@ export async function listDocuments(filters: ListDocumentsFilters) {
     ? db.select({ total: count() }).from(billingDocuments).where(where)
     : db.select({ total: count() }).from(billingDocuments));
 
+  // Código legible del pedido (trackingCode, ej. 20260001) para mostrarlo en lugar del id interno.
+  const orderIds = [...new Set(data.map((doc) => doc.orderId).filter((id): id is string => !!id))];
+  const trackingByOrder = new Map<string, string | null>();
+  if (orderIds.length > 0) {
+    const rows = await db
+      .select({ id: orders.id, trackingCode: orders.trackingCode })
+      .from(orders)
+      .where(inArray(orders.id, orderIds));
+    for (const row of rows) trackingByOrder.set(row.id, row.trackingCode);
+  }
+
   return {
-    data,
+    data: data.map((doc) => ({ ...doc, orderTrackingCode: doc.orderId ? trackingByOrder.get(doc.orderId) ?? null : null })),
     pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
   };
 }
@@ -1084,8 +1128,8 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     .from(branches)
     .where(eq(branches.id, doc.branchId));
 
-  // Emisor siempre desde el microservicio facturador (empresa SUNAT configurada)
-  const emisor = await resolveEmisor(db, doc.branchId);
+  // Emisor: snapshot del documento si existe; si no, desde el facturador (y se congela)
+  const emisor = await resolveDocumentEmisor(db, doc);
   const issueDate = doc.issuedAt ? new Date(doc.issuedAt) : new Date();
   const dueDate = new Date(issueDate);
   const currencyLabel = doc.currency === 'USD' ? 'Dólares' : 'Soles';
@@ -1143,8 +1187,16 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       .where(eq(orders.id, doc.orderId));
 
     if (order) {
+      // Pago mixto: la forma de pago se muestra desglosada ("Efectivo S/ 50.00 + Yape S/ 30.00")
+      const mixed = await db
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount })
+        .from(orderPayments)
+        .where(eq(orderPayments.orderId, doc.orderId))
+        .orderBy(orderPayments.id);
       paymentSummary = {
-        paymentMethod: order.paymentMethod ?? null,
+        paymentMethod: mixed.length > 0
+          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}`).join(' + ')
+          : (order.paymentMethod ?? null),
         retentionPercentage: order.retentionPercentage ?? '0.00',
         retentionAmount: order.retentionAmount ?? '0.00',
         chargedTotal: order.total ?? doc.total,
@@ -1164,6 +1216,12 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       buyerAddress: null,
     };
   }
+
+  // Descuento del pedido (informativo: las líneas del comprobante ya van netas)
+  const [orderDiscount] = await db
+    .select({ discountAmount: orders.discountAmount, discountMotivo: orders.discountMotivo })
+    .from(orders)
+    .where(eq(orders.id, doc.orderId));
 
   return {
     document: finalDoc,
@@ -1187,6 +1245,8 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       advanceAmount: '0.00',
       serviceAmount: String(serviceAmount.toFixed(2)),
       buyerDocLabel,
+      discountAmount: orderDiscount?.discountAmount ?? '0.00',
+      discountMotivo: orderDiscount?.discountMotivo ?? null,
     },
   };
 }
@@ -1197,6 +1257,14 @@ export async function getDocumentReceipt(id: number, userId?: number) {
 function limaDateStr(d: Date): string {
   const lima = new Date(d.getTime() - 5 * 60 * 60 * 1000);
   return lima.toISOString().slice(0, 10);
+}
+
+// Fecha-hora ISO en hora de Lima con su offset (ej. 2026-10-21T13:33:25.624-05:00).
+// Antes se etiquetaba la hora UTC como -05:00 sin convertirla: las ventas de 19:00 a
+// 23:59 (Lima) se declaraban a SUNAT con la fecha del día siguiente.
+function limaDateTimeStr(d: Date): string {
+  const lima = new Date(d.getTime() - 5 * 60 * 60 * 1000);
+  return lima.toISOString().replace('Z', '-05:00');
 }
 
 function resolveParentSunatStateAfterVoid(
@@ -1422,7 +1490,7 @@ async function emitAndUpdateCreditNote(
         tipo_doc: '07',
         serie: savedNC.series,
         correlativo: String(savedNC.sequential).padStart(8, '0'),
-        fecha_emision: new Date(savedNC.issuedAt!).toISOString().replace('Z', '-05:00'),
+        fecha_emision: limaDateTimeStr(new Date(savedNC.issuedAt!)),
         moneda: savedNC.currency,
       },
       doc_afectado: {
@@ -1908,7 +1976,7 @@ export async function emitirNotaCreditoExterna(input: CreateNotaCreditoExternaIn
       tipo_doc: '07',
       serie: input.serieNC,
       correlativo: input.correlativoNC.padStart(8, '0'),
-      fecha_emision: new Date().toISOString().replace('Z', '-05:00'),
+      fecha_emision: limaDateTimeStr(new Date()),
       moneda: input.moneda,
     },
     doc_afectado: {

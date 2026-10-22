@@ -596,6 +596,27 @@
       "when": 1792568632976,
       "tag": "0084_add_short_name_to_products_and_order_items",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1792656000000,
+      "tag": "0085_add_emisor_snapshot_to_billing_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792742400000,
+      "tag": "0086_create_order_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792746000000,
+      "tag": "0087_add_order_discounts",
+      "breakpoints": true
     }
   ]
 }

@@ -58,6 +58,13 @@ export const billingDocuments = pgTable('billing_documents', {
 	// para no perder trazabilidad si el anexo de la sucursal cambia después).
 	sunatAnexo: varchar('sunat_anexo', { length: 4 }),
 
+	// Snapshot del emisor (empresa SUNAT) para el PDF: se congela la primera vez que se
+	// genera el comprobante, así el PDF no depende del facturador ni cambia si la empresa
+	// se edita después. NULL = documento aún sin snapshot (se resuelve en vivo).
+	emisorRuc: varchar('emisor_ruc', { length: 15 }),
+	emisorName: varchar('emisor_name', { length: 200 }),
+	emisorAddress: text('emisor_address'),
+
 	status: varchar('status', { length: 20,
 		enum: ['draft', 'issued', 'voided'] as const }).notNull().default('issued'),
 	notes: text('notes'),

@@ -290,6 +290,7 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
       sequential: billingDocuments.sequential,
       issuedAt: billingDocuments.issuedAt,
       orderId: billingDocuments.orderId,
+      orderTrackingCode: orders.trackingCode,
       buyerDocType: billingDocuments.buyerDocType,
       buyerDocNumber: billingDocuments.buyerDocNumber,
       buyerName: billingDocuments.buyerName,
@@ -305,6 +306,7 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
     })
     .from(billingDocuments)
     .leftJoin(users, eq(users.username, billingDocuments.createdBy))
+    .leftJoin(orders, eq(orders.id, billingDocuments.orderId))
     .where(whereClause)
     .orderBy(asc(billingDocuments.issuedAt))
     .limit(EXPORT_MAX_ROWS);

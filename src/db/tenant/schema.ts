@@ -6,3 +6,4 @@ export * from './schema/billing';
 export * from './schema/customers';
 export * from './schema/reasons';
 export * from './schema/activations';
+export * from './schema/payments';
