@@ -1,5 +1,5 @@
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { orders, orderItems, orderSplits, tables, orderPayments } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderSplits, tables, orderPayments, paymentMethods } from '../../../../../db/tenant/schema';
 
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { type TaxSnapshotEntry, prorateTaxSnapshot } from '../../shared/taxes.service';
