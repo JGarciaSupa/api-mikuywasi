@@ -119,6 +119,8 @@ c.json({ success: false, message: safeMessage(error, 'Error al …') }, 400 | 40
 - **Recargo al consumo e informes**: `billing_documents.tax_amount` guarda todo lo desglosado (IGV + ICBPER + recargo); la tarjeta "IGV total" de reportes lo suma tal cual. El IGV real está en el desglose (`taxBreakdown`).
 - **Cuentas por monto (partes iguales / montos libres)**: resuelto 2026-10-23 con `resolveAmountSplitLineCalcs`: el importe cobrado se reparte con la composición real del pedido (grupos por impuestos, bolsas enteras a la primera cuenta que las cubre, siempre precio final). Antes la factura sumaba el IGV encima de lo cobrado. Reintento, corrección y NC recalculan con la misma función.
 - **`tax_snapshot`**: `NULL` = línea antigua (se recalcula con la tasa del documento); `[]` = producto sin impuestos = exonerado (afectación 20). No los confundas.
+- **Datos estándar** (`services/shared/tenant-defaults.service.ts`): Efectivo, motivos `order_cancel`/`document_void`, series B/F/NV por caja (siguiente número libre, emisión copiada de las otras cajas) y nombres de impuestos. Se aplican al crear tenant, sucursal y caja; los tenants existentes se completan con `bun run src/scripts/seed-tenant-defaults.ts <id|all>` (idempotente, **solo con permiso**: escribe en BDs reales). El catálogo maestro de comprobantes (07 y la global `00` "Cuenta interna") va en `seed-documents.ts`.
+- **impuesto_2/3 se suman al IGV**: activarlos junto a impuesto_1 da una tasa mixta que SUNAT rechaza (3462). El 10.5% se configura cambiando la tasa de impuesto_1, no con otro campo.
 
 ---
 
