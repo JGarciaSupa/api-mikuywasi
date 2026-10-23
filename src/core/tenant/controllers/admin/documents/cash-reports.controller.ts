@@ -94,6 +94,16 @@ export const getCashReportMovementsController = handle(
   'Error al obtener los movimientos',
 );
 
+export const getCashReportVoidsController = handle(
+  (filters) => reportsService.getCashReportVoids(filters),
+  'Error al obtener las anulaciones',
+);
+
+export const getCashReportProductionController = handle(
+  (filters) => reportsService.getCashReportProduction(filters),
+  'Error al obtener el paloteo de producción',
+);
+
 export const getCashReportExportController = handle(
   (filters) => reportsService.getCashReportExport(filters),
   'Error al obtener los datos de exportación',

@@ -1,5 +1,5 @@
-import { cashSessions, cashMovements, cashRegisters, users, orders } from '../../../../../db/tenant/schema';
-import { eq, and, desc, asc, sql, count, gte, lte } from 'drizzle-orm';
+import { cashSessions, cashMovements, cashRegisters, users, orders, orderItems, ordersItemsDeleted } from '../../../../../db/tenant/schema';
+import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull, isNotNull } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 const toNum = (value: unknown) => {
@@ -276,6 +276,147 @@ export const getCashReportMovements = async (
     .limit(limit);
 
   return rows;
+};
+
+/**
+ * Filtros de caja/cajero sobre pedidos: se aplican al turno que generó el pedido
+ * (orders.cash_session_id). El rango de fechas lo pone cada consulta según su evento.
+ */
+const orderSessionConditions = (f: CashReportFilters) => {
+  const conditions = [eq(orders.branchId, f.branchId)];
+  if (f.registerId) conditions.push(eq(cashSessions.registerId, f.registerId));
+  if (f.userId) conditions.push(eq(cashSessions.userId, f.userId));
+  return conditions;
+};
+
+/** Tope de filas de anulaciones/paloteo: deben salir completos para imprimirse. */
+const PRINT_MAX_ROWS = 2000;
+
+/**
+ * Anulaciones del rango (más recientes primero). Une los dos orígenes:
+ * - Ítems anulados (total o parcial): log en orders_items_deleted, fecha del evento.
+ * - Pedidos anulados completos: status='cancelled' con deleted_date. Sus ítems vivos
+ *   (los anulados antes ya están en el log). Un pedido que quedó 'cancelled' por mover
+ *   todos sus ítems a otra mesa no tiene deleted_date y no cuenta como anulación.
+ * El importe es precio unitario × cantidad anulada.
+ */
+export const getCashReportVoids = async (filters: CashReportFilters) => {
+  const db = getTenantDb();
+
+  const itemVoids = await db
+    .select({
+      createdAt: ordersItemsDeleted.createdAt,
+      orderId: orders.id,
+      orderTrackingCode: orders.trackingCode,
+      productName: orderItems.productName,
+      quantity: sql<number>`COALESCE(${ordersItemsDeleted.quantity}, ${orderItems.quantity})`,
+      unitPrice: orderItems.unitPrice,
+      motivo: ordersItemsDeleted.motivo,
+    })
+    .from(ordersItemsDeleted)
+    .innerJoin(orderItems, eq(ordersItemsDeleted.orderItemId, orderItems.id))
+    .innerJoin(orders, eq(ordersItemsDeleted.orderId, orders.id))
+    .innerJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
+    .where(and(
+      ...orderSessionConditions(filters),
+      gte(ordersItemsDeleted.createdAt, filters.startDate),
+      lte(ordersItemsDeleted.createdAt, filters.endDate),
+    ))
+    .orderBy(desc(ordersItemsDeleted.createdAt))
+    .limit(PRINT_MAX_ROWS);
+
+  const orderVoids = await db
+    .select({
+      createdAt: orders.deletedDate,
+      orderId: orders.id,
+      orderTrackingCode: orders.trackingCode,
+      productName: orderItems.productName,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      motivo: orders.motivo,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
+    .where(and(
+      ...orderSessionConditions(filters),
+      eq(orders.status, 'cancelled'),
+      isNotNull(orders.deletedDate),
+      isNull(orderItems.deletedAt),
+      gte(orders.deletedDate, filters.startDate),
+      lte(orders.deletedDate, filters.endDate),
+    ))
+    .orderBy(desc(orders.deletedDate))
+    .limit(PRINT_MAX_ROWS);
+
+  const rows = [
+    ...itemVoids.map((r) => ({ ...r, scope: 'item' as const })),
+    ...orderVoids.map((r) => ({ ...r, scope: 'order' as const })),
+  ]
+    .map((r) => {
+      const quantity = toNum(r.quantity);
+      return {
+        createdAt: r.createdAt,
+        scope: r.scope,
+        orderId: r.orderId,
+        orderCode: r.orderTrackingCode || r.orderId,
+        productName: r.productName,
+        quantity,
+        total: roundMoney(toNum(r.unitPrice) * quantity),
+        motivo: r.motivo,
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+
+  return {
+    rows,
+    totalQuantity: rows.reduce((acc, r) => acc + r.quantity, 0),
+    totalAmount: roundMoney(rows.reduce((acc, r) => acc + r.total, 0)),
+    truncated: itemVoids.length === PRINT_MAX_ROWS || orderVoids.length === PRINT_MAX_ROWS,
+  };
+};
+
+/**
+ * Paloteo de producción: unidades vendidas por producto en el rango (fecha del pedido).
+ * Excluye pedidos anulados e ítems anulados; las anulaciones parciales ya restaron
+ * su cantidad de la línea. El total es el importe cobrado de la línea (con descuentos).
+ */
+export const getCashReportProduction = async (filters: CashReportFilters) => {
+  const db = getTenantDb();
+  const quantityExpr = sql<string>`COALESCE(SUM(${orderItems.quantity}), 0)`;
+
+  const rows = await db
+    .select({
+      productName: orderItems.productName,
+      quantity: quantityExpr,
+      total: sql<string>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)), 0)`,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
+    .where(and(
+      ...orderSessionConditions(filters),
+      ne(orders.status, 'cancelled'),
+      isNull(orderItems.deletedAt),
+      gte(orders.createdAt, filters.startDate),
+      lte(orders.createdAt, filters.endDate),
+    ))
+    .groupBy(orderItems.productName)
+    .orderBy(desc(quantityExpr), asc(orderItems.productName))
+    .limit(PRINT_MAX_ROWS);
+
+  const mapped = rows.map((r) => ({
+    productName: r.productName,
+    quantity: toNum(r.quantity),
+    total: roundMoney(toNum(r.total)),
+  }));
+
+  return {
+    rows: mapped,
+    totalQuantity: mapped.reduce((acc, r) => acc + r.quantity, 0),
+    totalAmount: roundMoney(mapped.reduce((acc, r) => acc + r.total, 0)),
+    truncated: rows.length === PRINT_MAX_ROWS,
+  };
 };
 
 /** Tope de filas del export para no tumbar el server con rangos gigantes */

@@ -5,6 +5,8 @@ import {
   getCashReportSummaryController,
   getCashReportSessionsController,
   getCashReportMovementsController,
+  getCashReportVoidsController,
+  getCashReportProductionController,
   getCashReportExportController,
 } from '../../../../controllers/admin/documents/cash-reports.controller';
 
@@ -16,6 +18,8 @@ routes.use('*', authMiddleware);
 routes.get('/reports/summary', getCashReportSummaryController);
 routes.get('/reports/sessions', getCashReportSessionsController);
 routes.get('/reports/movements', getCashReportMovementsController);
+routes.get('/reports/voids', getCashReportVoidsController);
+routes.get('/reports/production', getCashReportProductionController);
 routes.get('/reports/export', getCashReportExportController);
 
 routes.get('/registers', cash.listCashRegisters);

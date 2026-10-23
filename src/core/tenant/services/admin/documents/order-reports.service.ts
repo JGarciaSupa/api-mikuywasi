@@ -1,5 +1,5 @@
 import { orders, orderItems, orderSplits, products, categories, cashSessions, users, billingDocuments } from '../../../../../db/tenant/schema';
-import { eq, and, ne, desc, asc, sql, count, gte, lte, notInArray } from 'drizzle-orm';
+import { eq, and, ne, desc, asc, sql, count, gte, lte, notInArray, isNull } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { resolveRecipeUnitCosts } from '../../client/tenant.service';
 
@@ -97,7 +97,7 @@ export const getOrdersReportSummary = async (filters: OrderReportFilters) => {
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(salesWhere);
+    .where(and(salesWhere, isNull(orderItems.deletedAt)));
 
   // Serie temporal (por día u hora, en la zona horaria del negocio)
   const granularity = filters.granularity ?? 'day';
@@ -298,7 +298,8 @@ export const getOrdersReportBreakdown = async (filters: OrderReportFilters) => {
  */
 export const getOrdersReportProducts = async (filters: OrderReportFilters, limit = 20) => {
   const db = getTenantDb();
-  const salesWhere = and(...salesConditions(filters));
+  // Excluye ítems anulados (soft-delete): siguen en order_items con deleted_at seteado.
+  const salesWhere = and(...salesConditions(filters), isNull(orderItems.deletedAt));
 
   const revenueExpr = sql<string>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)), 0)`;
 
