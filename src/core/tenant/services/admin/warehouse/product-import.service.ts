@@ -1,5 +1,5 @@
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm';
-import { branches, categories, products, productSalesChannelPrices, salesChannels } from '@/db/tenant/schema';
+import { branches, categories, kitchenStations, productKitchenStations, products, productSalesChannelPrices, salesChannels } from '@/db/tenant/schema';
 import { normalizeTaxConfigList } from '@/core/tenant/services/shared/taxes.service';
 import { getTenantDb, getTenantId } from '@/utils/tenant-context';
 import { isInternalError } from '@/utils/errors';
@@ -23,6 +23,8 @@ export interface ProductImportRowResult {
   status: ProductImportRowStatus;
   productId?: number;
   message?: string;
+  /** Áreas que no existían y se crearon al importar esta fila (sin impresora asignada). */
+  createdAreas?: string[];
 }
 
 export interface ProductImportResult {
@@ -32,12 +34,36 @@ export interface ProductImportResult {
   failed: number;
   maxProducts: number;
   createdCategories: string[];
+  createdAreas: string[];
   results: ProductImportRowResult[];
 }
 
 type CategoryRow = typeof categories.$inferSelect;
+type StationRow = typeof kitchenStations.$inferSelect;
 
 const normalizeKey = (value: string) => value.trim().toLowerCase();
+
+// Columna Área: una o varias estaciones separadas por coma o "|".
+const splitAreaNames = (value?: string) =>
+  [...new Map((value ?? '').split(/[,|]/).map((v) => v.trim()).filter(Boolean).map((v) => [normalizeKey(v), v])).values()];
+
+// Código de estación a partir del nombre, con el formato de createKitchenStationSchema
+// (A-Z, 0-9, "-" y "_", máx. 30) y único en la sucursal.
+function buildStationCode(name: string, usedCodes: Set<string>) {
+  const base = name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 30) || 'AREA';
+  let code = base;
+  for (let n = 2; usedCodes.has(code); n++) {
+    const suffix = `-${n}`;
+    code = `${base.slice(0, 30 - suffix.length)}${suffix}`;
+  }
+  return code;
+}
 
 /**
  * Importa productos en lote para una sucursal.
@@ -48,6 +74,9 @@ const normalizeKey = (value: string) => value.trim().toLowerCase();
  *   `defaultActive`. Así el POS, la cocina y la facturación los tratan como uno creado a mano.
  * - Los productos con un nombre que ya existe en la sucursal (o repetido en el archivo) se omiten.
  * - Respeta el límite de productos del plan y el de 50 categorías principales.
+ * - La columna Área enlaza el producto a estaciones de cocina de la sucursal (por nombre o
+ *   código). Con `createMissingAreas` las que no existen se crean sin impresora y se
+ *   devuelven en `createdAreas` (lote y fila) para revisarlas a mano.
  */
 export async function importProducts(input: ProductImportInput): Promise<ProductImportResult> {
   const db = getTenantDb();
@@ -104,6 +133,17 @@ export async function importProducts(input: ProductImportInput): Promise<Product
   const existingNames = new Set(existingProducts.map((p) => normalizeKey(p.name)));
   const importedNames = new Set<string>();
 
+  // Áreas (estaciones de cocina) de la sucursal, por nombre y por código
+  const branchStations = await db.select().from(kitchenStations).where(eq(kitchenStations.branchId, branch.id));
+  const stationByKey = new Map<string, StationRow>();
+  const stationCodes = new Set<string>();
+  const indexStation = (station: StationRow) => {
+    stationCodes.add(station.code);
+    if (!stationByKey.has(normalizeKey(station.name))) stationByKey.set(normalizeKey(station.name), station);
+    if (!stationByKey.has(normalizeKey(station.code))) stationByKey.set(normalizeKey(station.code), station);
+  };
+  branchStations.forEach(indexStation);
+
   const [rootCount] = await db.select({ count: count() }).from(categories).where(isNull(categories.parentId));
   let rootCategoriesTotal = Number(rootCount?.count ?? 0);
 
@@ -114,6 +154,7 @@ export async function importProducts(input: ProductImportInput): Promise<Product
   // ── Procesamiento fila a fila ───────────────────────────────────────────────
   const results: ProductImportRowResult[] = [];
   const createdCategories: string[] = [];
+  const createdAreas: string[] = [];
 
   for (let idx = 0; idx < input.items.length; idx++) {
     const rawRow = input.items[idx];
@@ -150,6 +191,7 @@ export async function importProducts(input: ProductImportInput): Promise<Product
     try {
       const outcome = await db.transaction(async (tx) => {
         const newCategories: CategoryRow[] = [];
+        const newStations: StationRow[] = [];
 
         // 1. Resolver categoría (y subcategoría) por nombre dentro de la sucursal
         let category: CategoryRow | undefined;
@@ -218,7 +260,36 @@ export async function importProducts(input: ProductImportInput): Promise<Product
           );
         }
 
-        return { productId: product.id, newCategories };
+        // 4. Áreas de producción: se enlazan por código, igual que la asignación manual.
+        // Un área que no existe se crea activa y sin impresora, para no perder la fila.
+        const rowCodes = new Set(newStations.map((s) => s.code));
+        const stationsToLink: StationRow[] = [];
+        for (const areaName of splitAreaNames(row.areaName)) {
+          let station = stationByKey.get(normalizeKey(areaName));
+          if (!station) {
+            if (!input.createMissingAreas) {
+              throw new Error(`El área "${areaName}" no existe en la sucursal`);
+            }
+            if (areaName.length > 100) throw new Error(`El área "${areaName}" supera 100 caracteres`);
+            const [created] = await tx.insert(kitchenStations).values({
+              branchId: branch.id,
+              name: areaName,
+              code: buildStationCode(areaName, new Set([...stationCodes, ...rowCodes])),
+              isActive: true,
+            }).returning();
+            station = created;
+            newStations.push(created);
+            rowCodes.add(created.code);
+          }
+          stationsToLink.push(station);
+        }
+        if (stationsToLink.length > 0) {
+          await tx.insert(productKitchenStations)
+            .values(stationsToLink.map((station) => ({ productId: product.id, stationCode: station.code })))
+            .onConflictDoNothing();
+        }
+
+        return { productId: product.id, newCategories, newStations };
       });
 
       // Solo tras confirmar la transacción se actualizan las cachés del lote
@@ -232,10 +303,20 @@ export async function importProducts(input: ProductImportInput): Promise<Product
           rootCategoriesTotal++;
         }
       }
+      for (const station of outcome.newStations) {
+        indexStation(station);
+        createdAreas.push(station.name);
+      }
       existingNames.add(nameKey);
       importedNames.add(nameKey);
       productsTotal++;
-      results.push({ row: row.row, name: row.name, status: 'created', productId: outcome.productId });
+      results.push({
+        row: row.row,
+        name: row.name,
+        status: 'created',
+        productId: outcome.productId,
+        ...(outcome.newStations.length > 0 ? { createdAreas: outcome.newStations.map((s) => s.name) } : {}),
+      });
     } catch (error) {
       const message = !isInternalError(error) && error instanceof Error && error.message
         ? error.message
@@ -252,6 +333,7 @@ export async function importProducts(input: ProductImportInput): Promise<Product
     failed: results.filter((r) => r.status === 'failed').length,
     maxProducts,
     createdCategories,
+    createdAreas,
     results,
   };
 }

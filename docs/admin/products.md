@@ -134,6 +134,7 @@ Crea productos en lote para una sucursal. Cada fila se guarda en su propia trans
 {
   "branchId": 1,
   "createMissingCategories": true,
+  "createMissingAreas": true,
   "defaultCategoryId": null,
   "activate": true,
   "items": [
@@ -147,6 +148,7 @@ Crea productos en lote para una sucursal. Cada fila se guarda en su propia trans
       "packagingFee": "1.00",
       "categoryName": "Fondos",
       "subcategoryName": "Carnes",
+      "areaName": "Cocina",
       "stock": "",
       "allowSellWithoutStock": "SI",
       "isActive": "SI",
@@ -164,6 +166,7 @@ Crea productos en lote para una sucursal. Cada fila se guarda en su propia trans
 - Los productos se asignan siempre a una **subcategoría** (igual que el alta manual): si una fila trae `categoryName` también debe traer `subcategoryName`, si no la fila falla.
 - Sin categoría se usa `defaultCategoryId` (debe ser una subcategoría de la sucursal) o queda sin categoría.
 - Cada producto creado recibe un precio por cada canal activo de la sucursal (o global) igual al precio importado, con los impuestos de la sucursal según su `defaultActive`, igual que al crearlo desde el admin.
+- `areaName` (opcional, máx. 200): área de producción = estación de cocina de la sucursal, buscada por nombre o código sin distinguir mayúsculas. Varias áreas se separan con coma o `|`. Si no existe y `createMissingAreas` es `true`, se crea **activa y sin impresora** (código generado desde el nombre, p. ej. `COCINA-CALIENTE`) y la fila devuelve `createdAreas` para revisarla; si es `false`, la fila falla.
 - Se omiten (`skipped`) las filas cuyo nombre ya existe en la sucursal o se repite en el archivo.
 - Se respeta el límite de productos del plan (`plans.features.maxProducts`; 150 si el plan no lo define). Las filas que lo superen fallan.
 
@@ -179,8 +182,9 @@ Crea productos en lote para una sucursal. Cada fila se guarda en su propia trans
     "failed": 0,
     "maxProducts": 150,
     "createdCategories": ["Fondos", "Carnes"],
+    "createdAreas": ["Cocina"],
     "results": [
-      { "row": 2, "name": "Lomo saltado", "status": "created", "productId": 120 }
+      { "row": 2, "name": "Lomo saltado", "status": "created", "productId": 120, "createdAreas": ["Cocina"] }
     ]
   }
 }

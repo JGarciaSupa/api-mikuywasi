@@ -31,6 +31,7 @@ export const importProductsController = async (c: Context) => {
           skipped: result.skipped,
           failed: result.failed,
           createdCategories: result.createdCategories,
+          createdAreas: result.createdAreas,
         },
         userId: actor.userId ?? null,
         module: 'productos',

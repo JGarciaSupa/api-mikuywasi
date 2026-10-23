@@ -63,6 +63,8 @@ export const productImportRowSchema = z.object({
   packagingFee: optionalMoney('Tarifa de empaque'),
   categoryName: optionalText(50, 'La categoría'),
   subcategoryName: optionalText(50, 'La subcategoría'),
+  // Área de producción (estación de cocina) por nombre o código; varias separadas por coma o "|".
+  areaName: optionalText(200, 'El área'),
   stock: z.preprocess(
     emptyToUndefined,
     z.coerce.number({ error: 'Stock inválido' })
@@ -84,6 +86,7 @@ export type ProductImportRow = z.infer<typeof productImportRowSchema>;
 export const productImportSchema = z.object({
   branchId: z.coerce.number({ error: 'La sucursal es requerida' }).int().positive('La sucursal es requerida'),
   createMissingCategories: z.boolean().optional().default(false),
+  createMissingAreas: z.boolean().optional().default(false),
   defaultCategoryId: z.coerce.number().int().positive().optional().nullable(),
   activate: z.boolean().optional().default(true),
   items: z.array(z.record(z.string(), z.unknown()))
