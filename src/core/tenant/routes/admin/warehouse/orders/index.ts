@@ -30,6 +30,8 @@ import {
 import {
   listSplitsController,
   createSplitController,
+  createEqualSplitsController,
+  createCustomAmountSplitsController,
   updateSplitLabelController,
   assignItemsController,
   splitItemQtyController,
@@ -74,6 +76,8 @@ routes.patch('/:id/order-for', updateOrderForController);
 // Cuentas separadas (splits)
 routes.get('/:orderId/splits', listSplitsController);
 routes.post('/:orderId/splits', createSplitController);
+routes.post('/:orderId/splits/equal', createEqualSplitsController);
+routes.post('/:orderId/splits/by-amount', createCustomAmountSplitsController);
 routes.patch('/:orderId/splits/:splitId/label', updateSplitLabelController);
 routes.patch('/:orderId/splits/items', assignItemsController);
 routes.post('/:orderId/splits/items/split-qty', splitItemQtyController);

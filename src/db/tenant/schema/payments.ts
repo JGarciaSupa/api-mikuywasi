@@ -1,5 +1,5 @@
 import { pgTable, serial, varchar, integer, decimal, boolean, timestamp, index } from 'drizzle-orm/pg-core';
-import { orders, paymentMethods, users } from './core';
+import { orders, paymentMethods, users, orderSplits } from './core';
 
 // ==========================================
 // 💳 PAGOS DEL PEDIDO (pago mixto)
@@ -10,6 +10,7 @@ import { orders, paymentMethods, users } from './core';
 export const orderPayments = pgTable('order_payments', {
 	id: serial('id').primaryKey(),
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+	splitId: integer('split_id').references(() => orderSplits.id, { onDelete: 'cascade' }),
 	paymentMethodId: integer('payment_method_id').references(() => paymentMethods.id),
 	paymentMethod: varchar('payment_method', { length: 100 }).notNull(), // snapshot del nombre
 	amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
@@ -20,4 +21,5 @@ export const orderPayments = pgTable('order_payments', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	orderIdx: index('order_payments_order_idx').on(table.orderId),
+	splitIdx: index('order_payments_split_idx').on(table.splitId),
 }));

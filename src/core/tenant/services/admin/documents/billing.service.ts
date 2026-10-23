@@ -440,7 +440,15 @@ export async function previewDocument(
   const priceInclTax = docType === 'boleta' || docType === 'nota_de_venta';
   const taxRate = toNum(resolvedSeries.taxRate);
 
-  const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  let lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  if (lineCalcs.length === 0 && splitId != null) {
+    const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId));
+    if (split && toNum(split.total) > 0) {
+      const totalAmount = toNum(split.total);
+      const concept = split.customConcept || 'Por consumo de alimentos y bebidas';
+      lineCalcs = [calcLine(null, concept, 1, totalAmount, [], 0, null, priceInclTax, taxRate)];
+    }
+  }
 
   const summary = resolveDocumentTaxSummary(lineCalcs);
 
@@ -540,7 +548,15 @@ export async function createDocument(input: CreateDocumentInput) {
   const priceInclTax = resolvedSeries.priceInclTax;
   const taxRate = toNum(resolvedSeries.taxRate);
 
-  const lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  let lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  if (lineCalcs.length === 0 && input.splitId != null) {
+    const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, input.splitId));
+    if (split && toNum(split.total) > 0) {
+      const totalAmount = toNum(split.total);
+      const concept = split.customConcept || 'Por consumo de alimentos y bebidas';
+      lineCalcs = [calcLine(null, concept, 1, totalAmount, [], 0, null, priceInclTax, taxRate)];
+    }
+  }
 
   const summary = resolveDocumentTaxSummary(lineCalcs);
   const documentTaxRate = resolveDocumentTaxRate(lineCalcs, taxRate);
@@ -1167,8 +1183,16 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       .where(and(eq(orderSplits.id, doc.splitId), eq(orderSplits.orderId, doc.orderId)));
 
     if (split) {
+      const mixed = await db
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount })
+        .from(orderPayments)
+        .where(eq(orderPayments.splitId, doc.splitId))
+        .orderBy(orderPayments.id);
+
       paymentSummary = {
-        paymentMethod: split.paymentMethod ?? null,
+        paymentMethod: mixed.length > 0
+          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}`).join(' + ')
+          : (split.paymentMethod ?? null),
         retentionPercentage: split.retentionPercentage ?? '0.00',
         retentionAmount: split.retentionAmount ?? '0.00',
         chargedTotal: split.total ?? doc.total,

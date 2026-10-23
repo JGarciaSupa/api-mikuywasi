@@ -11,6 +11,14 @@ CREATE TABLE IF NOT EXISTS "order_payments" (
 	"created_at" timestamp with time zone DEFAULT now()
 );
 --> statement-breakpoint
+ALTER TABLE "order_payments" ADD COLUMN IF NOT EXISTS "created_by_id" integer;
+--> statement-breakpoint
+ALTER TABLE "order_payments" ADD COLUMN IF NOT EXISTS "retention_percentage" numeric(5, 2) DEFAULT '0.00' NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "order_payments" ADD COLUMN IF NOT EXISTS "retention_amount" numeric(12, 2) DEFAULT '0.00' NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "order_payments" ADD COLUMN IF NOT EXISTS "is_cash" boolean DEFAULT false NOT NULL;
+--> statement-breakpoint
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'order_payments_order_id_orders_id_fk') THEN
     ALTER TABLE "order_payments" ADD CONSTRAINT "order_payments_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;

@@ -1,5 +1,5 @@
 import { eq, desc, and, gte, lte, sql, ilike, isNull } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -738,38 +738,78 @@ export async function recordSplitSaleIncome(
   if (!session) return { created: false, reason: 'session_not_found' };
   if (session.status !== 'open') return { created: false, reason: 'session_closed' };
 
-  const amount = toNum(split.total);
-  const isCash = await resolveIsCashByMethod(split.paymentMethodId, split.paymentMethod);
+  const splitPayments = await db
+    .select()
+    .from(orderPayments)
+    .where(eq(orderPayments.splitId, splitId));
 
   await db.transaction(async (tx) => {
-    const [movement] = await tx
-      .insert(cashMovements)
-      .values({
-        sessionId: session.id,
-        movementType: 'income',
-        concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}`,
-        amount: round2(amount),
-        paymentMethod: split.paymentMethod ?? null,
-        retentionPercentage: split.retentionPercentage ?? '0.00',
-        retentionAmount: split.retentionAmount ?? '0.00',
-        isCash,
-        orderId: split.orderId,
-        splitId,
-        createdBy: actor?.userName ?? 'sistema',
-      })
-      .returning();
+    if (splitPayments.length > 0) {
+      for (const sp of splitPayments) {
+        const itemAmount = toNum(sp.amount);
+        const [movement] = await tx
+          .insert(cashMovements)
+          .values({
+            sessionId: session.id,
+            movementType: 'income',
+            concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})`,
+            amount: round2(itemAmount),
+            paymentMethod: sp.paymentMethod,
+            retentionPercentage: sp.retentionPercentage ?? '0.00',
+            retentionAmount: sp.retentionAmount ?? '0.00',
+            isCash: sp.isCash,
+            orderId: split.orderId,
+            splitId,
+            createdBy: actor?.userName ?? 'sistema',
+          })
+          .returning();
+
+        const retentionNote = toNum(sp.retentionAmount) > 0 ? ` (retención S/ ${sp.retentionAmount})` : '';
+        await writeAuditLog({
+          tableName: 'cash_movements',
+          operation: 'INSERT',
+          recordId: movement.id,
+          afterData: movement,
+          userId: actor?.userId,
+          userName: actor?.userName,
+          module: 'caja',
+          description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${sp.paymentMethod}) — S/ ${round2(itemAmount)}${retentionNote}`,
+        });
+      }
+    } else {
+      const amount = toNum(split.total);
+      const isCash = await resolveIsCashByMethod(split.paymentMethodId, split.paymentMethod);
+      const [movement] = await tx
+        .insert(cashMovements)
+        .values({
+          sessionId: session.id,
+          movementType: 'income',
+          concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}`,
+          amount: round2(amount),
+          paymentMethod: split.paymentMethod ?? null,
+          retentionPercentage: split.retentionPercentage ?? '0.00',
+          retentionAmount: split.retentionAmount ?? '0.00',
+          isCash,
+          orderId: split.orderId,
+          splitId,
+          createdBy: actor?.userName ?? 'sistema',
+        })
+        .returning();
+
+      const retentionNote = toNum(split.retentionAmount) > 0 ? ` (retención S/ ${split.retentionAmount})` : '';
+      await writeAuditLog({
+        tableName: 'cash_movements',
+        operation: 'INSERT',
+        recordId: movement.id,
+        afterData: movement,
+        userId: actor?.userId,
+        userName: actor?.userName,
+        module: 'caja',
+        description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${split.paymentMethod ?? 'efectivo'}) — S/ ${round2(amount)}${retentionNote}`,
+      });
+    }
+
     await recomputeSessionTotals(tx, session.id);
-    const retentionNote = toNum(split.retentionAmount) > 0 ? ` (retención S/ ${split.retentionAmount})` : '';
-    await writeAuditLog({
-      tableName: 'cash_movements',
-      operation: 'INSERT',
-      recordId: movement.id,
-      afterData: movement,
-      userId: actor?.userId,
-      userName: actor?.userName,
-      module: 'caja',
-      description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${split.paymentMethod ?? 'efectivo'}) — S/ ${round2(amount)}${retentionNote}`,
-    });
   });
 
   return { created: true };

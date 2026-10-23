@@ -558,6 +558,8 @@ export const orderSplits = pgTable('order_splits', {
 	id: serial('id').primaryKey(),
 	orderId: varchar('order_id', { length: 12 }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
 	label: varchar('label', { length: 100 }).notNull().default('Cuenta'),
+	splitType: text('split_type', { enum: ['by_item', 'by_amount'] }).default('by_item').notNull(),
+	customConcept: varchar('custom_concept', { length: 150 }).default('Por consumo de alimentos y bebidas'),
 	paymentStatus: text('payment_status', {
 		enum: ['unpaid', 'paid', 'review_pending']
 	}).default('unpaid').notNull(),

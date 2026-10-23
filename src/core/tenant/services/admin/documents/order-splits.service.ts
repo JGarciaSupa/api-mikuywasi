@@ -1,5 +1,5 @@
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { orders, orderItems, orderSplits, tables } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderSplits, tables, orderPayments } from '../../../../../db/tenant/schema';
 
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { type TaxSnapshotEntry, prorateTaxSnapshot } from '../../shared/taxes.service';
@@ -12,6 +12,9 @@ import type { AuditActor } from '../warehouse/types';
 export interface CreateSplitInput {
   orderId: string;
   label: string;
+  splitType?: 'by_item' | 'by_amount';
+  customConcept?: string;
+  amount?: number;
 }
 
 export interface AssignItemsInput {
@@ -24,22 +27,49 @@ export interface UpdateSplitPaymentInput {
   paymentMethod?: string;
   paymentMethodId?: number | null;
   retentionPercentage?: number;
+  payments?: Array<{
+    paymentMethodId?: number | null;
+    paymentMethod: string;
+    amount: number;
+    retentionPercentage?: number;
+    retentionAmount?: number;
+    reference?: string;
+    receivedAmount?: number;
+    changeAmount?: number;
+  }>;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: number) {
+  const [split] = await db
+    .select()
+    .from(orderSplits)
+    .where(eq(orderSplits.id, splitId));
+  if (!split) return;
+
+  if (split.splitType === 'by_amount') {
+    const subtotal = Number(split.subtotal ?? split.total ?? 0);
+    const retentionPercentage = Number(split.retentionPercentage ?? 0);
+    const retentionAmount = (subtotal * retentionPercentage) / 100;
+    await db
+      .update(orderSplits)
+      .set({
+        retentionAmount: String(retentionAmount.toFixed(2)),
+        total: String(subtotal.toFixed(2)),
+        updatedAt: new Date(),
+      })
+      .where(eq(orderSplits.id, splitId));
+    return;
+  }
+
   const items = await db
     .select({ totalPrice: orderItems.totalPrice })
     .from(orderItems)
     .where(eq(orderItems.splitId, splitId));
 
   const total = items.reduce((s, i) => s + parseFloat(i.totalPrice), 0);
-  const [split] = await db
-    .select({ retentionPercentage: orderSplits.retentionPercentage })
-    .from(orderSplits)
-    .where(eq(orderSplits.id, splitId));
-  const retentionPercentage = Number(split?.retentionPercentage ?? 0);
+  const retentionPercentage = Number(split.retentionPercentage ?? 0);
   const retentionAmount = (total * retentionPercentage) / 100;
 
   // La retención no se le cobra al cliente: `total` es siempre el subtotal de la cuenta.
@@ -68,16 +98,132 @@ export async function createSplit(input: CreateSplitInput) {
   const db = getTenantDb();
   await assertOrderEditable(db, input.orderId);
 
+  const splitType = input.splitType ?? 'by_item';
+  const customConcept = input.customConcept?.trim() || 'Por consumo de alimentos y bebidas';
+  const subtotal = input.amount ? Number(input.amount).toFixed(2) : '0.00';
+
   const [split] = await db
     .insert(orderSplits)
     .values({
       orderId: input.orderId,
       label: input.label.trim() || 'Cuenta',
+      splitType,
+      customConcept,
+      subtotal,
+      total: subtotal,
     })
     .returning();
 
   await syncOrderPaymentStatus(db, input.orderId);
   return split;
+}
+
+// Crear cuentas divididas en partes iguales (÷N) con cálculo y redondeo exacto al céntimo
+export async function createEqualSplits(orderId: string, partsCount: number) {
+  const db = getTenantDb();
+  await assertOrderEditable(db, orderId);
+
+  if (partsCount < 2 || partsCount > 20) {
+    throw new Error('El número de partes debe ser entre 2 y 20');
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) throw new Error('Pedido no encontrado');
+
+  const baseTotal = Number(order.subtotal ?? 0) + Number(order.deliveryFee ?? 0);
+  if (baseTotal <= 0) {
+    throw new Error('El pedido no tiene un monto válido para dividir');
+  }
+
+  const existingSplits = await db.select().from(orderSplits).where(eq(orderSplits.orderId, orderId));
+  if (existingSplits.some((s) => s.paymentStatus === 'paid')) {
+    throw new Error('No se pueden regenerar cuentas porque ya existen pagos registrados');
+  }
+
+  // Desasignar ítems y borrar cuentas previas
+  await db.update(orderItems).set({ splitId: null }).where(eq(orderItems.orderId, orderId));
+  await db.delete(orderSplits).where(eq(orderSplits.orderId, orderId));
+
+  // Centavos totales para redondeo exacto
+  const totalCents = Math.round(baseTotal * 100);
+  const baseCents = Math.floor(totalCents / partsCount);
+  const remainder = totalCents % partsCount;
+
+  const insertedSplits = [];
+  for (let i = 0; i < partsCount; i++) {
+    const partCents = baseCents + (i < remainder ? 1 : 0);
+    const partAmount = (partCents / 100).toFixed(2);
+
+    const [newSplit] = await db
+      .insert(orderSplits)
+      .values({
+        orderId,
+        label: `Comensal ${i + 1}`,
+        splitType: 'by_amount',
+        customConcept: 'Por consumo de alimentos y bebidas',
+        subtotal: partAmount,
+        total: partAmount,
+      })
+      .returning();
+    insertedSplits.push(newSplit);
+  }
+
+  await syncOrderPaymentStatus(db, orderId);
+  return insertedSplits;
+}
+
+// Crear cuentas divididas por montos personalizados libres
+export async function createCustomAmountSplits(
+  orderId: string,
+  parts: Array<{ label: string; amount: number; customConcept?: string }>
+) {
+  const db = getTenantDb();
+  await assertOrderEditable(db, orderId);
+
+  if (!Array.isArray(parts) || parts.length < 2) {
+    throw new Error('Se requieren al menos 2 cuentas para dividir por monto');
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) throw new Error('Pedido no encontrado');
+
+  const baseTotal = Number(order.subtotal ?? 0) + Number(order.deliveryFee ?? 0);
+  const partsSum = parts.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+
+  if (Math.abs(partsSum - baseTotal) > 0.05) {
+    throw new Error(
+      `La suma de las cuentas (S/ ${partsSum.toFixed(2)}) no coincide con el total del pedido (S/ ${baseTotal.toFixed(2)})`
+    );
+  }
+
+  const existingSplits = await db.select().from(orderSplits).where(eq(orderSplits.orderId, orderId));
+  if (existingSplits.some((s) => s.paymentStatus === 'paid')) {
+    throw new Error('No se pueden regenerar cuentas porque ya existen pagos registrados');
+  }
+
+  await db.update(orderItems).set({ splitId: null }).where(eq(orderItems.orderId, orderId));
+  await db.delete(orderSplits).where(eq(orderSplits.orderId, orderId));
+
+  const insertedSplits = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const amountStr = Number(p.amount).toFixed(2);
+    const [newSplit] = await db
+      .insert(orderSplits)
+      .values({
+        orderId,
+        label: p.label?.trim() || `Cuenta ${i + 1}`,
+        splitType: 'by_amount',
+        customConcept: p.customConcept?.trim() || 'Por consumo de alimentos y bebidas',
+        subtotal: amountStr,
+        total: amountStr,
+      })
+      .returning();
+    insertedSplits.push(newSplit);
+  }
+
+  await syncOrderPaymentStatus(db, orderId);
+  return insertedSplits;
 }
 
 // ── List splits with their items ───────────────────────────────────────────────
@@ -313,6 +459,28 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
     })
     .where(eq(orderSplits.id, splitId))
     .returning();
+
+  // Si se enviaron métodos de pago detallados (multi-tender), registrarlos en order_payments vinculados al split
+  if (input.paymentStatus === 'paid' && input.payments && input.payments.length > 0) {
+    await db.delete(orderPayments).where(eq(orderPayments.splitId, splitId));
+    for (const p of input.payments) {
+      const [m] = p.paymentMethodId ? await db.select({ isCash: paymentMethods.isCash }).from(paymentMethods).where(eq(paymentMethods.id, p.paymentMethodId)) : [];
+      const isCash = m?.isCash ?? (p.paymentMethod.toLowerCase().includes('efectivo') || p.paymentMethod.toLowerCase().includes('cash'));
+      await db.insert(orderPayments).values({
+        orderId,
+        splitId,
+        paymentMethodId: p.paymentMethodId ?? null,
+        paymentMethod: p.paymentMethod,
+        amount: Number(p.amount).toFixed(2),
+        isCash,
+        retentionPercentage: Number(p.retentionPercentage ?? 0).toFixed(2),
+        retentionAmount: Number(p.retentionAmount ?? 0).toFixed(2),
+        createdById: actor?.userId ?? null,
+      });
+    }
+  } else if (input.paymentStatus === 'unpaid') {
+    await db.delete(orderPayments).where(eq(orderPayments.splitId, splitId));
+  }
 
   await syncOrderPaymentStatus(db, orderId);
 

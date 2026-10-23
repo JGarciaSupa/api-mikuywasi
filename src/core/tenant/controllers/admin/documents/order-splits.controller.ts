@@ -22,8 +22,14 @@ export const createSplitController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const { label } = await c.req.json();
-    const split = await splitsService.createSplit({ orderId, label: label || 'Cuenta' });
+    const { label, splitType, customConcept, amount } = await c.req.json();
+    const split = await splitsService.createSplit({
+      orderId,
+      label: label || 'Cuenta',
+      splitType,
+      customConcept,
+      amount: amount ? Number(amount) : undefined,
+    });
     return c.json({ success: true, data: split }, 201);
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') ? 404
@@ -73,6 +79,40 @@ export const assignItemsController = async (c: Context) => {
   }
 };
 
+export const createEqualSplitsController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const { partsCount } = await c.req.json();
+    const splits = await splitsService.createEqualSplits(orderId, Number(partsCount || 2));
+    return c.json({ success: true, data: splits }, 201);
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrado') ? 404
+      : error.message?.includes('cancelado') || error.message?.includes('completado') || error.message?.includes('pagos') ? 422
+      : 500;
+    return c.json({ success: false, message: safeMessage(error, 'Error al dividir en partes iguales') }, status as any);
+  }
+};
+
+export const createCustomAmountSplitsController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('orderId');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const { parts } = await c.req.json();
+    const splits = await splitsService.createCustomAmountSplits(orderId, parts);
+    return c.json({ success: true, data: splits }, 201);
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrado') ? 404
+      : error.message?.includes('cancelado') || error.message?.includes('completado') || error.message?.includes('coincide') ? 422
+      : 500;
+    return c.json({ success: false, message: safeMessage(error, 'Error al dividir por montos') }, status as any);
+  }
+};
+
 export const updateSplitPaymentController = async (c: Context) => {
   try {
     const orderId = c.req.param('orderId');
@@ -80,7 +120,7 @@ export const updateSplitPaymentController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
     const splitId = Number(c.req.param('splitId'));
-    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage, payments } = await c.req.json();
 
     if (!['unpaid', 'paid', 'review_pending'].includes(paymentStatus)) {
       return c.json({ success: false, message: 'Estado de pago inválido' }, 400);
@@ -91,6 +131,7 @@ export const updateSplitPaymentController = async (c: Context) => {
       paymentMethod,
       paymentMethodId: paymentMethodId ?? null,
       retentionPercentage,
+      payments,
     }, getAuditActor(c));
     return c.json({ success: true, data: split });
   } catch (error: any) {

@@ -303,6 +303,7 @@ export async function listAvailableDocumentTypesForRegister(registerId: number):
       documentType: docType as DocumentType,
       receiptTypeCode: r.receiptTypeCode,
       description: r.description,
+      isActiveFacturacion: r.isActiveFacturacion ?? false,
     };
   });
 }
