@@ -15,6 +15,8 @@ const DEFAULT_BRANCH_TAXES: BranchTaxConfig[] = [
   { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false },
   { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false },
   { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false },
+  // Debe coincidir con DEFAULT_BRANCH_TAXES de shared/taxes.service: lo que no esté aquí se descarta al guardar
+  { key: 'recargo_consumo', label: 'Recargo al consumo', rate: 10, defaultActive: false, isActive: false },
 ];
 
 // ────────────────────────────────────────────

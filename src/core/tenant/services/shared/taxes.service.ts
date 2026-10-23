@@ -28,7 +28,16 @@ export const DEFAULT_BRANCH_TAXES: TaxConfig[] = [
   { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
   { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
   { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false, calculationType: 'fixed' },
+  // Recargo al consumo: incluido en el precio y desglosado "hacia abajo" junto al IGV,
+  // pero NO es un impuesto. En SUNAT va como cargo global (catálogo 53, código 46).
+  { key: 'recargo_consumo', label: 'Recargo al consumo', rate: 10, defaultActive: false, isActive: false, calculationType: 'percentage' },
 ];
+
+export const SERVICE_CHARGE_TAX_KEY = 'recargo_consumo';
+
+export function isServiceChargeTax(tax: { key: string }) {
+  return tax.key === SERVICE_CHARGE_TAX_KEY;
+}
 
 function toNum(v: unknown) {
   const n = Number(v ?? 0);
@@ -87,17 +96,37 @@ export function resolveEffectiveTaxes(
 export function resolveBranchMainTaxRate(branchTaxes?: TaxConfig[] | null): number {
   const active = normalizeTaxConfigList(branchTaxes ?? undefined).filter((tax) => tax.isActive);
   const main = active.find((tax) => tax.key === 'impuesto_1')
-    ?? active.find((tax) => !isFixedTax(tax))
+    ?? active.find((tax) => !isFixedTax(tax) && !isServiceChargeTax(tax))
     ?? null;
   return main ? toNum(main.rate) : 0;
+}
+
+// Importes de una línea ya desglosada separados como los espera SUNAT: IGV (todos los
+// porcentuales que no son recargo), ICBPER (fijos) y recargo al consumo (cargo 46).
+export type SnapshotLike = Pick<TaxConfig, 'key' | 'rate' | 'calculationType'> & { isActive?: boolean; amount?: number };
+
+export function splitSunatLineTaxes(snapshot?: SnapshotLike[] | null) {
+  const active = (snapshot ?? []).filter((tax) => tax.isActive !== false);
+  const sum = (list: SnapshotLike[]) => roundMoney(list.reduce((acc, tax) => acc + toNum(tax.amount), 0));
+  const igvTaxes = active.filter((tax) => !isFixedTax(tax) && !isServiceChargeTax(tax));
+  const serviceTaxes = active.filter((tax) => isServiceChargeTax(tax));
+  return {
+    igv: sum(igvTaxes),
+    igvRate: roundMoney(igvTaxes.reduce((acc, tax) => acc + toNum(tax.rate), 0)),
+    icbper: sum(active.filter((tax) => isFixedTax(tax))),
+    serviceCharge: sum(serviceTaxes),
+    serviceChargeRate: serviceTaxes[0] ? toNum(serviceTaxes[0].rate) : 0,
+  };
 }
 
 // Afectación SUNAT (catálogo 07) de una línea según sus impuestos activos.
 // '10' = gravada, '20' = exonerada. Sin impuesto porcentual activo la operación
 // no es gravada, así que declararla como '10' es lo que SUNAT observa.
 export function resolveTipoAfectacion(taxes?: { key: string; rate?: number; isActive?: boolean; calculationType?: 'percentage' | 'fixed' }[] | null): '10' | '20' {
+  // El recargo al consumo no es un tributo: un producto con IGV apagado y recargo
+  // encendido sigue siendo exonerado.
   const hasPercentage = (taxes ?? []).some(
-    (tax) => tax.isActive !== false && !isFixedTax(tax) && toNum(tax.rate) > 0,
+    (tax) => tax.isActive !== false && !isFixedTax(tax) && !isServiceChargeTax(tax) && toNum(tax.rate) > 0,
   );
   return hasPercentage ? '10' : '20';
 }

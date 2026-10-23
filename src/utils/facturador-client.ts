@@ -27,6 +27,12 @@ export interface FacturadorEmpresaInput {
   logo?: string;              // Base64
   client_id?: string;
   client_secret?: string;
+  // Domicilio fiscal para el XML (cac:RegistrationAddress). Sin ellos el facturador usa Lima por defecto.
+  ubigeo?: string;            // 6 dígitos INEI
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
+  urbanizacion?: string;
 }
 
 export interface FacturadorEmpresaRow {
@@ -34,6 +40,11 @@ export interface FacturadorEmpresaRow {
   ruc: string;
   legalName: string;
   address: string | null;
+  ubigeo?: string | null;
+  department?: string | null;
+  province?: string | null;
+  district?: string | null;
+  urbanization?: string | null;
   plan: string | null;
   environment: string;
   clientId: string | null;
@@ -56,6 +67,8 @@ export interface DetallePayload {
   tipo_afectacion: string;     // '10' = gravado
   total_impuestos: number;
   precio_unitario: number;     // precio CON IGV
+  icbper?: number;             // cantidad * factor_icbper
+  factor_icbper?: number;
 }
 
 export interface ComprobantePayload {
@@ -80,7 +93,12 @@ export interface ComprobantePayload {
     valor_venta: number;
     subtotal: number;
     total: number;
+    icbper?: number;          // suma del ICBPER de los detalles; obligatorio si alguna línea lo lleva
+    exoneradas?: number;
+    otros_cargos?: number;    // recargo al consumo (ChargeTotalAmount); no es tributo
   };
+  // Recargo al consumo: cargo global catálogo 53 código '46' (no afecta la base del IGV)
+  cargos?: { motivo: string; factor: number; monto: number; monto_base: number }[];
   detalles: DetallePayload[];
   leyenda?: string;           // texto en letras del total
 }
@@ -95,7 +113,7 @@ export interface ComprobanteResponse {
   xmlBase64: string | null;
   cdrBase64: string | null;
   // Campos de diagnóstico — presentes sólo cuando SUNAT rechaza
-  tipo_error?: string | null;       // 'CDR_RECHAZO' | 'SUNAT_POLICY' | 'SOAP_FAULT' | 'NETWORK_ERROR'
+  tipo_error?: string | null;       // 'CDR_RECHAZO' | 'CDR_EXCEPCION' | 'HTTP_ERROR' | 'SUNAT_POLICY' | 'SOAP_FAULT' | 'NETWORK_ERROR'
   error_detalle?: Record<string, string | null> | null;
   diagnostico?: Record<string, unknown> | null;
 }
@@ -397,6 +415,7 @@ export interface SummaryDocumento {
   cliente_tipo: string;   // '0' sin doc, '1' DNI, '4' CE, '6' RUC
   cliente_nro: string;    // número de doc o '-'
   estado: '3';            // '3' = anulado
+  porcentaje_igv?: number; // tasa IGV (18, 10.5…); SUNAT rechaza el RC sin ella (2992)
   total: number;
   gravadas: number;
   igv: number;
@@ -598,6 +617,9 @@ export interface NotaCreditoPayload {
     valor_venta: number;
     subtotal: number;
     total: number;
+    icbper?: number;          // suma del ICBPER de los detalles
+    exoneradas?: number;
+    otros_cargos?: number;    // recargo al consumo (ChargeTotalAmount)
   };
   detalles: DetallePayload[];
   leyenda?: string;

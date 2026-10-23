@@ -17,7 +17,8 @@ import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer,
 import { getActiveSessionForUser } from './cash.service';
 import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
-import { type TaxSnapshotEntry, aggregateTaxBreakdown, resolveTipoAfectacion } from '../../shared/taxes.service';
+import { type TaxSnapshotEntry, aggregateTaxBreakdown, isServiceChargeTax, resolveTipoAfectacion } from '../../shared/taxes.service';
+import { buildSunatCargos, buildSunatDetalle, buildSunatTotales } from './sunat-payload';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
 
@@ -275,13 +276,16 @@ function isFixedTaxSnapshot(tax: { key: string; calculationType?: 'percentage' |
 }
 
 function resolveLineCalcFromSnapshot(oi: typeof orderItems.$inferSelect): LineCalc | null {
-  const taxSnapshot = (oi.taxSnapshot as LineCalc['taxSnapshot']) ?? [];
-  if (!taxSnapshot.length) return null;
+  // NULL = línea anterior al desglose por impuesto (se recalcula con la tasa del documento).
+  // [] = producto vendido sin ningún impuesto activo → exonerado (afectación 20), no gravado.
+  if (oi.taxSnapshot == null) return null;
+  const taxSnapshot = oi.taxSnapshot as NonNullable<LineCalc['taxSnapshot']>;
 
   const activeTaxes = taxSnapshot.filter((tax) => tax.isActive);
   const grossLine = roundMoney(toNum(oi.totalPrice));
   const totalTaxAmount = roundMoney(activeTaxes.reduce((sum, tax) => sum + toNum(tax.amount), 0));
-  const percentageTaxes = activeTaxes.filter((tax) => !isFixedTaxSnapshot(tax));
+  // IGV = porcentuales que no son el recargo al consumo (el recargo no es tributo)
+  const percentageTaxes = activeTaxes.filter((tax) => !isFixedTaxSnapshot(tax) && !isServiceChargeTax(tax));
   const percentageRateTotal = roundMoney(percentageTaxes.reduce((sum, tax) => sum + toNum(tax.rate), 0));
   const percentageTaxAmount = roundMoney(percentageTaxes.reduce((sum, tax) => sum + toNum(tax.amount), 0));
   const mainPercentageTax = activeTaxes.find((tax) => tax.key === 'impuesto_1') ?? percentageTaxes[0] ?? null;
@@ -326,7 +330,7 @@ function resolveDocumentTaxRate(lineCalcs: LineCalc[], fallbackRate: number) {
   const mainLine = lineCalcs.find((line) => line.taxSnapshot?.length);
   if (!mainLine?.taxSnapshot?.length) return fallbackRate;
   const mainTax = mainLine.taxSnapshot.find((tax) => tax.key === 'impuesto_1' && tax.isActive)
-    ?? mainLine.taxSnapshot.find((tax) => !isFixedTaxSnapshot(tax) && tax.isActive)
+    ?? mainLine.taxSnapshot.find((tax) => !isFixedTaxSnapshot(tax) && !isServiceChargeTax(tax) && tax.isActive)
     ?? null;
   return mainTax ? toNum(mainTax.rate) : fallbackRate;
 }
@@ -678,6 +682,10 @@ async function emitirYActualizarDoc(
     const tipoDoc = doc.documentType === 'factura' ? '01' : '03';
     const buyerTipoDoc = doc.buyerDocType === 'RUC' ? '6' : doc.buyerDocType === 'DNI' ? '1' : '0';
 
+    // Totales y detalles salen de sunat-payload: separa IGV/ICBPER (tributos) del
+    // recargo al consumo (cargo 46). El ICBPER se declara por línea y en el total.
+    const cargos = buildSunatCargos(lineCalcs);
+
     const payload = {
       emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
       cliente: {
@@ -696,46 +704,10 @@ async function emitirYActualizarDoc(
       // Las operaciones se separan por afectación: un producto con el impuesto
       // desactivado es exonerado, y declararlo dentro de `gravadas` es una
       // observación de SUNAT (el IGV informado no cuadra con la base gravada).
-      totales: {
-        gravadas: roundMoney(lineCalcs.filter((l) => l.tipoAfectacion === '10').reduce((sum, l) => sum + l.subtotal, 0)),
-        exoneradas: roundMoney(lineCalcs.filter((l) => l.tipoAfectacion === '20').reduce((sum, l) => sum + l.subtotal, 0)),
-        igv: roundMoney(lineCalcs.reduce((sum, l) => sum + (l.igvAmount ?? l.taxAmount), 0)),
-        total_impuestos: toNum(doc.taxAmount),
-        valor_venta: toNum(doc.subtotal),
-        subtotal: toNum(doc.total),
-        total: toNum(doc.total),
-      },
+      totales: buildSunatTotales(lineCalcs, doc),
+      ...(cargos.length ? { cargos } : {}),
       leyenda: montoEnLetras(toNum(doc.total), doc.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
-      detalles: lineCalcs.map((l, i) => {
-        // l.subtotal = total de línea SIN IGV (correcto para ambos priceInclTax)
-        // l.lineTotal = total de línea CON IGV
-        // Derivamos precios unitarios desde los totales para evitar errores con priceInclTax
-        const valorUnitario = roundMoney(l.subtotal / l.quantity);
-        const precioUnitario = roundMoney(l.lineTotal / l.quantity);
-        const activeTaxes = l.taxSnapshot?.filter((tax) => tax.isActive) ?? [];
-        const percentageTaxes = activeTaxes.filter((tax) => !isFixedTaxSnapshot(tax));
-        const mainPercentageTax = activeTaxes.find((tax) => tax.key === 'impuesto_1') ?? percentageTaxes[0] ?? null;
-        const icbperTax = activeTaxes.find((tax) => tax.key === 'icbper') ?? null;
-        return {
-          codigo: String(l.productId ?? i + 1),
-          unidad_medida: 'NIU',
-          descripcion: l.alternativesDesc
-            ? `${l.productName} (${l.alternativesDesc})`
-            : l.productName,
-          cantidad: l.quantity,
-          valor_unitario: valorUnitario,
-          valor_venta: l.subtotal,
-          base_igv: l.subtotal,
-          porcentaje_igv: l.tipoAfectacion === '20'
-            ? 0
-            : (mainPercentageTax ? toNum(mainPercentageTax.rate) : taxRate),
-          igv: roundMoney(l.igvAmount ?? l.taxAmount),
-          tipo_afectacion: l.tipoAfectacion,
-          total_impuestos: l.taxAmount,
-          precio_unitario: precioUnitario,
-          ...(icbperTax ? { icbper: toNum(icbperTax.amount), factor_icbper: toNum(icbperTax.rate) } : {}),
-        };
-      }),
+      detalles: lineCalcs.map((l, i) => buildSunatDetalle(l, String(l.productId ?? i + 1), taxRate)),
     };
 
     const res = await emitirComprobante(payload);
@@ -1472,34 +1444,28 @@ async function emitAndUpdateCreditNote(
       : [];
     const orderItemMap = new Map(orderItemRows.map((row) => [row.id, row]));
 
-    const lineCalcs = lines.map((l) => {
+    // Misma fuente que la factura/boleta: el desglose congelado de la línea del pedido
+    // (afectación, IGV, ICBPER y recargo al consumo); sin él, los importes guardados.
+    const ncLines = lines.map((l) => {
       const orderItem = l.orderItemId != null ? orderItemMap.get(l.orderItemId) : null;
       const resolved = orderItem ? resolveLineCalcFromSnapshot(orderItem as typeof orderItems.$inferSelect) : null;
-      const subtotal = resolved?.subtotal ?? toNum(l.subtotal);
-      const taxAmount = resolved?.taxAmount ?? toNum(l.taxAmount);
-      const lineTotal = resolved?.lineTotal ?? toNum(l.lineTotal);
-      const qty = l.quantity;
-      const mainTax = resolved?.taxSnapshot?.find((tax) => tax.key === 'impuesto_1' && tax.isActive)
-        ?? resolved?.taxSnapshot?.find((tax) => !isFixedTaxSnapshot(tax) && tax.isActive)
-        ?? null;
-      const icbperTax = resolved?.taxSnapshot?.find((tax) => tax.key === 'icbper' && tax.isActive) ?? null;
       return {
         codigo: String(l.productId ?? l.id),
-        unidad_medida: 'NIU',
-        descripcion: l.alternativesDesc ? `${l.productName} (${l.alternativesDesc})` : l.productName,
-        cantidad: qty,
-        valor_unitario: roundMoney(subtotal / qty),
-        valor_venta: subtotal,
-        base_igv: subtotal,
-        porcentaje_igv: mainTax ? toNum(mainTax.rate) : taxRate,
-        igv: roundMoney(resolved?.igvAmount ?? taxAmount),
-        tipo_afectacion: '10',
-        total_impuestos: taxAmount,
-        precio_unitario: roundMoney(lineTotal / qty),
-        ...(icbperTax ? { icbper: toNum(icbperTax.amount), factor_icbper: toNum(icbperTax.rate) } : {}),
-        igvAmount: roundMoney(resolved?.igvAmount ?? taxAmount),
+        source: resolved
+          ? { ...resolved, productName: l.productName, alternativesDesc: l.alternativesDesc }
+          : {
+              productId: l.productId,
+              productName: l.productName,
+              alternativesDesc: l.alternativesDesc,
+              quantity: l.quantity,
+              subtotal: toNum(l.subtotal),
+              taxAmount: toNum(l.taxAmount),
+              lineTotal: toNum(l.lineTotal),
+              tipoAfectacion: '10' as const,
+            },
       };
-    }) as any[];
+    });
+    const ncSources = ncLines.map((l) => l.source);
 
     const res = await emitirNotaCredito({
       emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
@@ -1524,15 +1490,10 @@ async function emitAndUpdateCreditNote(
         codigo: motivo,
         descripcion: motivoDescripcion,
       },
-      totales: {
-        gravadas: toNum(savedNC.subtotal),
-        igv: roundMoney(lineCalcs.reduce((sum, l) => sum + (l.igvAmount ?? l.taxAmount), 0)),
-        total_impuestos: toNum(savedNC.taxAmount),
-        valor_venta: toNum(savedNC.subtotal),
-        subtotal: toNum(savedNC.total),
-        total: toNum(savedNC.total),
-      },
-      detalles: lineCalcs,
+      // Las notas no admiten cac:AllowanceCharge en Greenter: el recargo va solo como
+      // otros_cargos (ChargeTotalAmount).
+      totales: buildSunatTotales(ncSources, savedNC),
+      detalles: ncLines.map((l) => buildSunatDetalle(l.source, l.codigo, taxRate)),
       leyenda: montoEnLetras(toNum(savedNC.total), savedNC.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
     });
 
