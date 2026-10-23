@@ -127,6 +127,13 @@
       "when": 1785906686365,
       "tag": "0017_add_document_prefix_to_receipt_types",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792770000000,
+      "tag": "0018_create_plan_feature_definitions",
+      "breakpoints": true
     }
   ]
 }

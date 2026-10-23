@@ -32,6 +32,22 @@ export const plans = pgTable('plans', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+// Catálogo de características de planes: define las claves que se pueden usar en
+// plans.features (el plan sigue guardando { clave: valor }). Evita escribir claves a mano.
+export const planFeatureDefinitions = pgTable('plan_feature_definitions', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 60 }).notNull().unique(), // clave en plans.features, ej. 'maxProducts'
+  label: varchar('label', { length: 120 }).notNull(),
+  description: varchar('description', { length: 255 }),
+  valueType: varchar('value_type', { length: 10, enum: ['number', 'boolean', 'text'] as const }).notNull(),
+  unit: varchar('unit', { length: 40 }), // ej. 'productos' (solo number)
+  defaultValue: jsonb('default_value').$type<number | boolean | string | null>(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 export const plansRelations = relations(plans, ({ many }) => ({
   tenants: many(tenants),
   subscriptions: many(subscriptions),

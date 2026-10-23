@@ -2,6 +2,7 @@ import { masterDb } from '../../../db';
 import { plans } from '../../../db/master/schema';
 import { eq } from 'drizzle-orm';
 import type { CreatePlanInput, UpdatePlanInput } from '../validations/plans.validation';
+import { validatePlanFeatureValues } from './plan-features.service';
 
 export const getAllPlans = async (includeHidden = false) => {
   const result = await masterDb.query.plans.findMany({
@@ -20,6 +21,7 @@ export const getPlanById = async (id: number) => {
 };
 
 export const createPlan = async (data: CreatePlanInput) => {
+  await validatePlanFeatureValues(data.features);
   const [newPlan] = await masterDb.insert(plans).values({
     ...data,
     features: data.features,
@@ -29,6 +31,7 @@ export const createPlan = async (data: CreatePlanInput) => {
 };
 
 export const updatePlan = async (id: number, data: UpdatePlanInput) => {
+  await validatePlanFeatureValues(data.features);
   const [updated] = await masterDb.update(plans)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(plans.id, id))
