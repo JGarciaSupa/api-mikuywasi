@@ -61,12 +61,12 @@ const receiptDocsData = [
 ];
 
 // Comprobantes globales (sin país): documentos internos que no se envían a SUNAT.
-// '00' es el código canónico de la nota de venta interna (receiptCodeFromDocumentType).
+// 'INTERNO' es el código que ya usan las cajas de los tenants; si existe no se modifica.
 const globalReceiptDocsData = [
   {
-    code: '00',
-    name: 'Cuenta interna',
-    description: 'Nota de venta o cuenta interna (no se envía a SUNAT)',
+    code: 'INTERNO',
+    name: 'Documento interno',
+    description: 'Cuenta interna / nota de venta (no se envía a SUNAT)',
     isActive: true,
   },
 ];
@@ -111,11 +111,8 @@ async function seedDocuments() {
         .select({ id: receiptTypes.id })
         .from(receiptTypes)
         .where(and(isNull(receiptTypes.countryId), eq(receiptTypes.code, receipt.code)));
-      if (existing) {
-        await masterDb.update(receiptTypes)
-          .set({ name: receipt.name, description: receipt.description, isActive: receipt.isActive, isGlobal: true })
-          .where(eq(receiptTypes.id, existing.id));
-      } else {
+      // Si ya existe (p. ej. editado desde el super admin) se respeta tal cual
+      if (!existing) {
         await masterDb.insert(receiptTypes).values({ ...receipt, countryId: null, isGlobal: true });
       }
     }

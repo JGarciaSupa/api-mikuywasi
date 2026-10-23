@@ -32,7 +32,8 @@ export const DEFAULT_REASONS: { type: 'order_cancel' | 'document_void'; descript
 const DEFAULT_REGISTER_DOCUMENTS = [
   { receiptTypeCode: '03', prefix: 'B', digits: 3, description: 'Boleta de venta' },
   { receiptTypeCode: '01', prefix: 'F', digits: 3, description: 'Factura' },
-  { receiptTypeCode: '00', prefix: 'NV', digits: 2, description: 'Cuenta interna' },
+  // Documento interno: mismo código global del catálogo maestro (receipt_types 'INTERNO')
+  { receiptTypeCode: 'INTERNO', prefix: 'NV', digits: 2, description: 'Cuenta interna' },
 ] as const;
 
 /** Crea el método de pago Efectivo (para todas las sedes) si el tenant no tiene ninguno. */
