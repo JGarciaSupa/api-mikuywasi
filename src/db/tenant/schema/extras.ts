@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, varchar, integer, decimal, boolean, timestamp, uniqueIndex, index, jsonb } from 'drizzle-orm/pg-core';
-import { brands, products, orderItems } from './core';
+import { brands, products, orderItems, categories } from './core';
 import { items, recipes } from './warehouse';
 
 // ==========================================
@@ -35,6 +35,20 @@ export const productExtraGroupAssignments = pgTable('product_extra_group_assignm
   productGroupUnique: uniqueIndex('pega_product_group_unique_idx').on(table.productId, table.groupId),
   productIdx: index('pega_product_idx').on(table.productId),
   groupIdx: index('pega_group_idx').on(table.groupId),
+}));
+
+// Regla de vínculo automático por categoría: al crear un producto en esa categoría
+// (o en una subcategoría si includeSubcategories) o moverlo a ella, se le asigna el grupo.
+// Las asignaciones reales siguen viviendo en product_extra_group_assignments.
+export const productExtraGroupCategoryLinks = pgTable('product_extra_group_category_links', {
+  id: serial('id').primaryKey(),
+  groupId: integer('group_id').notNull().references(() => productExtraGroups.id, { onDelete: 'cascade' }),
+  categoryId: integer('category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
+  includeSubcategories: boolean('include_subcategories').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  groupCategoryUnique: uniqueIndex('pegcl_group_category_unique_idx').on(table.groupId, table.categoryId),
+  categoryIdx: index('pegcl_category_idx').on(table.categoryId),
 }));
 
 // Extras individuales dentro de un grupo
@@ -75,12 +89,18 @@ export const orderItemExtras = pgTable('order_item_extras', {
 export const productExtraGroupsRelations = relations(productExtraGroups, ({ one, many }) => ({
   brand: one(brands, { fields: [productExtraGroups.brandId], references: [brands.id] }),
   assignments: many(productExtraGroupAssignments),
+  categoryLinks: many(productExtraGroupCategoryLinks),
   extras: many(productExtras),
 }));
 
 export const productExtraGroupAssignmentsRelations = relations(productExtraGroupAssignments, ({ one }) => ({
   product: one(products, { fields: [productExtraGroupAssignments.productId], references: [products.id] }),
   group: one(productExtraGroups, { fields: [productExtraGroupAssignments.groupId], references: [productExtraGroups.id] }),
+}));
+
+export const productExtraGroupCategoryLinksRelations = relations(productExtraGroupCategoryLinks, ({ one }) => ({
+  group: one(productExtraGroups, { fields: [productExtraGroupCategoryLinks.groupId], references: [productExtraGroups.id] }),
+  category: one(categories, { fields: [productExtraGroupCategoryLinks.categoryId], references: [categories.id] }),
 }));
 
 export const productExtrasRelations = relations(productExtras, ({ one, many }) => ({

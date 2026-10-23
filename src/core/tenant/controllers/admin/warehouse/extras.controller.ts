@@ -1,6 +1,8 @@
 import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
+import { parseIdParam } from '@/utils/helpers';
 import * as extrasService from '../../../services/admin/warehouse/extras.service';
+import type { BulkAssignGroupByCategoryInput } from '../../../validations/admin/warehouse/extras.validation';
 
 // ─── Grupos ──────────────────────────────────────────────────────────────────
 
@@ -135,5 +137,39 @@ export const getGroupProducts = async (c: Context) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
+  }
+};
+
+// ─── Vínculo masivo por categoría / subcategoría ─────────────────────────────
+
+export const bulkAssignGroupByCategory = async (c: Context) => {
+  try {
+    const groupId = parseIdParam(c);
+    const body = c.req.valid('json' as never) as BulkAssignGroupByCategoryInput;
+    const data = await extrasService.bulkAssignGroupByCategory(groupId, body);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
+  }
+};
+
+export const getCategoryLinks = async (c: Context) => {
+  try {
+    const groupId = parseIdParam(c);
+    const data = await extrasService.listCategoryLinks(groupId);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 500);
+  }
+};
+
+export const removeCategoryLink = async (c: Context) => {
+  try {
+    const groupId = parseIdParam(c);
+    const categoryId = parseIdParam(c, 'categoryId');
+    await extrasService.removeCategoryLink(groupId, categoryId);
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error interno del servidor') }, 400);
   }
 };

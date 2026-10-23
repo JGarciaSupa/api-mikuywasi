@@ -6,6 +6,7 @@ import { getTenantDb, getTenantId } from '@/utils/tenant-context';
 import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
 import { getMaxProductsForTenant } from './product-limit.service';
+import { applyCategoryExtraGroups } from './extras.service';
 
 const MAX_SIZE = 500;
 
@@ -202,6 +203,7 @@ export const createProduct = async (data: any, imageFile?: File) => {
     }).returning();
 
     await syncChannelPrices(tx, inserted.id, (data.channelPrices ?? []) as ProductChannelPriceInput[]);
+    await applyCategoryExtraGroups(tx, inserted.id, inserted.categoryId);
     return [inserted];
   });
 
@@ -240,6 +242,9 @@ export const updateProduct = async (id: number, data: any, imageFile?: File) => 
 
     if (data.channelPrices !== undefined) {
       await syncChannelPrices(tx, id, data.channelPrices as ProductChannelPriceInput[]);
+    }
+    if (updated.categoryId !== existingProduct.categoryId) {
+      await applyCategoryExtraGroups(tx, id, updated.categoryId);
     }
     return [updated];
   });

@@ -41,13 +41,23 @@ export const assignGroupToProductSchema = z.object({
   extraIds: z.array(z.number().int().positive()).optional().nullable(),
 });
 
+export const bulkAssignGroupByCategorySchema = z.object({
+  categoryId: z.number({ error: 'La categoría es requerida' }).int().positive('La categoría es requerida'),
+  includeSubcategories: z.boolean().optional(),
+  action: z.enum(['link', 'unlink'], { error: 'La acción debe ser link o unlink' }),
+  rememberForNewProducts: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+});
+
 export type CreateExtraGroupInput = z.infer<typeof createExtraGroupSchema>;
 export type UpdateExtraGroupInput = z.infer<typeof updateExtraGroupSchema>;
 export type CreateExtraInput = z.infer<typeof createExtraSchema>;
 export type UpdateExtraInput = z.infer<typeof updateExtraSchema>;
+export type BulkAssignGroupByCategoryInput = z.infer<typeof bulkAssignGroupByCategorySchema>;
 
 export const validateCreateExtraGroup = zValidator('json', createExtraGroupSchema, validationHook);
 export const validateUpdateExtraGroup = zValidator('json', updateExtraGroupSchema, validationHook);
 export const validateCreateExtra = zValidator('json', createExtraSchema, validationHook);
 export const validateUpdateExtra = zValidator('json', updateExtraSchema, validationHook);
 export const validateAssignGroupToProduct = zValidator('json', assignGroupToProductSchema, validationHook);
+export const validateBulkAssignGroupByCategory = zValidator('json', bulkAssignGroupByCategorySchema, validationHook);

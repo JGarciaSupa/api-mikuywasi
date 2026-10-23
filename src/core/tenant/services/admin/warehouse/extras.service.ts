@@ -1,7 +1,8 @@
-import { eq, and, asc, inArray } from 'drizzle-orm';
+import { eq, and, asc, inArray, or, isNull } from 'drizzle-orm';
 import {
   productExtraGroups,
   productExtraGroupAssignments,
+  productExtraGroupCategoryLinks,
   productExtras,
   orderItemExtras,
   items,
@@ -261,6 +262,175 @@ export async function unassignGroupFromProduct(productId: number, groupId: numbe
         eq(productExtraGroupAssignments.groupId, groupId),
       )
     );
+}
+
+/**
+ * Vincula o desvincula un grupo de extras con todos los productos de una categoría
+ * (y, si se indica, de sus subcategorías). Solo considera productos de la misma marca del grupo.
+ * Al vincular NO toca las asignaciones existentes ni sus extraIds puntuales.
+ * rememberForNewProducts = true → además guarda la regla para los productos que se creen o
+ * muevan a esa categoría más adelante. Desvincular siempre quita la regla.
+ * dryRun = true → solo cuenta los productos afectados, sin escribir.
+ */
+export async function bulkAssignGroupByCategory(groupId: number, data: {
+  categoryId: number;
+  includeSubcategories?: boolean;
+  action: 'link' | 'unlink';
+  rememberForNewProducts?: boolean;
+  dryRun?: boolean;
+}) {
+  const db = getTenantDb();
+
+  const [group] = await db.select().from(productExtraGroups).where(eq(productExtraGroups.id, groupId));
+  if (!group) throw new Error('Grupo de extras no encontrado');
+
+  const [category] = await db
+    .select({ id: categories.id, brandId: branches.brandId })
+    .from(categories)
+    .leftJoin(branches, eq(categories.branchId, branches.id))
+    .where(eq(categories.id, data.categoryId));
+  if (!category) throw new Error('Categoría no encontrada');
+  if (category.brandId != null && category.brandId !== group.brandId) {
+    throw new Error('La categoría pertenece a otra marca y no puede usarse con este grupo de extras');
+  }
+
+  const includeSubcategories = data.includeSubcategories ?? true;
+  const categoryIds = [category.id];
+  if (includeSubcategories) {
+    const subs = await db.select({ id: categories.id }).from(categories).where(eq(categories.parentId, category.id));
+    categoryIds.push(...subs.map((s) => s.id));
+  }
+
+  const productRows = await db
+    .select({ id: products.id })
+    .from(products)
+    .innerJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(branches, eq(categories.branchId, branches.id))
+    .where(and(
+      inArray(products.categoryId, categoryIds),
+      or(isNull(categories.branchId), eq(branches.brandId, group.brandId)),
+    ));
+  const productIds = productRows.map((p) => p.id);
+
+  const linkedRows = productIds.length
+    ? await db
+      .select({ productId: productExtraGroupAssignments.productId })
+      .from(productExtraGroupAssignments)
+      .where(and(
+        eq(productExtraGroupAssignments.groupId, groupId),
+        inArray(productExtraGroupAssignments.productId, productIds),
+      ))
+    : [];
+
+  const matched = productIds.length;
+  const alreadyLinked = linkedRows.length;
+  const affected = data.action === 'link' ? matched - alreadyLinked : alreadyLinked;
+
+  if (data.dryRun) return { matched, alreadyLinked, affected };
+
+  await db.transaction(async (tx) => {
+    if (data.action === 'link') {
+      if (data.rememberForNewProducts) {
+        await tx
+          .insert(productExtraGroupCategoryLinks)
+          .values({ groupId, categoryId: category.id, includeSubcategories })
+          .onConflictDoUpdate({
+            target: [productExtraGroupCategoryLinks.groupId, productExtraGroupCategoryLinks.categoryId],
+            set: { includeSubcategories },
+          });
+      }
+      if (affected > 0) {
+        await tx
+          .insert(productExtraGroupAssignments)
+          .values(productIds.map((productId) => ({ productId, groupId, extraIds: null })))
+          .onConflictDoNothing({ target: [productExtraGroupAssignments.productId, productExtraGroupAssignments.groupId] });
+      }
+    } else {
+      await tx
+        .delete(productExtraGroupCategoryLinks)
+        .where(and(
+          eq(productExtraGroupCategoryLinks.groupId, groupId),
+          inArray(productExtraGroupCategoryLinks.categoryId, categoryIds),
+        ));
+      if (affected > 0) {
+        await tx
+          .delete(productExtraGroupAssignments)
+          .where(and(
+            eq(productExtraGroupAssignments.groupId, groupId),
+            inArray(productExtraGroupAssignments.productId, productIds),
+          ));
+      }
+    }
+  });
+
+  return { matched, alreadyLinked, affected };
+}
+
+/** Reglas de vínculo automático por categoría de un grupo (para mostrarlas en el panel). */
+export async function listCategoryLinks(groupId: number) {
+  const db = getTenantDb();
+  return db
+    .select({
+      categoryId: productExtraGroupCategoryLinks.categoryId,
+      categoryName: categories.name,
+      parentId: categories.parentId,
+      includeSubcategories: productExtraGroupCategoryLinks.includeSubcategories,
+    })
+    .from(productExtraGroupCategoryLinks)
+    .innerJoin(categories, eq(productExtraGroupCategoryLinks.categoryId, categories.id))
+    .where(eq(productExtraGroupCategoryLinks.groupId, groupId))
+    .orderBy(asc(categories.name));
+}
+
+/** Quita la regla automática; los productos ya vinculados se quedan como están. */
+export async function removeCategoryLink(groupId: number, categoryId: number) {
+  const db = getTenantDb();
+  await db
+    .delete(productExtraGroupCategoryLinks)
+    .where(and(
+      eq(productExtraGroupCategoryLinks.groupId, groupId),
+      eq(productExtraGroupCategoryLinks.categoryId, categoryId),
+    ));
+}
+
+/**
+ * Asigna a un producto los grupos de extras con regla automática en su categoría
+ * (o en la categoría padre, si la regla incluye subcategorías). Respeta la marca del grupo
+ * y no toca asignaciones existentes. Se llama al crear, importar o cambiar de categoría un producto.
+ */
+export async function applyCategoryExtraGroups(tx: Pick<TenantDb, 'select' | 'insert'>, productId: number, categoryId: number | null) {
+  if (!categoryId) return;
+
+  const [category] = await tx
+    .select({ parentId: categories.parentId, brandId: branches.brandId })
+    .from(categories)
+    .leftJoin(branches, eq(categories.branchId, branches.id))
+    .where(eq(categories.id, categoryId));
+  if (!category) return;
+
+  const ruleConditions = [eq(productExtraGroupCategoryLinks.categoryId, categoryId)];
+  if (category.parentId) {
+    ruleConditions.push(and(
+      eq(productExtraGroupCategoryLinks.categoryId, category.parentId),
+      eq(productExtraGroupCategoryLinks.includeSubcategories, true),
+    )!);
+  }
+
+  const rules = await tx
+    .select({ groupId: productExtraGroupCategoryLinks.groupId, brandId: productExtraGroups.brandId })
+    .from(productExtraGroupCategoryLinks)
+    .innerJoin(productExtraGroups, eq(productExtraGroupCategoryLinks.groupId, productExtraGroups.id))
+    .where(or(...ruleConditions));
+
+  const groupIds = [...new Set(rules
+    .filter((r) => category.brandId == null || r.brandId === category.brandId)
+    .map((r) => r.groupId))];
+  if (groupIds.length === 0) return;
+
+  await tx
+    .insert(productExtraGroupAssignments)
+    .values(groupIds.map((groupId) => ({ productId, groupId, extraIds: null })))
+    .onConflictDoNothing({ target: [productExtraGroupAssignments.productId, productExtraGroupAssignments.groupId] });
 }
 
 // ─── Lógica de extras para órdenes ──────────────────────────────────────────

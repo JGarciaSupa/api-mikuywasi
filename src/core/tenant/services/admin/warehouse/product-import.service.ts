@@ -11,6 +11,7 @@ import {
   type ProductImportInput,
 } from '@/core/tenant/validations/admin/warehouse/product-import.validation';
 import { getMaxProductsForTenant } from './product-limit.service';
+import { applyCategoryExtraGroups } from './extras.service';
 
 // Mismo tope que createCategory (categories.service.ts) para categorías principales.
 const MAX_ROOT_CATEGORIES = 50;
@@ -244,7 +245,9 @@ export async function importProducts(input: ProductImportInput): Promise<Product
           isActive: row.isActive ?? input.activate,
           allowSellWithoutStock: row.allowSellWithoutStock ?? false,
           stock: row.stock ?? null,
-        }).returning({ id: products.id });
+        }).returning({ id: products.id, categoryId: products.categoryId });
+
+        await applyCategoryExtraGroups(tx, product.id, product.categoryId);
 
         // 3. Precio por canal, igual que el modal del admin
         if (channels.length > 0) {
