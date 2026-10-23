@@ -76,15 +76,6 @@ export async function createTable(data: { name: string; branchId: number; capaci
   }
   await assertSalonInBranch(data.salonId, branchId);
 
-  // 1. Verificar límite de 50 mesas por sucursal
-  const [totalResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(tables)
-    .where(eq(tables.branchId, branchId));
-
-  if (Number(totalResult?.count || 0) >= 50) {
-    throw new Error('Solo se permite un máximo de 50 mesas por sucursal');
-  }
-
   let attempts = 0;
   const maxAttempts = 5;
 
