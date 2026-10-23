@@ -41,6 +41,12 @@ const parseFilters = (c: Context): { filters?: CashReportFilters; error?: string
     return { error: 'userId debe ser numérico' };
   }
 
+  const sessionIdRaw = c.req.query('sessionId');
+  const sessionId = sessionIdRaw ? parseInt(sessionIdRaw, 10) : undefined;
+  if (sessionIdRaw && isNaN(sessionId!)) {
+    return { error: 'sessionId debe ser numérico' };
+  }
+
   return {
     filters: {
       branchId,
@@ -49,6 +55,7 @@ const parseFilters = (c: Context): { filters?: CashReportFilters; error?: string
       timezone: c.req.query('timezone'),
       registerId,
       userId,
+      sessionId,
     },
   };
 };
