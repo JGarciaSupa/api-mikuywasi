@@ -98,3 +98,42 @@ Elimina una mesa de forma permanente.
   "message": "Mesa eliminada con éxito"
 }
 ```
+
+### 5. Importar salones y mesas (masivo)
+Crea las mesas de una sucursal desde un archivo (el admin lee CSV/Excel y envía las filas). Reutiliza el alta manual: mismo tope de **50 mesas por sucursal**, salón de la misma sede y slug QR único. Cada fila es independiente.
+
+**POST** `/tables/import`
+
+**Permiso:** `menu.gestionar_mesas`
+
+**Body (JSON):**
+```json
+{
+  "branchId": 1,
+  "items": [
+    { "row": 2, "salon": "Terraza", "table": "T1", "pax": 4, "shape": "redonda" },
+    { "row": 3, "salon": "Salón Principal", "table": "Mesa 1", "pax": 2 }
+  ]
+}
+```
+
+- `items`: entre 1 y 50 filas. `row` es el número de fila del archivo.
+- `salon` (máx. 100) y `table` (máx. 50) requeridos. `pax` entero 1–99 (vacío = 1). `shape`: `cuadrada`/`square` o `redonda`/`round` (vacío = cuadrada).
+- El salón se busca por nombre (sin distinguir mayúsculas) en la sucursal; si no existe se crea y aparece en `createdSalons`.
+- Se omiten (`skipped`) las mesas cuyo nombre ya existe en la sucursal o se repite en el archivo.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Importación finalizada: 2 creadas, 0 omitidas, 0 con error",
+  "data": {
+    "total": 2, "created": 2, "skipped": 0, "failed": 0,
+    "createdSalons": ["Terraza"],
+    "results": [
+      { "row": 2, "salon": "Terraza", "table": "T1", "status": "created", "tableId": 12 },
+      { "row": 3, "salon": "Salón Principal", "table": "Mesa 1", "status": "created", "tableId": 13 }
+    ]
+  }
+}
+```
