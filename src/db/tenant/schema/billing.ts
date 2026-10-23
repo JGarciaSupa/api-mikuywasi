@@ -69,6 +69,13 @@ export const billingDocuments = pgTable('billing_documents', {
 		enum: ['draft', 'issued', 'voided'] as const }).notNull().default('issued'),
 	notes: text('notes'),
 
+	// Pago pendiente: marca interna (no SUNAT, no caja) de que el cliente se llevó la venta
+	// sin pagar por un acuerdo con el dueño. Se resuelve a mano con "Marcar como cobrado".
+	paymentPending: boolean('payment_pending').default(false).notNull(),
+	paymentPendingNote: varchar('payment_pending_note', { length: 200 }),
+	paymentCollectedAt: timestamp('payment_collected_at', { withTimezone: true }),
+	paymentCollectedBy: varchar('payment_collected_by', { length: 100 }),
+
 	// Campos SUNAT — poblados tras llamar al facturador-restaurante
 	sunatStatus: varchar('sunat_status', { length: 20 }),    // ACEPTADO | RECHAZADO | ERROR
 	sunatCode: varchar('sunat_code', { length: 10 }),

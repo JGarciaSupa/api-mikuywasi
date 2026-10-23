@@ -38,6 +38,10 @@ export interface CreateDocumentInput {
   // Cajero autenticado — se usa para resolver la caja de su turno abierto y, con
   // ella, la serie a usar (ya no se elige manualmente desde el frontend).
   userId?: number;
+  // "Cliente no pagó": marca interna, solo si la sucursal lo permite (el permiso se
+  // valida en el controller). No cambia SUNAT ni la caja.
+  paymentPending?: boolean;
+  paymentPendingNote?: string | null;
 }
 
 export interface ListDocumentsFilters {
@@ -52,6 +56,8 @@ export interface ListDocumentsFilters {
   endDate?: string;
   buyerDoc?: string;
   search?: string;
+  // true = solo comprobantes con pago pendiente aún no cobrado
+  paymentPending?: boolean;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -632,6 +638,20 @@ export async function createDocument(input: CreateDocumentInput) {
     }
   }
 
+  // Pago pendiente: solo pedido completo y con la opción activada en la sucursal
+  const paymentPending = input.paymentPending === true;
+  const paymentPendingNote = input.paymentPendingNote?.trim().slice(0, 200) || null;
+  if (paymentPending) {
+    if (input.splitId != null) throw new Error('El pago pendiente solo aplica al pedido completo, no a cuentas divididas');
+    const [branchCfg] = await db
+      .select({ allowPendingPayment: branches.allowPendingPayment })
+      .from(branches)
+      .where(eq(branches.id, order.branchId));
+    if (!branchCfg?.allowPendingPayment) {
+      throw new Error('La sucursal no tiene activadas las ventas con pago pendiente');
+    }
+  }
+
   // Verificar documento existente por (orderId, splitId) para evitar duplicados
   const existingDocWhere = input.splitId != null
     ? and(
@@ -746,6 +766,8 @@ export async function createDocument(input: CreateDocumentInput) {
         total: String(summary.total),
         status: 'issued',
         notes: input.notes ?? null,
+        paymentPending,
+        paymentPendingNote: paymentPending ? paymentPendingNote : null,
         createdBy: input.createdBy ?? null,
         issuedAt: new Date(),
       })
@@ -932,6 +954,7 @@ export async function listDocuments(filters: ListDocumentsFilters) {
     conditions.push(lte(billingDocuments.issuedAt, end));
   }
   if (filters.buyerDoc) conditions.push(like(billingDocuments.buyerDocNumber, `%${filters.buyerDoc}%`));
+  if (filters.paymentPending) conditions.push(pendingPaymentCondition());
   if (filters.search) {
     conditions.push(
       or(
@@ -964,10 +987,49 @@ export async function listDocuments(filters: ListDocumentsFilters) {
 
   const [{ total }] = await (where ? countQuery.where(where) : countQuery);
 
+  // Resumen de pagos pendientes de la sucursal (para el filtro "Pagos pendientes")
+  const pendingWhere = filters.branchId
+    ? and(pendingPaymentCondition(), eq(billingDocuments.branchId, filters.branchId))
+    : pendingPaymentCondition();
+  const [pending] = await db
+    .select({ count: count(), total: sql<string>`coalesce(sum(${billingDocuments.total}), 0)` })
+    .from(billingDocuments)
+    .where(pendingWhere);
+
   return {
     data,
     pagination: { total, totalPages: Math.ceil(total / limit), currentPage: page, limit },
+    pendingPayments: { count: Number(pending?.count ?? 0), total: roundMoney(toNum(pending?.total)) },
   };
+}
+
+// Pago pendiente sin cobrar y comprobante vigente (un comprobante anulado ya no se cobra)
+function pendingPaymentCondition() {
+  return and(
+    eq(billingDocuments.paymentPending, true),
+    isNull(billingDocuments.paymentCollectedAt),
+    sql`${billingDocuments.status} != 'voided'`,
+  )!;
+}
+
+/**
+ * "Marcar como cobrado": el dueño cobró por su cuenta una venta marcada como pago pendiente.
+ * Solo registra quién y cuándo; no toca SUNAT ni la caja (el pago ya se registró al vender).
+ */
+export async function markDocumentCollected(id: number, collectedBy: string | null) {
+  const db = getTenantDb();
+  const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
+  if (!doc) throw new Error('Documento no encontrado');
+  if (!doc.paymentPending) throw new Error('El documento no tiene pago pendiente');
+  if (doc.paymentCollectedAt) throw new Error('El documento ya fue marcado como cobrado');
+  if (doc.status === 'voided') throw new Error('El documento está anulado');
+
+  const [updated] = await db
+    .update(billingDocuments)
+    .set({ paymentCollectedAt: new Date(), paymentCollectedBy: collectedBy, updatedAt: new Date() })
+    .where(eq(billingDocuments.id, id))
+    .returning();
+  return updated;
 }
 
 export async function getRelatedDocuments(id: number) {

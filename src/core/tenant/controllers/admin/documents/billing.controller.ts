@@ -3,6 +3,10 @@ import { safeMessage } from '@/utils/errors';
 import * as billingService from '../../../services/admin/documents/billing.service';
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
 import { convertirCertificado } from '../../../../../utils/facturador-client';
+import { hasPermissionLive } from '@/utils/permissions';
+
+// Permiso para marcar ventas como pago pendiente y marcarlas como cobradas
+const PENDING_PAYMENT_PERMISSION = 'facturacion.pago_pendiente';
 
 // ── Series ────────────────────────────────────────────────────────────────────
 
@@ -135,6 +139,7 @@ export const listDocumentsController = async (c: Context) => {
       endDate: q.endDate,
       buyerDoc: q.buyerDoc,
       search: q.search,
+      paymentPending: q.paymentPending === 'true',
     });
     return c.json({ success: true, ...result });
   } catch (error: any) {
@@ -201,6 +206,9 @@ export const createDocumentController = async (c: Context) => {
   try {
     const body = await c.req.json();
     const payload = c.get('jwtPayload') as { userId?: number; username?: string } | undefined;
+    if (body.paymentPending === true && !(await hasPermissionLive(c, PENDING_PAYMENT_PERMISSION))) {
+      return c.json({ success: false, message: 'No tienes permiso para registrar ventas con pago pendiente' }, 403);
+    }
     const result = await billingService.createDocument({
       ...body,
       splitId: body.splitId ?? null,
@@ -215,7 +223,8 @@ export const createDocumentController = async (c: Context) => {
           error.message?.includes('requiere') || error.message?.includes('pagada') || error.message?.includes('pagado')
             || error.message?.includes('turno de caja') || error.message?.includes('serie configurada')
             || error.message?.includes('Tipo de documento') || error.message?.includes('formato inválido')
-            || error.message?.includes('debe tener') ? 422 :
+            || error.message?.includes('debe tener')
+            || error.message?.includes('pago pendiente') ? 422 :
             500;
     return c.json({ success: false, message: safeMessage(error, 'Error al crear documento') }, status as any);
   }
@@ -405,5 +414,21 @@ export const createNotaCreditoExternaController = async (c: Context) => {
     return c.json({ success: true, data: result });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error al emitir Nota de Crédito externa') }, 500);
+  }
+};
+
+export const markDocumentCollectedController = async (c: Context) => {
+  try {
+    if (!(await hasPermissionLive(c, PENDING_PAYMENT_PERMISSION))) {
+      return c.json({ success: false, message: 'No tienes permiso para marcar cobros pendientes' }, 403);
+    }
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ success: false, message: 'ID inválido' }, 400);
+    const payload = c.get('jwtPayload') as { username?: string } | undefined;
+    const data = await billingService.markDocumentCollected(id, payload?.username ?? null);
+    return c.json({ success: true, data, message: 'Cobro registrado' });
+  } catch (error: any) {
+    const status = error.message?.includes('no encontrado') ? 404 : 422;
+    return c.json({ success: false, message: safeMessage(error, 'Error al marcar el cobro') }, status as any);
   }
 };

@@ -121,6 +121,8 @@ export const branches = pgTable('branches', {
 	sunatAnexo: varchar('sunat_anexo', { length: 4 }),
 	isActive: boolean('is_active').default(true).notNull(),
 	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
+	// Permite marcar ventas como "pago pendiente" (cliente paga otro día). Apagado por defecto.
+	allowPendingPayment: boolean('allow_pending_payment').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

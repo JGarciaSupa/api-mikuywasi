@@ -110,6 +110,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'facturacion.ver_pdf', name: 'Ver / descargar PDF', description: 'Descargar o visualizar el PDF del comprobante.', order: 4 },
       { code: 'facturacion.gestionar_series', name: 'Gestionar series', description: 'Administrar series de numeración.', order: 5 },
       { code: 'facturacion.gestionar_certificado', name: 'Gestionar certificado', description: 'Subir y gestionar el certificado digital.', order: 6 },
+      { code: 'facturacion.pago_pendiente', name: 'Ventas con pago pendiente', description: 'Marcar una venta como "cliente no pagó" y luego como cobrada (requiere activarlo en la sucursal).', order: 7 },
     ],
   },
   {

@@ -20,6 +20,7 @@ import {
   checkVoidStatusController,
   retryVoidSunatController,
   retryDocumentController,
+  markDocumentCollectedController,
   correctAndRetryController,
   getDocumentPdfController,
   convertCertificateController,
@@ -71,6 +72,7 @@ routes.post('/documents/:id/void-status', checkVoidStatusController);
 routes.post('/documents/:id/void-retry', retryVoidSunatController);
 routes.post('/documents/:id/void', voidDocumentController);
 routes.post('/documents/:id/retry', retryDocumentController);
+routes.patch('/documents/:id/collected', markDocumentCollectedController);
 routes.get('/documents/:id/diagnose', diagnoseDocumentController);
 routes.post('/documents/:id/credit-note', createNotaCreditoDirectaController);
 routes.post('/credit-note/external', createNotaCreditoExternaController);

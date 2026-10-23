@@ -126,6 +126,7 @@ export interface CreateBranchInput {
     coordinates: number[][][];
   } | null;
   allowSellWithoutStock?: boolean;
+  allowPendingPayment?: boolean;
 }
 
 // Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
@@ -185,6 +186,7 @@ export async function createBranch(data: CreateBranchInput) {
       schedules: data.schedules ?? [],
       deliveryZone: data.deliveryZone ?? null,
       allowSellWithoutStock: data.allowSellWithoutStock ?? false,
+      allowPendingPayment: data.allowPendingPayment ?? false,
     }).returning();
 
     // Motivos estándar de eliminación y anulación para que la sucursal opere desde el inicio
@@ -239,6 +241,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.schedules !== undefined) updateData.schedules = data.schedules ?? [];
   if (data.deliveryZone !== undefined) updateData.deliveryZone = data.deliveryZone ?? null;
   if (data.allowSellWithoutStock !== undefined) updateData.allowSellWithoutStock = data.allowSellWithoutStock;
+  if (data.allowPendingPayment !== undefined) updateData.allowPendingPayment = data.allowPendingPayment;
 
   return await db.transaction(async (tx) => {
     // Si estamos marcando esta sucursal como principal (isMain: true)

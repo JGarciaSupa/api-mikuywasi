@@ -70,3 +70,22 @@ ICBPER por línea, en facturas, boletas y notas de crédito.
 - **Envío a SUNAT** (`services/admin/documents/sunat-payload.ts`): el recargo no es tributo. Se resta de
   `total_impuestos`/`subtotal`, va en `totales.otros_cargos` y, en factura/boleta, como `cargos[]` con
   `motivo: '46'` (catálogo 53). En notas de crédito solo `otros_cargos` (Greenter no admite cargos en notas).
+
+## Pago pendiente ("cliente no pagó")
+
+Marca **interna** para ventas que el cliente pagará otro día por acuerdo con el dueño. No cambia SUNAT (el comprobante va al contado) ni la caja (el cobro se registró al vender). Requiere:
+
+- Sucursal con `allowPendingPayment = true` (`PATCH /branches/:id`, Parámetros). Apagado por defecto.
+- Permiso `facturacion.pago_pendiente` (`rol_admin` siempre pasa).
+
+**Emitir con la marca** — `POST /billing/documents` acepta además:
+
+```json
+{ "paymentPending": true, "paymentPendingNote": "Paga el viernes" }
+```
+
+Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal sin la opción → 422.
+
+**Listado** — `GET /billing/documents?paymentPending=true` devuelve solo los pendientes sin cobrar y no anulados. Toda respuesta del listado incluye `pendingPayments: { count, total }` de la sucursal filtrada. Cada documento trae `paymentPending`, `paymentPendingNote`, `paymentCollectedAt` y `paymentCollectedBy`.
+
+**Marcar como cobrado** — `PATCH /billing/documents/:id/collected` (permiso `facturacion.pago_pendiente`): guarda `paymentCollectedAt` y `paymentCollectedBy`. No toca SUNAT ni la caja. 422 si el documento no tiene pago pendiente, ya fue cobrado o está anulado.
