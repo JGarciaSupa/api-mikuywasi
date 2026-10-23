@@ -17,7 +17,7 @@ import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer,
 import { getActiveSessionForUser } from './cash.service';
 import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
-import { type TaxSnapshotEntry, aggregateTaxBreakdown, isServiceChargeTax, resolveTipoAfectacion } from '../../shared/taxes.service';
+import { type TaxConfig, type TaxSnapshotEntry, DEFAULT_BRANCH_TAXES, aggregateTaxBreakdown, isFixedTax, isServiceChargeTax, resolveLineTaxes, resolveTipoAfectacion } from '../../shared/taxes.service';
 import { buildSunatCargos, buildSunatDetalle, buildSunatTotales } from './sunat-payload';
 import { masterDb } from '../../../../../db';
 import { countries, identityDocumentTypes } from '../../../../../db/master/schema';
@@ -335,6 +335,143 @@ function resolveDocumentTaxRate(lineCalcs: LineCalc[], fallbackRate: number) {
   return mainTax ? toNum(mainTax.rate) : fallbackRate;
 }
 
+// ── Cuentas divididas por monto ──────────────────────────────────────────────
+// Una cuenta "por monto" (partes iguales o montos libres) solo guarda un importe ya
+// cobrado. Su comprobante reparte ese importe con la composición real del pedido —tasa
+// de IGV, parte exonerada y recargo al consumo de cada producto— para que la suma de las
+// cuentas declare lo mismo que el pedido completo. El importe es siempre precio final.
+// Las bolsas (ICBPER = cantidad × factor) no se fraccionan: van completas a la primera
+// cuenta (por id) cuyo importe las cubre.
+
+type LineTaxEntry = NonNullable<LineCalc['taxSnapshot']>[number];
+
+// Configuración de impuestos equivalente al desglose congelado de un ítem.
+// NULL (ítem antiguo) = solo IGV a la tasa del documento; [] = exonerado.
+function taxConfigFromSnapshot(snapshot: LineTaxEntry[] | null, fallbackRate: number): TaxConfig[] {
+  const active = snapshot ?? [{ key: 'impuesto_1', label: 'IGV', rate: fallbackRate, isActive: true }];
+  const byKey = new Map(active.filter((tax) => tax.isActive !== false).map((tax) => [tax.key, tax]));
+  return DEFAULT_BRANCH_TAXES.map((base) => {
+    const tax = byKey.get(base.key);
+    return tax
+      ? { ...base, label: tax.label, rate: toNum(tax.rate), isActive: true, calculationType: tax.calculationType ?? base.calculationType }
+      : { ...base, isActive: false };
+  });
+}
+
+function lineCalcFromGross(productName: string, productId: number | null, quantity: number, gross: number, config: TaxConfig[]): LineCalc {
+  const r = resolveLineTaxes(gross, quantity, config);
+  const igvTaxes = r.taxSnapshot.filter((tax) => !isFixedTax(tax) && !isServiceChargeTax(tax));
+  const mainTax = r.taxSnapshot.find((tax) => tax.key === 'impuesto_1') ?? igvTaxes[0] ?? null;
+  return {
+    orderItemId: null,
+    productId,
+    productName,
+    quantity,
+    unitPrice: roundMoney(gross / quantity),
+    alternativesExtra: 0,
+    packagingFee: 0,
+    subtotal: r.subtotal,
+    taxAmount: r.totalTaxAmount,
+    lineTotal: r.lineTotal,
+    alternativesDesc: null,
+    notes: null,
+    priceInclTax: true,
+    taxRate: mainTax ? toNum(mainTax.rate) : 0,
+    igvAmount: roundMoney(igvTaxes.reduce((sum, tax) => sum + toNum(tax.amount), 0)),
+    tipoAfectacion: resolveTipoAfectacion(r.taxSnapshot),
+    taxSnapshot: r.taxSnapshot,
+  };
+}
+
+async function resolveAmountSplitLineCalcs(
+  db: ReturnType<typeof getTenantDb>,
+  split: typeof orderSplits.$inferSelect,
+  fallbackRate: number,
+): Promise<LineCalc[]> {
+  const concept = split.customConcept || 'Por consumo de alimentos y bebidas';
+  const amount = roundMoney(toNum(split.total));
+  if (amount <= 0) return [];
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, split.orderId));
+  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, split.orderId));
+
+  // Grupos por combinación de impuestos activos; las bolsas aparte, por producto
+  const groups = new Map<string, { gross: number; config: TaxConfig[] }>();
+  const bags = new Map<string, { name: string; productId: number | null; qty: number; gross: number; config: TaxConfig[] }>();
+  const addToGroup = (gross: number, config: TaxConfig[]) => {
+    const key = config.filter((tax) => tax.isActive).map((tax) => `${tax.key}:${tax.rate}`).join('|');
+    const group = groups.get(key) ?? { gross: 0, config };
+    group.gross += gross;
+    groups.set(key, group);
+  };
+  for (const oi of items) {
+    const config = taxConfigFromSnapshot((oi.taxSnapshot as LineTaxEntry[] | null) ?? null, fallbackRate);
+    const gross = toNum(oi.totalPrice);
+    if (config.some((tax) => tax.isActive && isFixedTax(tax))) {
+      const key = String(oi.productId ?? oi.productName);
+      const bag = bags.get(key) ?? { name: oi.productName, productId: oi.productId ?? null, qty: 0, gross: 0, config };
+      bag.qty += oi.quantity;
+      bag.gross += gross;
+      bags.set(key, bag);
+    } else {
+      addToGroup(gross, config);
+    }
+  }
+  // El delivery no tiene desglose propio: gravado a la tasa del documento
+  if (toNum(order?.deliveryFee) > 0) addToGroup(toNum(order?.deliveryFee), taxConfigFromSnapshot(null, fallbackRate));
+
+  const lines: LineCalc[] = [];
+  let remaining = amount;
+  const bagTotal = roundMoney([...bags.values()].reduce((sum, bag) => sum + bag.gross, 0));
+  if (bagTotal > 0) {
+    const siblings = await db
+      .select({ id: orderSplits.id, total: orderSplits.total, splitType: orderSplits.splitType })
+      .from(orderSplits)
+      .where(eq(orderSplits.orderId, split.orderId))
+      .orderBy(orderSplits.id);
+    const holder = siblings.find((s) => s.splitType === 'by_amount' && toNum(s.total) >= bagTotal);
+    if (holder?.id === split.id) {
+      for (const bag of bags.values()) {
+        lines.push(lineCalcFromGross(bag.name, bag.productId, bag.qty, roundMoney(bag.gross), bag.config));
+      }
+      remaining = roundMoney(remaining - bagTotal);
+    }
+  }
+  if (remaining <= 0) return lines;
+
+  // Reparto proporcional del resto; el residuo de céntimos va al grupo mayor
+  const list = [...groups.values()].filter((g) => g.gross > 0).sort((a, b) => b.gross - a.gross);
+  const base = list.reduce((sum, g) => sum + g.gross, 0);
+  if (list.length === 0 || base <= 0) {
+    lines.push(lineCalcFromGross(concept, null, 1, remaining, taxConfigFromSnapshot(null, fallbackRate)));
+    return lines;
+  }
+  const shares = list.map((g) => roundMoney((remaining * g.gross) / base));
+  shares[0] = roundMoney(shares[0] + remaining - shares.reduce((sum, s) => sum + s, 0));
+  list.forEach((g, i) => {
+    if (shares[i] <= 0) return;
+    const suffix = i === 0 ? '' : resolveTipoAfectacion(g.config) === '20' ? ' (productos exonerados)' : ' (otros productos)';
+    lines.push(lineCalcFromGross(`${concept}${suffix}`, null, 1, shares[i], g.config));
+  });
+  return lines;
+}
+
+// Reintento, corrección o nota de crédito de un comprobante de cuenta por monto: sus
+// líneas guardadas no tienen orderItemId ni desglose, así que se recalculan con el mismo
+// reparto (el pedido ya está pagado y no cambia). En otro caso devuelve las líneas tal cual.
+async function withAmountSplitLines(
+  db: ReturnType<typeof getTenantDb>,
+  doc: { splitId: number | null },
+  lineCalcs: LineCalc[],
+  fallbackRate: number,
+): Promise<LineCalc[]> {
+  if (doc.splitId == null || lineCalcs.length === 0 || lineCalcs.some((l) => l.orderItemId != null)) return lineCalcs;
+  const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, doc.splitId));
+  if (!split || split.splitType !== 'by_amount') return lineCalcs;
+  const rebuilt = await resolveAmountSplitLineCalcs(db, split, fallbackRate);
+  return rebuilt.length ? rebuilt : lineCalcs;
+}
+
 function resolveDocumentTaxSummary(lineCalcs: LineCalc[]) {
   return {
     subtotal: roundMoney(lineCalcs.reduce((sum, line) => sum + line.subtotal, 0)),
@@ -448,9 +585,8 @@ export async function previewDocument(
   if (lineCalcs.length === 0 && splitId != null) {
     const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId));
     if (split && toNum(split.total) > 0) {
-      const totalAmount = toNum(split.total);
-      const concept = split.customConcept || 'Por consumo de alimentos y bebidas';
-      lineCalcs = [calcLine(null, concept, 1, totalAmount, [], 0, null, priceInclTax, taxRate)];
+      // Importe ya cobrado (precio final), repartido con la composición real del pedido
+      lineCalcs = await resolveAmountSplitLineCalcs(db, split, taxRate);
     }
   }
 
@@ -556,9 +692,8 @@ export async function createDocument(input: CreateDocumentInput) {
   if (lineCalcs.length === 0 && input.splitId != null) {
     const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, input.splitId));
     if (split && toNum(split.total) > 0) {
-      const totalAmount = toNum(split.total);
-      const concept = split.customConcept || 'Por consumo de alimentos y bebidas';
-      lineCalcs = [calcLine(null, concept, 1, totalAmount, [], 0, null, priceInclTax, taxRate)];
+      // Importe ya cobrado (precio final), repartido con la composición real del pedido
+      lineCalcs = await resolveAmountSplitLineCalcs(db, split, taxRate);
     }
   }
 
@@ -950,7 +1085,8 @@ export async function retryDocument(id: number) {
 
   // send() en el facturador es idempotente: upsert por xml_filename.
   // Si el comprobante ya existe, lo re-firma y re-envía a SUNAT actualizando el registro.
-  await emitirYActualizarDoc(db, doc, lineCalcs, resolveDocumentTaxRate(lineCalcs, taxRate));
+  const emitLines = await withAmountSplitLines(db, doc, lineCalcs, taxRate);
+  await emitirYActualizarDoc(db, doc, emitLines, resolveDocumentTaxRate(emitLines, taxRate));
 
   const [updated] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return { document: updated, lines };
@@ -1044,7 +1180,8 @@ export async function correctAndRetryDocument(id: number, buyer: BuyerCorrection
     };
   });
 
-  await emitirYActualizarDoc(db, corrected, lineCalcs, resolveDocumentTaxRate(lineCalcs, taxRate));
+  const emitLines = await withAmountSplitLines(db, corrected, lineCalcs, taxRate);
+  await emitirYActualizarDoc(db, corrected, emitLines, resolveDocumentTaxRate(emitLines, taxRate));
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return { document: final, lines };
@@ -1467,6 +1604,16 @@ async function emitAndUpdateCreditNote(
     });
     const ncSources = ncLines.map((l) => l.source);
 
+    // NC total de un comprobante de cuenta por monto: mismas líneas repartidas que el original
+    const splitLines = lines.length > 0 && lines.every((l) => l.orderItemId == null)
+      && roundMoney(toNum(savedNC.total)) === roundMoney(toNum(originalDoc.total))
+      ? await withAmountSplitLines(db, originalDoc, ncSources as unknown as LineCalc[], taxRate)
+      : null;
+    const emitNcLines = splitLines && splitLines !== (ncSources as unknown as LineCalc[])
+      ? splitLines.map((l, i) => ({ codigo: String(l.productId ?? i + 1), source: l }))
+      : ncLines;
+    const emitNcSources = emitNcLines.map((l) => l.source);
+
     const res = await emitirNotaCredito({
       emisor: { ruc, ...(anexo ? { cod_local: anexo } : {}) },
       cliente: {
@@ -1492,8 +1639,8 @@ async function emitAndUpdateCreditNote(
       },
       // Las notas no admiten cac:AllowanceCharge en Greenter: el recargo va solo como
       // otros_cargos (ChargeTotalAmount).
-      totales: buildSunatTotales(ncSources, savedNC),
-      detalles: ncLines.map((l) => buildSunatDetalle(l.source, l.codigo, taxRate)),
+      totales: buildSunatTotales(emitNcSources, savedNC),
+      detalles: emitNcLines.map((l) => buildSunatDetalle(l.source, l.codigo, taxRate)),
       leyenda: montoEnLetras(toNum(savedNC.total), savedNC.currency === 'USD' ? 'DÓLARES AMERICANOS' : 'SOLES'),
     });
 
