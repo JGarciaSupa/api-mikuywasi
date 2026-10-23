@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { masterDb } from '../db';
 import { identityDocumentTypes, receiptTypes } from '../db/master/schema';
+import { and, eq, isNull } from 'drizzle-orm';
 
 const identityDocsData = [
   {
@@ -50,6 +51,24 @@ const receiptDocsData = [
     description: 'Boleta de Venta Electrónica',
     isActive: true,
   },
+  {
+    countryId: 179,
+    code: '07',
+    name: 'Nota de Crédito',
+    description: 'Nota de Crédito Electrónica',
+    isActive: true,
+  },
+];
+
+// Comprobantes globales (sin país): documentos internos que no se envían a SUNAT.
+// '00' es el código canónico de la nota de venta interna (receiptCodeFromDocumentType).
+const globalReceiptDocsData = [
+  {
+    code: '00',
+    name: 'Cuenta interna',
+    description: 'Nota de venta o cuenta interna (no se envía a SUNAT)',
+    isActive: true,
+  },
 ];
 
 async function seedDocuments() {
@@ -85,6 +104,20 @@ async function seedDocuments() {
             isActive: receipt.isActive,
           },
         });
+    }
+    // countryId NULL no dispara el ON CONFLICT (NULL no se compara como igual): se busca antes.
+    for (const receipt of globalReceiptDocsData) {
+      const [existing] = await masterDb
+        .select({ id: receiptTypes.id })
+        .from(receiptTypes)
+        .where(and(isNull(receiptTypes.countryId), eq(receiptTypes.code, receipt.code)));
+      if (existing) {
+        await masterDb.update(receiptTypes)
+          .set({ name: receipt.name, description: receipt.description, isActive: receipt.isActive, isGlobal: true })
+          .where(eq(receiptTypes.id, existing.id));
+      } else {
+        await masterDb.insert(receiptTypes).values({ ...receipt, countryId: null, isGlobal: true });
+      }
     }
     console.log('✅ Tipos de comprobantes insertados.');
   } catch (error) {

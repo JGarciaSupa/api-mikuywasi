@@ -1,6 +1,7 @@
 import { branches, userBranches, salesChannels } from '@/db/tenant/schema';
 import { eq, sql, and, or, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
+import { ensureDefaultReasons } from '@/core/tenant/services/shared/tenant-defaults.service';
 
 type BranchTaxConfig = {
   key: string;
@@ -11,12 +12,12 @@ type BranchTaxConfig = {
 };
 
 const DEFAULT_BRANCH_TAXES: BranchTaxConfig[] = [
-  { key: 'impuesto_1', label: 'Aplica Impuesto 1', rate: 18, defaultActive: true, isActive: true },
-  { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false },
-  { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false },
+  { key: 'impuesto_1', label: 'IGV', rate: 18, defaultActive: true, isActive: true },
+  { key: 'impuesto_2', label: 'Impuesto adicional 2', rate: 0, defaultActive: false, isActive: false },
+  { key: 'impuesto_3', label: 'Impuesto adicional 3', rate: 0, defaultActive: false, isActive: false },
   { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false },
   // Debe coincidir con DEFAULT_BRANCH_TAXES de shared/taxes.service: lo que no esté aquí se descarta al guardar
-  { key: 'recargo_consumo', label: 'Recargo al consumo', rate: 10, defaultActive: false, isActive: false },
+  { key: 'recargo_consumo', label: 'Recargo al consumo (RC)', rate: 10, defaultActive: false, isActive: false },
 ];
 
 // ────────────────────────────────────────────
@@ -185,6 +186,9 @@ export async function createBranch(data: CreateBranchInput) {
       deliveryZone: data.deliveryZone ?? null,
       allowSellWithoutStock: data.allowSellWithoutStock ?? false,
     }).returning();
+
+    // Motivos estándar de eliminación y anulación para que la sucursal opere desde el inicio
+    await ensureDefaultReasons(tx, newBranch.id);
 
     return newBranch;
   });

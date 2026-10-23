@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import * as tenantSchema from '../../../db/tenant/schema';
 import * as path from 'path';
+import { ensureDefaultPaymentMethods, ensureDefaultReasons } from '../../tenant/services/shared/tenant-defaults.service';
 
 // Helper to create tenant database
 async function createTenantDatabase(server: any, dbName: string) {
@@ -141,6 +142,11 @@ async function seedTenantData(server: any, dbName: string, tenantName: string, t
       }
     }
     console.log(`[Seed] Unidades de medida por defecto creadas en "${dbName}".`);
+
+    // 6. Método de pago Efectivo y motivos estándar de eliminación y anulación
+    await ensureDefaultPaymentMethods(tempDb);
+    await ensureDefaultReasons(tempDb, branch.id);
+    console.log(`[Seed] Método de pago y motivos estándar creados en "${dbName}".`);
 
     console.log(`[Seed] Datos iniciales insertados en "${dbName}".`);
   } catch (error) {

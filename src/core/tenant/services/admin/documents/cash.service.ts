@@ -4,6 +4,7 @@ import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 import { createExchangeRate } from '../config-local/exchange-rate.service';
+import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,8 @@ export async function createCashRegister(data: {
       isActive: true,
     })
     .returning();
+  // Series estándar (boleta, factura y cuenta interna) para poder cobrar sin configurar nada antes
+  await ensureDefaultRegisterSeries(db, reg.id);
   return reg;
 }
 

@@ -24,13 +24,13 @@ export type TaxConfig = {
 export type TaxSnapshotEntry = TaxConfig & { amount: number };
 
 export const DEFAULT_BRANCH_TAXES: TaxConfig[] = [
-  { key: 'impuesto_1', label: 'Aplica Impuesto 1', rate: 18, defaultActive: true, isActive: true, calculationType: 'percentage' },
-  { key: 'impuesto_2', label: 'Aplica Impuesto 2', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
-  { key: 'impuesto_3', label: 'Aplica Impuesto 3', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
+  { key: 'impuesto_1', label: 'IGV', rate: 18, defaultActive: true, isActive: true, calculationType: 'percentage' },
+  { key: 'impuesto_2', label: 'Impuesto adicional 2', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
+  { key: 'impuesto_3', label: 'Impuesto adicional 3', rate: 0, defaultActive: false, isActive: false, calculationType: 'percentage' },
   { key: 'icbper', label: 'Aplica ICBPER', rate: 0.5, defaultActive: false, isActive: false, calculationType: 'fixed' },
   // Recargo al consumo: incluido en el precio y desglosado "hacia abajo" junto al IGV,
   // pero NO es un impuesto. En SUNAT va como cargo global (catálogo 53, código 46).
-  { key: 'recargo_consumo', label: 'Recargo al consumo', rate: 10, defaultActive: false, isActive: false, calculationType: 'percentage' },
+  { key: 'recargo_consumo', label: 'Recargo al consumo (RC)', rate: 10, defaultActive: false, isActive: false, calculationType: 'percentage' },
 ];
 
 export const SERVICE_CHARGE_TAX_KEY = 'recargo_consumo';
