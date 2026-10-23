@@ -117,7 +117,7 @@ c.json({ success: false, message: safeMessage(error, 'Error al …') }, 400 | 40
 - `any` en services, `console.log` de depuración, `R2` con URL pública fija.
 - **Series de nota de crédito (verificado 2026-10-23)**: `ensureCreditNoteSeries` usa BC01 (boletas) y FC01 (facturas) por caja, pero el índice único `cash_reg_doc_series_register_receipt_type_idx` (caja + tipo 07) solo admite una serie 07 por caja: tras anular una boleta, anular una factura en la misma caja da 500.
 - **Recargo al consumo e informes**: `billing_documents.tax_amount` guarda todo lo desglosado (IGV + ICBPER + recargo); la tarjeta "IGV total" de reportes lo suma tal cual. El IGV real está en el desglose (`taxBreakdown`).
-- **División por partes iguales**: crea una línea única "Por consumo…" sin `tax_snapshot` (cálculo con la tasa de la serie); con recargo activo, el recargo no se separa en esos comprobantes.
+- **Cuentas por monto (partes iguales / montos libres)**: resuelto 2026-10-23 con `resolveAmountSplitLineCalcs`: el importe cobrado se reparte con la composición real del pedido (grupos por impuestos, bolsas enteras a la primera cuenta que las cubre, siempre precio final). Antes la factura sumaba el IGV encima de lo cobrado. Reintento, corrección y NC recalculan con la misma función.
 - **`tax_snapshot`**: `NULL` = línea antigua (se recalcula con la tasa del documento); `[]` = producto sin impuestos = exonerado (afectación 20). No los confundas.
 
 ---
