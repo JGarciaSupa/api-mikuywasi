@@ -399,7 +399,7 @@ async function resolveAmountSplitLineCalcs(
   if (amount <= 0) return [];
 
   const [order] = await db.select().from(orders).where(eq(orders.id, split.orderId));
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, split.orderId));
+  const items = await db.select().from(orderItems).where(and(eq(orderItems.orderId, split.orderId), isNull(orderItems.deletedAt)));
 
   // Grupos por combinación de impuestos activos; las bolsas aparte, por producto
   const groups = new Map<string, { gross: number; config: TaxConfig[] }>();
@@ -497,34 +497,68 @@ interface EmisorSnapshot {
 }
 
 async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: number): Promise<EmisorSnapshot> {
-  const [brand] = await db.select({ logo: brands.logo }).from(brands).limit(1);
+  const [brand] = await db.select({ logo: brands.logo, name: brands.name }).from(brands).limit(1);
 
+  // 1. Intentar resolver desde el facturador si la sucursal tiene facturador configurado
   try {
     const { empresaId } = await resolveFacturadorConfig(db, branchId);
     const empresa = await obtenerEmpresa(empresaId);
-    return {
-      ruc: empresa.ruc,
-      name: empresa.legalName,
-      address: empresa.address ?? '',
-      logoUrl: brand?.logo ?? null,
-    };
+    if (empresa?.ruc) {
+      let addr = empresa.address ?? '';
+      if (!addr) {
+        const [branchRow] = await db
+          .select({ address: branches.address })
+          .from(branches)
+          .where(eq(branches.id, branchId));
+        addr = branchRow?.address?.fullAddress ?? '';
+      }
+      return {
+        ruc: empresa.ruc,
+        name: empresa.legalName,
+        address: addr,
+        logoUrl: brand?.logo ?? null,
+      };
+    }
   } catch {
-    return { ruc: '', name: '', address: '', logoUrl: brand?.logo ?? null };
+    // Si la sucursal no tiene facturador configurado (ej. notas de venta) o el servicio falla,
+    // se usan los datos fiscales propios de la sucursal/marca como fallback.
   }
+
+  // 2. Fallback: datos fiscales guardados en la propia sucursal (fiscalId, fiscalName, address)
+  const [branch] = await db
+    .select({
+      fiscalId: branches.fiscalId,
+      fiscalName: branches.fiscalName,
+      name: branches.name,
+      address: branches.address,
+    })
+    .from(branches)
+    .where(eq(branches.id, branchId));
+
+  const branchAddress = branch?.address?.fullAddress || '';
+  const branchName = branch?.fiscalName || branch?.name || brand?.name || '';
+  const branchRuc = branch?.fiscalId || '';
+
+  return {
+    ruc: branchRuc,
+    name: branchName,
+    address: branchAddress,
+    logoUrl: brand?.logo ?? null,
+  };
 }
 
 // Emisor de un documento ya emitido: usa el snapshot guardado en billing_documents.
 // Si aún no lo tiene, lo resuelve en vivo y lo congela (best-effort: si falla el
-// guardado, el PDF se genera igual). Solo se congela con RUC válido, para no fijar
-// un emisor vacío cuando el facturador está caído.
+// guardado, el PDF se genera igual).
 async function resolveDocumentEmisor(
   db: ReturnType<typeof getTenantDb>,
   doc: typeof billingDocuments.$inferSelect,
 ): Promise<EmisorSnapshot> {
-  if (doc.emisorRuc) {
-    const [brand] = await db.select({ logo: brands.logo }).from(brands).limit(1);
+  const [brand] = await db.select({ logo: brands.logo }).from(brands).limit(1);
+
+  if ((doc.emisorRuc && doc.emisorRuc.trim() !== '') || (doc.emisorName && doc.emisorName.trim() !== '')) {
     return {
-      ruc: doc.emisorRuc,
+      ruc: doc.emisorRuc ?? '',
       name: doc.emisorName ?? '',
       address: doc.emisorAddress ?? '',
       logoUrl: brand?.logo ?? null,
@@ -532,11 +566,15 @@ async function resolveDocumentEmisor(
   }
 
   const emisor = await resolveEmisor(db, doc.branchId);
-  if (emisor.ruc) {
+  if (emisor.ruc || emisor.name) {
     try {
       await db
         .update(billingDocuments)
-        .set({ emisorRuc: emisor.ruc, emisorName: emisor.name, emisorAddress: emisor.address })
+        .set({
+          emisorRuc: emisor.ruc || null,
+          emisorName: emisor.name || null,
+          emisorAddress: emisor.address || null,
+        })
         .where(and(eq(billingDocuments.id, doc.id), isNull(billingDocuments.emisorRuc)));
     } catch {
       // No bloquear el PDF si el snapshot no se pudo guardar
@@ -580,8 +618,8 @@ export async function previewDocument(
   if (!series || !series.isActive) throw new Error('Serie no encontrada o inactiva');
 
   const ois = splitId != null
-    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), eq(orderItems.splitId, splitId)))
-    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.splitId)));
+    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), eq(orderItems.splitId, splitId), isNull(orderItems.deletedAt)))
+    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.splitId), isNull(orderItems.deletedAt)));
 
   const docType = series.receiptTypeCode ? documentTypeFromReceiptCode(series.receiptTypeCode) : 'nota_de_venta';
   const priceInclTax = docType === 'boleta' || docType === 'nota_de_venta';
@@ -700,10 +738,10 @@ export async function createDocument(input: CreateDocumentInput) {
   const buyerDocNumber = isConsumidorFinal ? '00000000' : (input.buyerDocNumber ?? null);
   const buyerName = isConsumidorFinal ? 'CLIENTE FINAL' : (input.buyerName ?? null);
 
-  // Calcular líneas antes de la transacción — filtrar por split si aplica
+  // Calcular líneas antes de la transacción — filtrar por split si aplica (excluyendo anulados)
   const ois = input.splitId != null
-    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), eq(orderItems.splitId, input.splitId)))
-    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), isNull(orderItems.splitId)));
+    ? await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), eq(orderItems.splitId, input.splitId), isNull(orderItems.deletedAt)))
+    : await db.select().from(orderItems).where(and(eq(orderItems.orderId, input.orderId), isNull(orderItems.splitId), isNull(orderItems.deletedAt)));
 
   const priceInclTax = resolvedSeries.priceInclTax;
   const taxRate = toNum(resolvedSeries.taxRate);
@@ -717,8 +755,13 @@ export async function createDocument(input: CreateDocumentInput) {
     }
   }
 
+  if (lineCalcs.length === 0) {
+    throw new Error('El pedido no tiene productos válidos para emitir un comprobante (o todos fueron anulados)');
+  }
+
   const summary = resolveDocumentTaxSummary(lineCalcs);
   const documentTaxRate = resolveDocumentTaxRate(lineCalcs, taxRate);
+  const emisor = await resolveEmisor(db, order.branchId);
 
   // Transacción: reservar correlativo + insertar documento + líneas
   const { docId, isActiveFacturacion } = await db.transaction(async (tx) => {
@@ -760,6 +803,9 @@ export async function createDocument(input: CreateDocumentInput) {
         buyerName,
         buyerAddress: input.buyerAddress ?? null,
         buyerEmail: input.buyerEmail ?? null,
+        emisorRuc: emisor.ruc || null,
+        emisorName: emisor.name || null,
+        emisorAddress: emisor.address || null,
         subtotal: String(summary.subtotal),
         taxRate: String(documentTaxRate),
         taxAmount: String(summary.totalTaxAmount),
