@@ -54,10 +54,13 @@ export async function getPlanLimit(key: PlanLimitKey): Promise<number | null> {
   }
 }
 
+/** Error de negocio: se alcanzó un límite del plan (los controllers responden 400). */
+export class PlanLimitError extends Error {}
+
 /** Lanza un error legible si crear `adding` elementos más supera el límite del plan. */
 export async function assertPlanLimit(key: PlanLimitKey, currentCount: number, adding = 1) {
   const limit = await getPlanLimit(key);
   if (limit === null || currentCount + adding <= limit) return;
   const unit = SUPPORTED_PLAN_LIMITS.find((l) => l.key === key)?.unit ?? 'elementos';
-  throw new Error(`Tu plan permite un máximo de ${limit} ${unit}. Contacta con soporte para ampliarlo`);
+  throw new PlanLimitError(`Tu plan permite un máximo de ${limit} ${unit}. Contacta con soporte para ampliarlo`);
 }

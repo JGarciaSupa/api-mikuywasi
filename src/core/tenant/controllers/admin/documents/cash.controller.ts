@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import * as cash from '../../../services/admin/documents/cash.service';
 import { getAuditActor, jsonError } from '@/utils/helpers';
 import { hasPermission, getCurrentUserId } from '@/utils/permissions';
+import { PlanLimitError } from '../../../services/shared/plan-limits.service';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
@@ -51,6 +52,7 @@ export const createCashRegister = async (c: Context) => {
     });
     return c.json({ success: true, message: 'Caja creada', data }, 201);
   } catch (e) {
+    if (e instanceof PlanLimitError) return c.json({ success: false, message: e.message }, 400);
     return jsonError(c, e, 'Error al crear caja');
   }
 };
