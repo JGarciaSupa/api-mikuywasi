@@ -6,7 +6,7 @@ import {
   users,
   billingDocuments,
 } from '../../../../../db/tenant/schema';
-import { eq, and, ne, desc, sql, count, gte, lte } from 'drizzle-orm';
+import { eq, and, ne, desc, sql, count, gte, lte, isNull } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 const toNum = (value: unknown) => {
@@ -110,7 +110,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
     .innerJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
-    .where(waiterWhere)
+    .where(and(waiterWhere, isNull(orderItems.deletedAt)))
     .groupBy(orderItems.productName)
     .orderBy(desc(revenueExpr))
     .limit(10);

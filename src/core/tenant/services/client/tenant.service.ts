@@ -935,7 +935,7 @@ export const getOrderByTrackingCode = async (trackingCode: string) => {
   const items = await db
     .select()
     .from(orderItems)
-    .where(eq(orderItems.orderId, order.id));
+    .where(and(eq(orderItems.orderId, order.id), isNull(orderItems.deletedAt)));
 
   return { ...order, items };
 };

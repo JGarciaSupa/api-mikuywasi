@@ -401,7 +401,7 @@ export const getOrdersReportExport = async (filters: OrderReportFilters) => {
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(whereClause)
+    .where(and(whereClause, isNull(orderItems.deletedAt)))
     .orderBy(asc(orders.createdAt))
     .limit(EXPORT_MAX_ROWS);
 

@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and, isNull } from 'drizzle-orm';
 import { orderItems, products } from '../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../utils/tenant-context';
 
@@ -38,7 +38,7 @@ export async function restoreProductStockForOrder(db: ReturnType<typeof getTenan
   const rows = await db
     .select({ productId: orderItems.productId, quantity: orderItems.quantity })
     .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
+    .where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
 
   const qtyByProduct = new Map<number, number>();
   for (const row of rows) {
