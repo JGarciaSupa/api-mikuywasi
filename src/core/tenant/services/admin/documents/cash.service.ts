@@ -519,7 +519,7 @@ export async function addCashMovement(
 // No lanza error: si el turno no existe/está cerrado, devuelve created=false (el pago no se bloquea).
 export async function recordOrderSaleIncome(
   orderId: string,
-  data: { amount: number; paymentMethod?: string | null },
+  data: { amount: number; paymentMethod?: string | null; tipAmount?: number },
   actor?: AuditActor,
 ): Promise<{ created: boolean; reason?: string }> {
   const db = getTenantDb();
@@ -550,13 +550,18 @@ export async function recordOrderSaleIncome(
   const isCash = await resolveIsCashByMethod(order.paymentMethodId, data.paymentMethod);
 
   await db.transaction(async (tx) => {
+    const tipNum = toNum(data.tipAmount);
+    const totalCharged = round2(data.amount + tipNum);
+    const tipNote = tipNum > 0 ? ` (propina S/ ${round2(tipNum)})` : '';
+
     const [movement] = await tx
       .insert(cashMovements)
       .values({
         sessionId: session.id,
         movementType: 'income',
-        concept: `Venta pedido ${order.trackingCode ?? orderId}`,
-        amount: round2(data.amount),
+        concept: `Venta pedido ${order.trackingCode ?? orderId}${tipNote}`,
+        amount: totalCharged,
+        tipAmount: round2(tipNum),
         paymentMethod: data.paymentMethod ?? null,
         retentionPercentage: order.retentionPercentage ?? '0.00',
         retentionAmount: order.retentionAmount ?? '0.00',
@@ -577,7 +582,7 @@ export async function recordOrderSaleIncome(
       userId: actor?.userId,
       userName: actor?.userName,
       module: 'caja',
-      description: `Ingreso por venta ${orderId} (${data.paymentMethod ?? 'efectivo'}) — S/ ${round2(data.amount)}${retentionNote}`,
+      description: `Ingreso por venta ${orderId} (${data.paymentMethod ?? 'efectivo'}) — S/ ${totalCharged}${tipNote}${retentionNote}`,
     });
   });
 
@@ -589,7 +594,7 @@ export async function recordOrderSaleIncome(
 // si el pedido ya tiene un ingreso a nivel pedido, no registra nada.
 export async function recordOrderMultiPaymentIncome(
   orderId: string,
-  lines: Array<{ amount: number; paymentMethod: string; isCash: boolean; retentionPercentage: string; retentionAmount: string }>,
+  lines: Array<{ amount: number; tipAmount?: number; paymentMethod: string; isCash: boolean; retentionPercentage: string; retentionAmount: string }>,
   actor?: AuditActor,
 ): Promise<{ created: boolean; reason?: string }> {
   const db = getTenantDb();
@@ -750,13 +755,18 @@ export async function recordSplitSaleIncome(
     if (splitPayments.length > 0) {
       for (const sp of splitPayments) {
         const itemAmount = toNum(sp.amount);
+        const itemTip = toNum(sp.tipAmount);
+        const totalCharged = round2(itemAmount + itemTip);
+        const tipNote = itemTip > 0 ? ` (propina S/ ${itemTip.toFixed(2)})` : '';
+
         const [movement] = await tx
           .insert(cashMovements)
           .values({
             sessionId: session.id,
             movementType: 'income',
-            concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})`,
-            amount: round2(itemAmount),
+            concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})${tipNote}`,
+            amount: totalCharged,
+            tipAmount: itemTip.toFixed(2),
             paymentMethod: sp.paymentMethod,
             retentionPercentage: sp.retentionPercentage ?? '0.00',
             retentionAmount: sp.retentionAmount ?? '0.00',
@@ -776,19 +786,23 @@ export async function recordSplitSaleIncome(
           userId: actor?.userId,
           userName: actor?.userName,
           module: 'caja',
-          description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${sp.paymentMethod}) — S/ ${round2(itemAmount)}${retentionNote}`,
+          description: `Ingreso por venta ${split.orderId} (cuenta ${split.label ?? splitId}, ${sp.paymentMethod}) — S/ ${totalCharged}${tipNote}${retentionNote}`,
         });
       }
     } else {
       const amount = toNum(split.total);
+      const tip = toNum(split.tipAmount);
+      const totalCharged = round2(amount + tip);
+      const tipNote = tip > 0 ? ` (propina S/ ${tip.toFixed(2)})` : '';
       const isCash = await resolveIsCashByMethod(split.paymentMethodId, split.paymentMethod);
       const [movement] = await tx
         .insert(cashMovements)
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}`,
-          amount: round2(amount),
+          concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}${tipNote}`,
+          amount: totalCharged,
+          tipAmount: tip.toFixed(2),
           paymentMethod: split.paymentMethod ?? null,
           retentionPercentage: split.retentionPercentage ?? '0.00',
           retentionAmount: split.retentionAmount ?? '0.00',

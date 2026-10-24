@@ -638,6 +638,13 @@
       "when": 1792850000000,
       "tag": "0090_add_extra_group_category_links",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1792860000000,
+      "tag": "0091_add_tip_amount",
+      "breakpoints": true
     }
   ]
 }

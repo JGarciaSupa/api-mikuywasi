@@ -488,6 +488,7 @@ export const orders = pgTable('orders', {
 	deliveryFee: decimal('delivery_fee', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
+	tipAmount: decimal('tip_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	total: decimal('total', { precision: 10, scale: 2 }).notNull(),
 
 	status: text('status', {
@@ -570,6 +571,7 @@ export const orderSplits = pgTable('order_splits', {
 	subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull().default('0.00'),
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
+	tipAmount: decimal('tip_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
 	total: decimal('total', { precision: 10, scale: 2 }).notNull().default('0.00'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

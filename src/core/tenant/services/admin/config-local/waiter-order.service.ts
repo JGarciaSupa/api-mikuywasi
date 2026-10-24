@@ -23,6 +23,7 @@ import { applyStockExit, applyStockEntry } from './../warehouse/shared/stock-mov
 import { reverseDischargeForOrder } from './../warehouse/sales-discharge.service';
 import { reverseOrderSaleMovement, getActiveSessionForUser } from './../documents/cash.service';
 import { resolveForRegister } from './activation.service';
+import { recalcSplitTotals } from './../documents/order-splits.service';
 import { authorizeByPassword } from './../documents/security-auth.service';
 import type { AuditActor } from './../warehouse/types';
 import { clearOrderDiscount } from './../documents/order-discount-clear';
@@ -696,5 +697,8 @@ export async function annulOrderItem(
   });
 
   await recalcOrderTotals(db, orderId);
+  if (oi.splitId) {
+    await recalcSplitTotals(db, oi.splitId);
+  }
   return { annulled: orderItemId, quantity: annulQty, partial: isPartial };
 }

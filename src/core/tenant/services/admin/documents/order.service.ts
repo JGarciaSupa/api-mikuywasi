@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted, orderPayments, paymentMethods } from '../../../../../db/tenant/schema';
 
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -7,7 +7,7 @@ import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-conte
 const waiters = alias(users, 'waiters');
 const deletedByUsers = alias(users, 'deleted_by_users');
 const authorizedByUsers = alias(users, 'authorized_by_users');
-import { recordOrderSaleIncome, getActiveSessionForUser } from './cash.service';
+import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
 import { restoreProductStockForOrder } from '../../shared/product-stock.service';
@@ -470,6 +470,19 @@ export const updateOrderPaymentStatus = async (
   retentionPercentage?: number,
   paymentMethodId?: number | null,
   actor?: AuditActor,
+  tipAmount?: number,
+  payments?: Array<{
+    paymentMethodId?: number | null;
+    paymentMethod: string;
+    amount: number;
+    tipAmount?: number;
+    isCash?: boolean;
+    retentionPercentage?: number;
+    retentionAmount?: number;
+    reference?: string;
+    receivedAmount?: number;
+    changeAmount?: number;
+  }>,
 ) => {
   const db = getTenantDb();
   const [order] = await db.select().from(orders).where(and(eq(orders.id, id)));
@@ -523,6 +536,11 @@ export const updateOrderPaymentStatus = async (
     order.status !== 'cancelled' &&
     order.status !== 'completed';
 
+  const sumPaymentsTip = payments?.reduce((acc, p) => acc + (toNum(p.tipAmount) || 0), 0) ?? 0;
+  const nextTipAmount = paymentStatus === 'paid'
+    ? roundMoney(tipAmount !== undefined ? tipAmount : (sumPaymentsTip > 0 ? sumPaymentsTip : toNum(order.tipAmount)))
+    : 0;
+
   const [updated] = await db
     .update(orders)
     .set({
@@ -534,20 +552,64 @@ export const updateOrderPaymentStatus = async (
       ...(collectedSessionId !== undefined ? { collectedSessionId } : {}),
       retentionPercentage: nextRetentionPercentage.toFixed(2),
       retentionAmount: retentionAmount.toFixed(2),
+      tipAmount: nextTipAmount.toFixed(2),
       total: total.toFixed(2),
       updatedAt: new Date()
     })
     .where(and(eq(orders.id, id)))
     .returning();
 
+  // Si se enviaron payments detallados, registrarlos en order_payments
+  if (!wasPaid && paymentStatus === 'paid' && payments && payments.length > 0) {
+    try {
+      await db.delete(orderPayments).where(and(eq(orderPayments.orderId, id), isNull(orderPayments.splitId)));
+      for (const p of payments) {
+        const [m] = p.paymentMethodId ? await db.select({ isCash: paymentMethods.isCash }).from(paymentMethods).where(eq(paymentMethods.id, p.paymentMethodId)) : [];
+        const isCash = m?.isCash ?? (p.paymentMethod.toLowerCase().includes('efectivo') || p.paymentMethod.toLowerCase().includes('cash'));
+        await db.insert(orderPayments).values({
+          orderId: id,
+          splitId: null,
+          paymentMethodId: p.paymentMethodId ?? null,
+          paymentMethod: p.paymentMethod,
+          amount: roundMoney(toNum(p.amount)).toFixed(2),
+          tipAmount: roundMoney(toNum(p.tipAmount)).toFixed(2),
+          isCash,
+          retentionPercentage: roundMoney(toNum(p.retentionPercentage)).toFixed(2),
+          retentionAmount: roundMoney(toNum(p.retentionAmount)).toFixed(2),
+          createdById: actor?.userId ?? null,
+        });
+      }
+    } catch (err) {
+      console.error('Error insertando pagos en order_payments:', err);
+    }
+  }
+
   // Al pasar a PAGADO registrar el ingreso en el turno del cajero (collectedSessionId).
   if (!wasPaid && paymentStatus === 'paid') {
     try {
-      await recordOrderSaleIncome(
-        id,
-        { amount: total, paymentMethod: paymentMethod ?? order.paymentMethod ?? null },
-        actor,
-      );
+      if (payments && payments.length > 1) {
+        await recordOrderMultiPaymentIncome(
+          id,
+          payments.map((p) => {
+            const retPct = roundMoney(toNum(p.retentionPercentage));
+            return {
+              amount: toNum(p.amount),
+              tipAmount: toNum(p.tipAmount),
+              paymentMethod: p.paymentMethod,
+              isCash: p.isCash ?? (p.paymentMethod.toLowerCase().includes('efectivo') || p.paymentMethod.toLowerCase().includes('cash')),
+              retentionPercentage: retPct.toFixed(2),
+              retentionAmount: roundMoney((toNum(p.amount) * retPct) / 100).toFixed(2),
+            };
+          }),
+          actor,
+        );
+      } else {
+        await recordOrderSaleIncome(
+          id,
+          { amount: total, paymentMethod: paymentMethod ?? order.paymentMethod ?? null, tipAmount: nextTipAmount },
+          actor,
+        );
+      }
     } catch (e) {
       console.error('No se pudo registrar el ingreso de caja para el pedido', id, e);
     }

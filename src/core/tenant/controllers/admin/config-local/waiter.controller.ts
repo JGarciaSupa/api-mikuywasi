@@ -272,7 +272,7 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
     if (!orderId) {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
-    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage, tipAmount, payments } = await c.req.json();
     if (!paymentStatus) {
       return c.json({ success: false, message: 'El campo paymentStatus es requerido' }, 400);
     }
@@ -283,6 +283,8 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
       retentionPercentage,
       paymentMethodId ?? null,
       getAuditActor(c),
+      tipAmount !== undefined ? Number(tipAmount) : undefined,
+      payments,
     );
     if (!updated) {
       return c.json({ success: false, message: 'Pedido no encontrado' }, 404);

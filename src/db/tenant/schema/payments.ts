@@ -14,6 +14,7 @@ export const orderPayments = pgTable('order_payments', {
 	paymentMethodId: integer('payment_method_id').references(() => paymentMethods.id),
 	paymentMethod: varchar('payment_method', { length: 100 }).notNull(), // snapshot del nombre
 	amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+	tipAmount: decimal('tip_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
 	isCash: boolean('is_cash').default(false).notNull(),
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),

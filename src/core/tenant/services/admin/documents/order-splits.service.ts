@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql, isNull } from 'drizzle-orm';
 import { orders, orderItems, orderSplits, tables, orderPayments, paymentMethods } from '../../../../../db/tenant/schema';
 
 import { getTenantDb } from '../../../../../utils/tenant-context';
@@ -27,10 +27,12 @@ export interface UpdateSplitPaymentInput {
   paymentMethod?: string;
   paymentMethodId?: number | null;
   retentionPercentage?: number;
+  tipAmount?: number;
   payments?: Array<{
     paymentMethodId?: number | null;
     paymentMethod: string;
     amount: number;
+    tipAmount?: number;
     retentionPercentage?: number;
     retentionAmount?: number;
     reference?: string;
@@ -41,7 +43,7 @@ export interface UpdateSplitPaymentInput {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: number) {
+export async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: number) {
   const [split] = await db
     .select()
     .from(orderSplits)
@@ -66,7 +68,7 @@ async function recalcSplitTotals(db: ReturnType<typeof getTenantDb>, splitId: nu
   const items = await db
     .select({ totalPrice: orderItems.totalPrice })
     .from(orderItems)
-    .where(eq(orderItems.splitId, splitId));
+    .where(and(eq(orderItems.splitId, splitId), isNull(orderItems.deletedAt)));
 
   const total = items.reduce((s, i) => s + parseFloat(i.totalPrice), 0);
   const retentionPercentage = Number(split.retentionPercentage ?? 0);
@@ -239,7 +241,7 @@ export async function listSplits(orderId: string) {
   const allItems = await db
     .select()
     .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
+    .where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
 
   return splits.map((split) => ({
     ...split,
@@ -284,7 +286,7 @@ export async function assignItems(orderId: string, input: AssignItemsInput) {
   const items = await db
     .select({ id: orderItems.id, splitId: orderItems.splitId })
     .from(orderItems)
-    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.id, input.itemIds)));
+    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.id, input.itemIds), isNull(orderItems.deletedAt)));
 
   if (items.length !== input.itemIds.length) {
     throw new Error('Uno o más ítems no pertenecen a este pedido');
@@ -335,6 +337,7 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
     .select({
       paymentStatus: orderSplits.paymentStatus,
       retentionAmount: orderSplits.retentionAmount,
+      tipAmount: orderSplits.tipAmount,
       paymentMethod: orderSplits.paymentMethod,
     })
     .from(orderSplits)
@@ -382,6 +385,7 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
 
   const baseAmount = Number(order?.subtotal ?? 0) + Number(order?.deliveryFee ?? 0);
   const retentionAmount = splits.reduce((sum, split) => sum + Number(split.retentionAmount ?? 0), 0);
+  const totalTip = splits.reduce((sum, split) => sum + Number(split.tipAmount ?? 0), 0);
   // La retención acumulada de las cuentas queda informativa en `retentionAmount`;
   // el total del pedido nunca la incluye (el cliente no la paga).
   const total = baseAmount;
@@ -401,6 +405,7 @@ async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderI
       paymentStatus: newStatus,
       ...(shouldComplete ? { status: 'completed' as const } : {}),
       retentionAmount: retentionAmount.toFixed(2),
+      tipAmount: totalTip.toFixed(2),
       total: total.toFixed(2),
       updatedAt: new Date(),
     })
@@ -444,6 +449,10 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
     input.paymentMethod !== undefined ? (await findPaymentMethodByName(input.paymentMethod))?.id ?? null : null
   );
 
+  const splitTip = input.paymentStatus === 'paid'
+    ? Number(input.tipAmount ?? input.payments?.reduce((s, p) => s + (p.tipAmount || 0), 0) ?? split.tipAmount ?? 0)
+    : 0;
+
   const [updated] = await db
     .update(orderSplits)
     .set({
@@ -453,6 +462,7 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
         : {}),
       retentionPercentage: retentionPercentage.toFixed(2),
       retentionAmount: retentionAmount.toFixed(2),
+      tipAmount: splitTip.toFixed(2),
       // La retención no se le cobra al cliente: total = lo que efectivamente paga.
       total: baseAmount.toFixed(2),
       updatedAt: new Date(),
@@ -472,6 +482,7 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
         paymentMethodId: p.paymentMethodId ?? null,
         paymentMethod: p.paymentMethod,
         amount: Number(p.amount).toFixed(2),
+        tipAmount: Number(p.tipAmount ?? 0).toFixed(2),
         isCash,
         retentionPercentage: Number(p.retentionPercentage ?? 0).toFixed(2),
         retentionAmount: Number(p.retentionAmount ?? 0).toFixed(2),
@@ -548,7 +559,7 @@ export async function splitItemQuantity(
   const [item] = await db
     .select()
     .from(orderItems)
-    .where(and(eq(orderItems.id, itemId), eq(orderItems.orderId, orderId)));
+    .where(and(eq(orderItems.id, itemId), eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
 
   if (!item) throw new Error('Ítem no encontrado en el pedido');
   if (!Number.isInteger(qty) || qty <= 0) throw new Error('La cantidad debe ser un entero mayor a 0');

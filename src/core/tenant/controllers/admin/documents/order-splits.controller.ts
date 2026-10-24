@@ -120,7 +120,7 @@ export const updateSplitPaymentController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
     const splitId = Number(c.req.param('splitId'));
-    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage, payments } = await c.req.json();
+    const { paymentStatus, paymentMethod, paymentMethodId, retentionPercentage, tipAmount, payments } = await c.req.json();
 
     if (!['unpaid', 'paid', 'review_pending'].includes(paymentStatus)) {
       return c.json({ success: false, message: 'Estado de pago inválido' }, 400);
@@ -131,6 +131,7 @@ export const updateSplitPaymentController = async (c: Context) => {
       paymentMethod,
       paymentMethodId: paymentMethodId ?? null,
       retentionPercentage,
+      tipAmount: tipAmount !== undefined ? Number(tipAmount) : undefined,
       payments,
     }, getAuditActor(c));
     return c.json({ success: true, data: split });

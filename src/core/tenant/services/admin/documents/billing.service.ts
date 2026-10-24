@@ -1401,7 +1401,7 @@ export async function getDocumentReceipt(id: number, userId?: number) {
 
     if (split) {
       const mixed = await db
-        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount })
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount })
         .from(orderPayments)
         .where(eq(orderPayments.splitId, doc.splitId))
         .orderBy(orderPayments.id);
@@ -1429,7 +1429,7 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     if (order) {
       // Pago mixto: la forma de pago se muestra desglosada ("Efectivo S/ 50.00 + Yape S/ 30.00")
       const mixed = await db
-        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount })
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount })
         .from(orderPayments)
         .where(eq(orderPayments.orderId, doc.orderId))
         .orderBy(orderPayments.id);

@@ -658,6 +658,7 @@ export const cashMovements = pgTable('cash_movements', {
 	// ese cobro — informativo para reportes, no se descuenta de `amount`.
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
+	tipAmount: decimal('tip_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
 	// Congelado al crear: ¿este movimiento afecta el efectivo físico? (resuelto desde payment_methods.isCash)
 	// Nullable: en movimientos antiguos (null) el arqueo cae al reconocimiento por texto.
 	isCash: boolean('is_cash'),

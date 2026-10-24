@@ -8,6 +8,7 @@ import type { AuditActor } from '../warehouse/types';
 export interface OrderPaymentLineInput {
   paymentMethodId: number;
   amount: number;
+  tipAmount?: number;
 }
 
 // Etiqueta que queda en orders.payment_method para un cobro mixto (los reportes que
@@ -56,11 +57,13 @@ export async function payOrderWithMultiplePayments(
   const rows = lines.map((l) => {
     const m = methods.find((x) => x.id === l.paymentMethodId)!;
     const pct = roundMoney(toNum(m.retentionPercentage), 2);
+    const rowTip = roundMoney(l.tipAmount || 0, 2);
     return {
       orderId,
       paymentMethodId: m.id,
       paymentMethod: m.name,
       amount: roundMoney(l.amount, 2).toFixed(2),
+      tipAmount: rowTip.toFixed(2),
       isCash: m.isCash,
       retentionPercentage: pct.toFixed(2),
       retentionAmount: roundMoney((l.amount * pct) / 100, 2).toFixed(2),
@@ -83,6 +86,7 @@ export async function payOrderWithMultiplePayments(
         collectedSessionId: cajeraSession.id,
         retentionPercentage: weightedPct.toFixed(2),
         retentionAmount: totalRetention.toFixed(2),
+        tipAmount: roundMoney(rows.reduce((s, r) => s + toNum(r.tipAmount), 0), 2).toFixed(2),
         total: baseAmount.toFixed(2),
         updatedAt: new Date(),
       })
@@ -98,6 +102,7 @@ export async function payOrderWithMultiplePayments(
       orderId,
       rows.map((r) => ({
         amount: toNum(r.amount),
+        tipAmount: toNum(r.tipAmount),
         paymentMethod: r.paymentMethod,
         isCash: r.isCash,
         retentionPercentage: r.retentionPercentage,
