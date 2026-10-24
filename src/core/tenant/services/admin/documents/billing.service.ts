@@ -1457,11 +1457,22 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     };
   }
 
-  // Descuento del pedido (informativo: las líneas del comprobante ya van netas)
+  // Descuento del pedido y tracking code (informativo)
   const [orderDiscount] = await db
-    .select({ discountAmount: orders.discountAmount, discountMotivo: orders.discountMotivo })
+    .select({
+      discountAmount: orders.discountAmount,
+      discountMotivo: orders.discountMotivo,
+      trackingCode: orders.trackingCode,
+    })
     .from(orders)
     .where(eq(orders.id, doc.orderId));
+
+  if (orderDiscount?.trackingCode) {
+    finalDoc = {
+      ...finalDoc,
+      orderTrackingCode: orderDiscount.trackingCode,
+    };
+  }
 
   return {
     document: finalDoc,
@@ -1487,6 +1498,7 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       buyerDocLabel,
       discountAmount: orderDiscount?.discountAmount ?? '0.00',
       discountMotivo: orderDiscount?.discountMotivo ?? null,
+      orderTrackingCode: orderDiscount?.trackingCode ?? null,
     },
   };
 }
