@@ -137,3 +137,26 @@ Crea las mesas de una sucursal desde un archivo (el admin lee CSV/Excel y envía
   }
 }
 ```
+
+### 6. Crear mesas en bloque
+
+`POST /api/admin/tables/bulk` · Permiso `menu.gestionar_mesas`
+
+Crea varias mesas de una vez en un salón, en una sola transacción. Dos modos:
+
+- **Numeración:** `prefix` + número desde `start` hasta completar `count`. Si no se envía `start`, se usa el siguiente número libre de ese prefijo en la sucursal ("Mesa 1..12" existentes → empieza en 13). Prefijo "Mesa" → "Mesa 13"; prefijo "T-" → "T-13"; prefijo vacío → "13".
+- **Replicar:** con `sourceTableId` se copian salón, pax y forma de esa mesa y se sigue su numeración ("Mesa 5" → "Mesa 6", "Mesa 7"…).
+
+Los nombres que ya existen en la sucursal se omiten (`skipped`). Cada mesa recibe su propio slug de QR. Máximo 200 por petición. Con `dryRun: true` solo devuelve los nombres (vista previa).
+
+**Body**
+```json
+{ "branchId": 1, "salonId": "uuid", "prefix": "Mesa", "start": 1, "count": 30, "capacity": 4, "shape": "square", "dryRun": false }
+```
+Replicar: `{ "branchId": 1, "sourceTableId": 12, "count": 5 }`
+
+**Response 201**
+```json
+{ "success": true, "message": "30 mesas creadas con éxito", "data": { "names": ["Mesa 1", "..."], "skipped": [], "created": 30, "tables": [] } }
+```
+Errores 400: validación (cantidad 1–200, salón requerido), salón de otra sucursal, mesa a replicar inexistente o sin salón, nombre de más de 50 caracteres.

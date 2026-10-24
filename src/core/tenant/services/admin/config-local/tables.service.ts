@@ -9,7 +9,7 @@ import { InUseError } from '@/utils/errors';
  * Verificar que el salón exista y pertenezca a la sucursal de la mesa.
  * Evita asignar mesas a salones de otra sede.
  */
-async function assertSalonInBranch(salonId: string, branchId: number) {
+export async function assertSalonInBranch(salonId: string, branchId: number) {
   const db = getTenantDb();
   const [salon] = await db.select().from(salons).where(eq(salons.id, salonId));
   if (!salon) {

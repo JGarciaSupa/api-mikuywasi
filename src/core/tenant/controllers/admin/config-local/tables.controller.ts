@@ -10,6 +10,8 @@ import {
   updateTableStatus
 } from '../../../services/admin/config-local/tables.service';
 import { getAllTableStatuses } from '@/core/master/services/table-statuses.service';
+import { bulkCreateTables } from '../../../services/admin/config-local/tables-bulk.service';
+import type { BulkCreateTablesInput } from '../../../validations/admin/config-local/tables.validation';
 
 
 
@@ -222,4 +224,20 @@ export const getTableStatusesController = async (c: Context) => {
   }
 };
 
-
+export const bulkCreateTablesController = async (c: Context) => {
+  try {
+    const input = c.req.valid('json' as never) as BulkCreateTablesInput;
+    const result = await bulkCreateTables(input);
+    if (input.dryRun) return c.json({ success: true, data: result });
+    if (result.created === 0) {
+      return c.json({ success: true, message: 'No se creó ninguna mesa: todos esos nombres ya existen en la sucursal', data: result });
+    }
+    return c.json({
+      success: true,
+      message: result.created === 1 ? '1 mesa creada con éxito' : `${result.created} mesas creadas con éxito`,
+      data: result,
+    }, 201);
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al crear las mesas') }, 400);
+  }
+};

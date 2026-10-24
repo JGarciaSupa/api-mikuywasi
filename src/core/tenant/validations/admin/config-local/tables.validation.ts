@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { validationHook } from '../../hook';
 
 const shapeSchema = z.enum(['square', 'round']);
 
@@ -32,7 +33,23 @@ export const statusTableSchema = z.object({
   reservationNote: z.string().optional().nullable(),
 });
 
+// Creación en bloque: numeración (prefijo + desde + cantidad) o réplica de una mesa (sourceTableId)
+export const MAX_BULK_TABLES = 200;
+export const bulkCreateTablesSchema = z.object({
+  branchId: z.number({ error: 'La sucursal es requerida' }).int().positive('La sucursal es requerida'),
+  salonId: z.string().uuid('El salón es inválido').optional(),
+  sourceTableId: z.number().int().positive().optional(),
+  prefix: z.string().max(40, 'El prefijo no puede exceder los 40 caracteres').optional(),
+  start: z.number().int().min(0, 'El número inicial no puede ser negativo').max(99999).optional(),
+  count: z.number({ error: 'La cantidad es requerida' }).int('La cantidad debe ser un número entero')
+    .min(1, 'Crea al menos 1 mesa').max(MAX_BULK_TABLES, `Puedes crear hasta ${MAX_BULK_TABLES} mesas a la vez`),
+  capacity: z.number().int().min(1, 'La capacidad mínima es 1').max(99, 'La capacidad máxima es 99').optional().default(1),
+  shape: shapeSchema.optional().default('square'),
+  dryRun: z.boolean().optional(),
+}).refine((d) => d.sourceTableId || d.salonId, { message: 'Debes seleccionar un salón', path: ['salonId'] });
+
 export type CreateTableInput = z.infer<typeof createTableSchema>;
+export type BulkCreateTablesInput = z.infer<typeof bulkCreateTablesSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
 export type PositionTableInput = z.infer<typeof positionTableSchema>;
 export type StatusTableInput = z.infer<typeof statusTableSchema>;
@@ -41,4 +58,5 @@ export const validateCreateTable = zValidator('json', createTableSchema);
 export const validateUpdateTable = zValidator('json', updateTableSchema);
 export const validatePositionTable = zValidator('json', positionTableSchema);
 export const validateStatusTable = zValidator('json', statusTableSchema);
+export const validateBulkCreateTables = zValidator('json', bulkCreateTablesSchema, validationHook);
 
