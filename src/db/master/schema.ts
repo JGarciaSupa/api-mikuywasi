@@ -103,6 +103,9 @@ export const tenants = pgTable('tenants', {
   ownerPhone: varchar('owner_phone', { length: 255 }),
   internalNotes: text('internal_notes'),
 
+  // Tenant que se propone por defecto como origen al duplicar (solo uno a la vez)
+  isDefaultTemplate: boolean('is_default_template').default(false).notNull(),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

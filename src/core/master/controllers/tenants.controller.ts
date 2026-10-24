@@ -1,6 +1,8 @@
 import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
 import * as tenantsService from '../services/tenants.service';
+import * as tenantCloneService from '../services/tenant-clone.service';
+import { parseIdParam } from '@/utils/helpers';
 
 export const getAllTenantsController = async (c: Context) => {
   try {
@@ -84,6 +86,34 @@ export const deleteTenantController = async (c: Context) => {
     return c.json({ success: true, message: result.message || 'Tenant eliminado correctamente', data: null });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el tenant'), data: null }, 400);
+  }
+};
+
+// ── DUPLICAR TENANT / PLANTILLA POR DEFECTO ─────────────────────────────────
+
+export const cloneTenantController = async (c: Context) => {
+  try {
+    const sourceId = parseIdParam(c);
+    const data = c.req.valid('json' as never);
+    const result = await tenantCloneService.cloneTenant(sourceId, data);
+    return c.json({ success: true, message: 'Tenant duplicado con éxito', data: result }, 201);
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al duplicar el tenant'), data: null }, 400);
+  }
+};
+
+export const setDefaultTemplateController = async (c: Context) => {
+  try {
+    const id = parseIdParam(c);
+    const { isDefault } = c.req.valid('json' as never) as { isDefault: boolean };
+    const result = await tenantCloneService.setDefaultTemplate(id, isDefault);
+    return c.json({
+      success: true,
+      message: isDefault ? 'Plantilla por defecto actualizada' : 'El tenant ya no es la plantilla por defecto',
+      data: result,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al actualizar la plantilla por defecto'), data: null }, 400);
   }
 };
 

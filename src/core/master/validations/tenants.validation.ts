@@ -65,3 +65,9 @@ export type RenewSubscriptionInput = z.infer<typeof renewSubscriptionSchema>;
 export const validateCreateTenant = zValidator('json', createTenantSchema, validationHook);
 export const validateUpdateTenant = zValidator('json', updateTenantSchema, validationHook);
 export const validateRenewSubscription = zValidator('json', renewSubscriptionSchema, validationHook);
+
+export const setDefaultTemplateSchema = z.object({
+  isDefault: z.boolean({ error: 'isDefault es obligatorio' }),
+});
+
+export const validateSetDefaultTemplate = zValidator('json', setDefaultTemplateSchema, validationHook);

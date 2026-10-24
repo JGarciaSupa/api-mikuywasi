@@ -51,6 +51,11 @@ export async function getTenantDb(dbUrl: string): Promise<TenantDbInstance> {
     connectionTimeoutMillis: 2000,
   });
 
+  // Una conexión cortada desde el servidor (p. ej. al borrar la BD del tenant) no debe tumbar el proceso
+  pool.on('error', (err) => {
+    console.error('[getTenantDb] Error en una conexión inactiva del pool del tenant:', err.message);
+  });
+
   // Instanciar Drizzle solo una vez
   const dbInstance = drizzle(pool, { schema: tenantSchema });
 
@@ -60,3 +65,12 @@ export async function getTenantDb(dbUrl: string): Promise<TenantDbInstance> {
   return dbInstance;
 }
 
+// Cierra y olvida el pool de un tenant (antes de borrar su BD física)
+export async function closeTenantDb(dbUrl: string): Promise<void> {
+  const connection = tenantConnections.get(dbUrl);
+  if (!connection) return;
+  tenantConnections.delete(dbUrl);
+  await connection.pool.end().catch((err) => {
+    console.error('[closeTenantDb] Error al cerrar el pool del tenant:', err);
+  });
+}

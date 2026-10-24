@@ -1,4 +1,6 @@
-import { masterDb, getTenantDb } from '../../../db';
+import { masterDb, getTenantDb, closeTenantDb } from '../../../db';
+import { redis } from '../../../utils/redis';
+import { getS3Client } from '../../../utils/s3';
 import { tenants, subscriptions, plans, dbServers, subActions, baseRoles, tenantFeatureGrants, tenantRoleGrants } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
 import { fullSyncTenant } from './rbac-sync.service';
@@ -11,7 +13,7 @@ import * as path from 'path';
 import { ensureDefaultPaymentMethods, ensureDefaultReasons } from '../../tenant/services/shared/tenant-defaults.service';
 
 // Helper to create tenant database
-async function createTenantDatabase(server: any, dbName: string) {
+export async function createTenantDatabase(server: any, dbName: string) {
   const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const client = new Client({
     host: dbHost,
@@ -158,7 +160,7 @@ async function seedTenantData(server: any, dbName: string, tenantName: string, t
 }
 
 // Helper to run migrations on tenant database
-async function runTenantMigrations(server: any, dbName: string) {
+export async function runTenantMigrations(server: any, dbName: string) {
   const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const connectionString = `postgres://${encodeURIComponent(server.dbUser)}:${encodeURIComponent(server.dbPassword)}@${dbHost}:${server.dbPort}/${dbName}`;
   const tempPool = new Pool({
@@ -183,7 +185,7 @@ async function runTenantMigrations(server: any, dbName: string) {
 }
 
 // Helper to drop tenant database during cleanup/rollback
-async function dropTenantDatabase(server: any, dbName: string) {
+export async function dropTenantDatabase(server: any, dbName: string) {
   const dbHost = process.env.DB_HOST_OVERRIDE || server.dbHost;
   const client = new Client({
     host: dbHost,
@@ -205,7 +207,7 @@ async function dropTenantDatabase(server: any, dbName: string) {
     `, [dbName]);
 
     await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
-    console.log(`[Database Cleanup] Base de datos "${dbName}" eliminada debido a un fallo en el proceso de creación/registro.`);
+    console.log(`[Database Cleanup] Base de datos "${dbName}" eliminada del servidor "${server.name}".`);
   } catch (cleanupError) {
     console.error(`[Database Cleanup] Error crítico al intentar eliminar la base de datos "${dbName}" durante rollback:`, cleanupError);
   } finally {
@@ -500,9 +502,69 @@ export const renewSubscription = async (tenantId: number, data: RenewSubscriptio
   });
 };
 
+// BDs que nunca se borran aunque un tenant las tenga registradas
+const PROTECTED_DATABASES = ['postgres', 'template0', 'template1'];
+
+function masterDatabaseName(): string | null {
+  try {
+    return new URL(process.env.DATABASE_URL ?? '').pathname.replace(/^\//, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+async function tenantDatabaseExists(server: any, dbName: string): Promise<boolean> {
+  const client = new Client({
+    host: process.env.DB_HOST_OVERRIDE || server.dbHost,
+    port: server.dbPort,
+    user: server.dbUser,
+    password: server.dbPassword,
+    database: 'postgres',
+  });
+  await client.connect();
+  try {
+    const res = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
+    return (res.rowCount ?? 0) > 0;
+  } finally {
+    await client.end();
+  }
+}
+
+// Claves de R2 del tenant (columnas de imagen cuyo valor empieza por "<slug>/"), leídas de su BD
+async function collectTenantImageKeys(server: any, dbName: string, slug: string): Promise<string[]> {
+  const client = new Client({
+    host: process.env.DB_HOST_OVERRIDE || server.dbHost,
+    port: server.dbPort,
+    user: server.dbUser,
+    password: server.dbPassword,
+    database: dbName,
+  });
+  await client.connect();
+  try {
+    const publicUrl = process.env.R2_PUBLIC_URL ?? '';
+    const cols = await client.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND data_type IN ('text', 'character varying')
+         AND column_name ~ '(image|logo|url|photo|icon|banner)'`,
+    );
+    const keys = new Set<string>();
+    for (const { table_name, column_name } of cols.rows) {
+      const res = await client.query<{ v: string }>(
+        `SELECT DISTINCT "${column_name}" AS v FROM "${table_name}" WHERE "${column_name}" LIKE $1 OR "${column_name}" LIKE $2`,
+        [`${slug}/%`, `${publicUrl}/${slug}/%`],
+      );
+      for (const { v } of res.rows) keys.add(publicUrl && v.startsWith(`${publicUrl}/`) ? v.slice(publicUrl.length + 1) : v);
+    }
+    return [...keys];
+  } finally {
+    await client.end();
+  }
+}
+
 export const deleteTenant = async (id: number) => {
   const tenant = await masterDb.query.tenants.findFirst({
     where: eq(tenants.id, id),
+    with: { server: true },
   });
   if (!tenant) throw new Error('Tenant no encontrado');
 
@@ -518,7 +580,54 @@ export const deleteTenant = async (id: number) => {
       .where(eq(dbServers.id, tenant.serverId));
   });
 
-  return { message: 'Tenant eliminado correctamente' };
+  // Base de datos física: se cierra el pool y la caché del slug antes de borrarla
+  const isProtected = PROTECTED_DATABASES.includes(tenant.dbName) || tenant.dbName === masterDatabaseName();
+  if (isProtected) {
+    console.error(`[Tenant Delete] La BD "${tenant.dbName}" está protegida y no se borró.`);
+    return { message: `Tenant eliminado. La base de datos "${tenant.dbName}" está protegida y no se borró` };
+  }
+
+  const dbHost = process.env.DB_HOST_OVERRIDE || tenant.server.dbHost;
+  const dbUrl = `postgres://${encodeURIComponent(tenant.server.dbUser)}:${encodeURIComponent(tenant.server.dbPassword)}@${dbHost}:${tenant.server.dbPort}/${tenant.dbName}`;
+  await closeTenantDb(dbUrl);
+  try {
+    await redis.del(`tenant:${tenant.slug}`);
+  } catch {
+    // Redis caído — la caché expira sola
+  }
+
+  // Imágenes en R2: se leen antes de borrar la BD y se eliminan solo si la BD se borró
+  let imageKeys: string[] = [];
+  try {
+    imageKeys = await collectTenantImageKeys(tenant.server, tenant.dbName, tenant.slug);
+  } catch (imagesError) {
+    console.error(`[Tenant Delete] No se pudieron leer las imágenes de "${tenant.slug}":`, imagesError);
+  }
+
+  await dropTenantDatabase(tenant.server, tenant.dbName);
+
+  let stillExists = true;
+  try {
+    stillExists = await tenantDatabaseExists(tenant.server, tenant.dbName);
+  } catch (checkError) {
+    console.error(`[Tenant Delete] No se pudo comprobar si la BD "${tenant.dbName}" se borró:`, checkError);
+  }
+  if (stillExists) {
+    return { message: `Tenant eliminado, pero no se pudo borrar la base de datos "${tenant.dbName}". Revísala en el servidor` };
+  }
+
+  const s3 = getS3Client();
+  const deleted = await Promise.all(imageKeys.map((key) => s3.delete(key).then(() => true).catch((err) => {
+    console.error(`[Tenant Delete] No se pudo borrar la imagen "${key}":`, err);
+    return false;
+  })));
+  const failedImages = deleted.filter((ok) => !ok).length;
+
+  return {
+    message: failedImages > 0
+      ? `Tenant y base de datos eliminados. ${failedImages} imágenes no se pudieron borrar de R2`
+      : 'Tenant, base de datos e imágenes eliminados correctamente',
+  };
 };
 
 // ── GET TENANT DATABASE INSTANCE (HELPER) ────────────────────────────────────

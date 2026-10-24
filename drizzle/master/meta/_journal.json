@@ -134,6 +134,13 @@
       "when": 1792770000000,
       "tag": "0018_create_plan_feature_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792860000000,
+      "tag": "0019_add_tenant_default_template",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import {
   validateCreateTenant,
   validateUpdateTenant,
   validateRenewSubscription,
+  validateSetDefaultTemplate,
 } from '../validations/tenants.validation';
 import {
   validateCreateTenantUser,
@@ -33,6 +34,8 @@ import {
   updateTenantController,
   renewSubscriptionController,
   deleteTenantController,
+  cloneTenantController,
+  setDefaultTemplateController,
   getTenantUsersController,
   createTenantUserController,
   updateTenantUserController,
@@ -51,6 +54,8 @@ router.get('/:id', getTenantByIdController);
 router.patch('/:id', validateUpdateTenant, updateTenantController);
 router.post('/:id/renew', validateRenewSubscription, renewSubscriptionController);
 router.delete('/:id', deleteTenantController);
+router.post('/:id/clone', validateCreateTenant, cloneTenantController);
+router.patch('/:id/default-template', validateSetDefaultTemplate, setDefaultTemplateController);
 
 // GESTION DE USUARIOS
 router.get('/:id/users', getTenantUsersController);

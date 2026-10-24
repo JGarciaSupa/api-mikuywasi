@@ -269,16 +269,54 @@ Renueva el plan del tenant y registra una nueva entrada en el historial de suscr
 
 ### `DELETE /:id` — Eliminar tenant
 
-> ⚠️ Esta acción es irreversible. Decrementa el contador del servidor asignado.
+> ⚠️ Esta acción es irreversible. Borra el registro en master (suscripciones, grants, auditoría y tickets en cascada), decrementa el contador del servidor y **elimina la base de datos física** del tenant.
+
+- Antes de borrar la BD se cierra el pool de conexiones del tenant en la API y se invalida la caché `tenant:<slug>` de Redis.
+- Nunca se borran `postgres`, `template0`, `template1` ni la BD master, aunque estén registradas en un tenant.
+- Si la BD no se puede borrar, el tenant queda eliminado y el `message` lo indica para revisarla en el servidor.
+- Las imágenes del tenant en R2 (claves `<slug>/...` referenciadas en su BD) se borran después de eliminar la BD.
 
 **Respuesta exitosa** `200`
 ```json
 {
   "success": true,
-  "message": "Tenant eliminado correctamente",
+  "message": "Tenant, base de datos e imágenes eliminados correctamente",
   "data": null
 }
 ```
+
+---
+
+### `POST /:id/clone` — Duplicar tenant
+
+Crea un tenant nuevo (BD nueva + registro en master) copiando la configuración y el catálogo del tenant `:id`. El origen solo se lee.
+
+- **Body:** el mismo que `POST /` (`name`, `slug`, `dbName`, `serverId`, `planId`, `billingCycle`, `planEndsAt?`, `ownerName?`, `ownerPhone?`, `internalNotes?`).
+- **Se copia:** todas las tablas del tenant (sucursales, marcas, cajas y series con sus correlativos, impresoras, estaciones, salones y mesas, canales, métodos de pago, motivos, impuestos, RBAC, usuarios con sus contraseñas, productos, categorías, extras, almacén…). Las tablas nuevas que se añadan en el futuro se copian solas.
+- **No se copia:** pedidos, comprobantes, sesiones y movimientos de caja, kardex y descargas, compras, traslados, ajustes, requerimientos, porcionamientos, clientes, tipo de cambio, `audit_log` y `refresh_tokens`.
+- **Ajustes en la copia:** sin facturación electrónica (`facturador_empresa_id`, RUC y razón social en `tenant_configs` y `branches` a `NULL`, series con `is_active_facturacion = false`), mesas en `available` y, si hay una sola marca, se renombra con el `name` nuevo.
+- **Imágenes:** las claves `slug-origen/...` de R2 se copian a `slug-nuevo/...`. Si una falla, la copia queda sin esa imagen (nunca apunta al archivo del original).
+- **Permisos:** se copian los grants del origen (`tenant_feature_grants`, `tenant_role_grants`) y se ejecuta el sync RBAC.
+- **Validaciones:** slug y BD libres (incluida una BD física con ese nombre en el servidor), plan y servidor válidos, y el origen debe tener todas las migraciones de tenant aplicadas.
+- Si algo falla, se borra la BD nueva, las imágenes copiadas y el registro en master.
+
+**Response 201:**
+```json
+{
+  "success": true,
+  "message": "Tenant duplicado con éxito",
+  "data": {
+    "tenant": { "id": 40, "slug": "nuevo-slug", "isDefaultTemplate": false, "...": "..." },
+    "stats": { "tablesCopied": 42, "rowsCopied": 242, "imagesCopied": 2, "imagesFailed": 0 }
+  }
+}
+```
+
+### `PATCH /:id/default-template` — Marcar plantilla por defecto
+
+Marca o desmarca el tenant como plantilla por defecto para duplicar. Solo puede haber una: al marcar una, se desmarca la anterior.
+
+**Body:** `{ "isDefault": true }`
 
 ---
 
