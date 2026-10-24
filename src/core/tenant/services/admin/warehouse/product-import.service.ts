@@ -33,7 +33,8 @@ export interface ProductImportResult {
   created: number;
   skipped: number;
   failed: number;
-  maxProducts: number;
+  /** null = sin límite */
+  maxProducts: number | null;
   createdCategories: string[];
   createdAreas: string[];
   results: ProductImportRowResult[];
@@ -179,7 +180,7 @@ export async function importProducts(input: ProductImportInput): Promise<Product
       continue;
     }
 
-    if (productsTotal >= maxProducts) {
+    if (maxProducts !== null && productsTotal >= maxProducts) {
       results.push({ row: row.row, name: row.name, status: 'failed', message: `Se alcanzó el límite de ${maxProducts} productos de tu plan` });
       continue;
     }

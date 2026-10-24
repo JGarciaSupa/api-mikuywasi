@@ -11,6 +11,15 @@ export const getAllPlanFeaturesController = async (c: Context) => {
   }
 };
 
+export const getSupportedPlanLimitsController = async (c: Context) => {
+  try {
+    const result = await planFeaturesService.getSupportedPlanLimits();
+    return c.json({ success: true, message: 'Límites soportados obtenidos con éxito', data: result });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al obtener los límites soportados'), data: null }, 500);
+  }
+};
+
 export const createPlanFeatureController = async (c: Context) => {
   try {
     const data = c.req.valid('json' as never);

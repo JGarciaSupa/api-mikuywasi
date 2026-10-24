@@ -3,6 +3,7 @@ import { masterAuthMiddleware } from '../middleware/auth.middleware';
 import { validateCreatePlanFeature, validateUpdatePlanFeature } from '../validations/plan-features.validation';
 import {
   getAllPlanFeaturesController,
+  getSupportedPlanLimitsController,
   createPlanFeatureController,
   updatePlanFeatureController,
   deletePlanFeatureController,
@@ -13,6 +14,7 @@ const router = new Hono();
 router.use('*', masterAuthMiddleware);
 
 router.get('/', getAllPlanFeaturesController);
+router.get('/supported', getSupportedPlanLimitsController);
 router.post('/', validateCreatePlanFeature, createPlanFeatureController);
 router.patch('/:id', validateUpdatePlanFeature, updatePlanFeatureController);
 router.delete('/:id', deletePlanFeatureController);

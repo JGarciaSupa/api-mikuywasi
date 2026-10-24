@@ -2,6 +2,7 @@ import { users, userRoles, roles, refreshTokens } from '@/db/tenant/schema';
 import { eq, and, like, desc, count, isNull } from 'drizzle-orm';
 import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
+import { assertPlanLimit } from '@/core/tenant/services/shared/plan-limits.service';
 import type { CreateStaffInput, UpdateStaffInput, StaffQueryInput } from '../../../validations/admin/users/staff.validation';
 
 export async function createStaff(data: CreateStaffInput, imageFile?: File) {
@@ -13,6 +14,10 @@ export async function createStaff(data: CreateStaffInput, imageFile?: File) {
   if (existing && !existing.deletedAt) {
     throw new Error('El username ya está en uso');
   }
+
+  // Límite de usuarios del plan (alta y reactivación cuentan igual; no cuenta los eliminados)
+  const [activeUsers] = await db.select({ count: count() }).from(users).where(isNull(users.deletedAt));
+  await assertPlanLimit('maxUsers', Number(activeUsers?.count ?? 0));
 
   const hashedPassword = await Bun.password.hash(data.password, 'bcrypt');
 

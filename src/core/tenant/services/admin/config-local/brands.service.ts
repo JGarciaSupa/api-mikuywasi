@@ -5,6 +5,7 @@ import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
 import { getTenantId } from '@/utils/tenant-context';
+import { assertPlanLimit } from '@/core/tenant/services/shared/plan-limits.service';
 
 function mapBrand(brand: typeof brands.$inferSelect) {
   return { ...brand, logo: getImageUrl(brand.logo) };
@@ -34,6 +35,10 @@ export interface CreateBrandInput {
 
 export async function createBrand(data: CreateBrandInput) {
   const db = getTenantDb();
+
+  // Límite de marcas del plan (cuenta las activas)
+  const [activeBrands] = await db.select({ count: count() }).from(brands).where(eq(brands.isActive, true));
+  await assertPlanLimit('maxBrands', Number(activeBrands?.count ?? 0));
   const [brand] = await db.insert(brands).values({
     name: data.name,
     code: data.code.toUpperCase(),

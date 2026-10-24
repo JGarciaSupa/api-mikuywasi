@@ -5,6 +5,7 @@ import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
+import { assertPlanLimit } from '../../shared/plan-limits.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,13 @@ export async function listCashRegisters(branchId?: number) {
   }
 
   return result;
+}
+
+/** Límite de cajas del plan para altas manuales (la "Caja Principal" automática no se limita). */
+export async function assertCanCreateCashRegister() {
+  const db = getTenantDb();
+  const [active] = await db.select({ count: sql<number>`count(*)` }).from(cashRegisters).where(eq(cashRegisters.isActive, true));
+  await assertPlanLimit('maxCashRegisters', Number(active?.count ?? 0));
 }
 
 export async function createCashRegister(data: {

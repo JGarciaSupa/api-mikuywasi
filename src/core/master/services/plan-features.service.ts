@@ -2,13 +2,20 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { masterDb } from '../../../db';
 import { planFeatureDefinitions, plans } from '../../../db/master/schema';
 import type { CreatePlanFeatureInput, UpdatePlanFeatureInput } from '../validations/plan-features.validation';
+import { SUPPORTED_PLAN_LIMITS } from '../../tenant/services/shared/plan-limits.service';
 
 /**
- * Claves que el sistema aplica de verdad (hay código que las lee). Las demás son
- * descriptivas: se guardan y se muestran, pero no bloquean nada.
- * - maxProducts: services/admin/warehouse/product-limit.service.ts
+ * Claves que el sistema aplica de verdad (registro en tenant/services/shared/plan-limits.service.ts).
+ * Las demás son descriptivas: se guardan y se muestran, pero no bloquean nada.
  */
-export const ENFORCED_PLAN_FEATURE_KEYS = new Set(['maxProducts']);
+export const ENFORCED_PLAN_FEATURE_KEYS = new Set(SUPPORTED_PLAN_LIMITS.map((l) => l.key));
+
+/** Leyenda: límites que el sistema sabe aplicar y si ya están en el catálogo. */
+export async function getSupportedPlanLimits() {
+  const rows = await masterDb.select({ key: planFeatureDefinitions.key }).from(planFeatureDefinitions);
+  const inCatalog = new Set(rows.map((r) => r.key));
+  return SUPPORTED_PLAN_LIMITS.map((l) => ({ ...l, valueType: 'number' as const, inCatalog: inCatalog.has(l.key) }));
+}
 
 type FeatureRow = typeof planFeatureDefinitions.$inferSelect;
 type FeatureValue = number | boolean | string | null;
@@ -49,6 +56,9 @@ export async function createPlanFeature(data: CreatePlanFeatureInput) {
   const key = data.key?.trim() || keyFromLabel(data.label);
   const [existing] = await masterDb.select({ id: planFeatureDefinitions.id }).from(planFeatureDefinitions).where(eq(planFeatureDefinitions.key, key));
   if (existing) throw new Error(`Ya existe una característica con la clave "${key}"`);
+  if (ENFORCED_PLAN_FEATURE_KEYS.has(key) && data.valueType !== 'number') {
+    throw new Error(`"${key}" es un límite que aplica el sistema y debe ser de tipo número`);
+  }
 
   assertValueType(data.label, data.valueType, data.defaultValue);
   const [created] = await masterDb.insert(planFeatureDefinitions).values({

@@ -176,12 +176,12 @@ export const getProductById = async (id: number) => {
 export const createProduct = async (data: any, imageFile?: File) => {
   const db = getTenantDb();
   const tenantId = getTenantId();
-  // Verificar límite de productos del plan (150 si el plan no define maxProducts)
+  // Verificar límite de productos del plan (null = sin límite)
   const maxProducts = await getMaxProductsForTenant();
   const [totalResult] = await db.select({ count: count() })
     .from(products);
 
-  if (totalResult.count >= maxProducts) {
+  if (maxProducts !== null && totalResult.count >= maxProducts) {
     throw new Error(`Solo se permite un máximo de ${maxProducts} productos por tenant`);
   }
 

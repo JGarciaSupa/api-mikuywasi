@@ -2,6 +2,7 @@ import { branches, userBranches, salesChannels } from '@/db/tenant/schema';
 import { eq, sql, and, or, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import { ensureDefaultReasons } from '@/core/tenant/services/shared/tenant-defaults.service';
+import { assertPlanLimit } from '@/core/tenant/services/shared/plan-limits.service';
 
 type BranchTaxConfig = {
   key: string;
@@ -146,6 +147,10 @@ export async function createBranch(data: CreateBranchInput) {
   if (existing.length > 0) {
     throw new Error(`Ya existe una sucursal con el código "${data.code}"`);
   }
+
+  // Límite de sucursales del plan (cuenta las activas)
+  const [activeResult] = await db.select({ count: sql<number>`count(*)` }).from(branches).where(eq(branches.isActive, true));
+  await assertPlanLimit('maxBranches', Number(activeResult?.count || 0));
 
   // Si es la primera sucursal, hacerla principal automáticamente
   const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(branches);

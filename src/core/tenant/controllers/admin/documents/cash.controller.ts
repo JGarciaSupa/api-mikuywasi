@@ -41,6 +41,7 @@ export const createCashRegister = async (c: Context) => {
     if (!body.branchId || !body.name?.trim()) {
       return c.json({ success: false, message: 'Sucursal y nombre son requeridos' }, 400);
     }
+    await cash.assertCanCreateCashRegister();
     const actor = getAuditActor(c);
     const data = await cash.createCashRegister({
       branchId: parseInt(body.branchId),
