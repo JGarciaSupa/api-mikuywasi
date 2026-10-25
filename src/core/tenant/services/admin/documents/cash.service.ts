@@ -567,7 +567,7 @@ export async function recordOrderSaleIncome(
       .values({
         sessionId: session.id,
         movementType: 'income',
-        concept: `Venta pedido ${order.trackingCode ?? orderId}${tipNote}`,
+        concept: `${formatOrderConcept(order)}${tipNote}`,
         amount: totalCharged,
         tipAmount: round2(tipNum),
         paymentMethod: data.paymentMethod ?? null,
@@ -629,7 +629,7 @@ export async function recordOrderMultiPaymentIncome(
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `Venta pedido ${order.trackingCode ?? orderId} · pago ${i + 1}/${lines.length}`,
+          concept: `${formatOrderConcept(order)} · pago ${i + 1}/${lines.length}`,
           amount: round2(line.amount),
           paymentMethod: line.paymentMethod,
           retentionPercentage: line.retentionPercentage,
@@ -747,7 +747,7 @@ export async function recordSplitSaleIncome(
   const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId)).limit(1);
   if (!split) return { created: false, reason: 'split_not_found' };
 
-  const [order] = await db.select({ collectedSessionId: orders.collectedSessionId, trackingCode: orders.trackingCode }).from(orders).where(eq(orders.id, split.orderId)).limit(1);
+  const [order] = await db.select({ collectedSessionId: orders.collectedSessionId, trackingCode: orders.trackingCode, tableName: orders.tableName, deliveryType: orders.deliveryType }).from(orders).where(eq(orders.id, split.orderId)).limit(1);
   const targetSessionId = collectedSessionId ?? order?.collectedSessionId;
   if (!targetSessionId) return { created: false, reason: 'no_session_linked' };
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, targetSessionId)).limit(1);
@@ -772,7 +772,7 @@ export async function recordSplitSaleIncome(
           .values({
             sessionId: session.id,
             movementType: 'income',
-            concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})${tipNote}`,
+            concept: `${formatOrderConcept(order)} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})${tipNote}`,
             amount: totalCharged,
             tipAmount: itemTip.toFixed(2),
             paymentMethod: sp.paymentMethod,
@@ -808,7 +808,7 @@ export async function recordSplitSaleIncome(
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `Venta pedido ${order?.trackingCode ?? split.orderId} · ${split.label ?? 'cuenta'}${tipNote}`,
+          concept: `${formatOrderConcept(order)} · ${split.label ?? 'cuenta'}${tipNote}`,
           amount: totalCharged,
           tipAmount: tip.toFixed(2),
           paymentMethod: split.paymentMethod ?? null,
