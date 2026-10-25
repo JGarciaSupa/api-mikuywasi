@@ -360,3 +360,52 @@ export const refreshTokens = pgTable('refresh_tokens', {
 }
 ```
 
+
+---
+
+## 🛡️ Cuentas Admin en tenants (`provisionToTenants`)
+
+Un usuario de plataforma con `provisionToTenants: true` se crea como **`rol_admin`** en cada tenant nuevo (creación normal y clonación). La cuenta del tenant usa el mismo `username`, `name` y el **mismo hash** de contraseña.
+
+- Cada cuenta creada queda registrada en `platform_user_tenant_links` (master). Solo esas cuentas reciben cambios de contraseña y bajas.
+- Si el tenant ya tiene un usuario **propio** con el mismo username, se omite (`conflict`) y no se modifica.
+- Desmarcar el check solo detiene la provisión futura; no borra cuentas.
+- `POST`/`PATCH /` aceptan `provisionToTenants` (boolean, opcional; por defecto `false`).
+
+### `PATCH /:id/password` — Restablecer contraseña de un usuario
+> 🔒 Requiere token super-admin
+
+No pide la contraseña actual. Cierra las sesiones del panel de ese usuario, copia el nuevo hash a sus cuentas vinculadas en tenants y revoca sus refresh tokens de tenant.
+
+**Body** `{ "newPassword": "minimo8caracteres" }`
+
+**Respuesta** `200`
+```json
+{
+  "success": true,
+  "message": "Contraseña actualizada correctamente (también en 3 tenant(s))",
+  "data": { "tenantResults": [{ "tenantId": 4, "status": "updated" }] }
+}
+```
+
+`PATCH /profile/password` (propia, con `currentPassword`) también propaga a los tenants y devuelve el mismo `data`.
+
+### `POST /:id/provision-existing` — Aplicar a tenants existentes
+> 🔒 Requiere token super-admin · el usuario debe tener `provisionToTenants: true`
+
+Crea (o reactiva y actualiza la contraseña de) la cuenta Admin en todos los tenants con `status = 'active'`.
+
+**Respuesta** `200`
+```json
+{
+  "success": true,
+  "data": {
+    "total": 5, "created": 4, "existing": 0, "conflict": 1, "failed": 0,
+    "results": [{ "tenantId": 2, "tenantName": "QAS", "status": "created" }]
+  }
+}
+```
+`status` ∈ `created | existing | conflict | failed` (con `message` en los dos últimos).
+
+### `DELETE /:id`
+Antes de borrar, da de baja lógica (`deleted_at`) sus cuentas vinculadas en tenants y revoca sus sesiones. Si alguna falla, **no** se elimina el usuario (`400`).

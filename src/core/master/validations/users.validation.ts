@@ -30,6 +30,8 @@ export const createUserSchema = z.object({
     .nullable()
     .or(z.literal('')) // Permite strings vacíos
     .transform((val) => (val === '' ? null : val)), // Convierte string vacío a null
+
+  provisionToTenants: z.boolean().optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -37,10 +39,15 @@ export const updateUserSchema = z.object({
   email: z.string().trim().email('Email inválido').optional().nullable().transform((val) => val?.toLowerCase()),
   name: z.string().min(1).max(255).optional(),
   image: z.string().url().optional().nullable(),
+  provisionToTenants: z.boolean().optional(),
 });
 
 export const updatePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'La contraseña actual es obligatoria'),
+  newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres').max(255),
+});
+
+export const resetPasswordSchema = z.object({
   newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres').max(255),
 });
 
@@ -52,9 +59,11 @@ export const loginSchema = z.object({
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const validateCreateUser = zValidator('json', createUserSchema, validationHook);
 export const validateUpdateUser = zValidator('json', updateUserSchema, validationHook);
 export const validateUpdatePassword = zValidator('json', updatePasswordSchema, validationHook);
+export const validateResetPassword = zValidator('json', resetPasswordSchema, validationHook);
 export const validateLogin = zValidator('json', loginSchema, validationHook);

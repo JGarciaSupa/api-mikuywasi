@@ -141,6 +141,13 @@
       "when": 1792860000000,
       "tag": "0019_add_tenant_default_template",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792950000000,
+      "tag": "0020_platform_users_tenant_admin",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,9 @@
 import { masterDb } from '../../../db';
 import { users, refreshTokens } from '../../../db/master/schema';
 import { eq } from 'drizzle-orm';
-import type { CreateUserInput, UpdateUserInput, UpdatePasswordInput, LoginInput } from '../validations/users.validation';
+import type { CreateUserInput, UpdateUserInput, UpdatePasswordInput, ResetPasswordInput, LoginInput } from '../validations/users.validation';
 import { generateAccessToken } from '../utils/jwt';
+import { propagatePasswordToTenants, deactivateLinkedTenantUsers } from './platform-tenant-admins.service';
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
@@ -161,10 +162,50 @@ export const updatePassword = async (id: number, data: UpdatePasswordInput) => {
     .set({ password: hashed, updatedAt: new Date() })
     .where(eq(users.id, id));
 
-  return { message: 'Contraseña actualizada correctamente' };
+  const tenantResults = await propagatePasswordToTenants(id, hashed);
+  return { message: passwordMessage(tenantResults), tenantResults };
+};
+
+// Un super admin restablece la contraseña de otro usuario (sin la actual).
+// Cierra las sesiones del panel de ese usuario y propaga la clave a sus cuentas en tenants.
+export const resetUserPassword = async (id: number, data: ResetPasswordInput) => {
+  const user = await masterDb.query.users.findFirst({
+    where: eq(users.id, id),
+  });
+
+  if (!user) throw new Error('Usuario no encontrado');
+
+  const hashed = await Bun.password.hash(data.newPassword, 'bcrypt');
+
+  await masterDb.update(users)
+    .set({ password: hashed, updatedAt: new Date() })
+    .where(eq(users.id, id));
+  await masterDb.delete(refreshTokens).where(eq(refreshTokens.userId, id));
+
+  const tenantResults = await propagatePasswordToTenants(id, hashed);
+  return { message: passwordMessage(tenantResults), tenantResults };
+};
+
+const passwordMessage = (tenantResults: { status: string }[]) => {
+  const failed = tenantResults.filter((r) => r.status === 'failed').length;
+  if (failed > 0) {
+    return `Contraseña actualizada, pero no se pudo propagar a ${failed} tenant(s)`;
+  }
+  if (tenantResults.length > 0) {
+    return `Contraseña actualizada correctamente (también en ${tenantResults.length} tenant(s))`;
+  }
+  return 'Contraseña actualizada correctamente';
 };
 
 export const deleteUser = async (id: number) => {
+  // Primero se dan de baja sus cuentas en tenants: si alguna falla, no se borra
+  // el usuario (perderíamos el vínculo y la cuenta quedaría activa en ese tenant).
+  const tenantResults = await deactivateLinkedTenantUsers(id);
+  const failed = tenantResults.filter((r) => r.status === 'failed');
+  if (failed.length > 0) {
+    throw new Error(`No se pudo dar de baja la cuenta en ${failed.length} tenant(s); el usuario no se eliminó`);
+  }
+
   const [deleted] = await masterDb.delete(users)
     .where(eq(users.id, id))
     .returning();

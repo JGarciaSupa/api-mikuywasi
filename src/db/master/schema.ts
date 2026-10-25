@@ -13,6 +13,8 @@ export const users = pgTable('users', {
   name: varchar('name', { length: 255 }).notNull(),
   image: text('image'),
   role: varchar('role', { length: 255, enum: ['admin', 'agent'] }).default('admin').notNull(),
+  // Si es true, se crea como rol_admin en cada tenant nuevo (ver platform-tenant-admins.service)
+  provisionToTenants: boolean('provision_to_tenants').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -253,6 +255,24 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
     fields: [refreshTokens.userId],
     references: [users.id],
   }),
+}));
+
+// ==========================================
+// 👤 CUENTAS ADMIN DE PLATAFORMA EN TENANTS
+// ==========================================
+
+// Registra qué usuario de cada tenant fue creado a partir de un usuario de plataforma.
+// Solo esas cuentas reciben los cambios de contraseña y la baja; un usuario del
+// restaurante con el mismo username nunca se toca.
+export const platformUserTenantLinks = pgTable('platform_user_tenant_links', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }).notNull(),
+  tenantUserId: integer('tenant_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userTenantUnique: uniqueIndex('platform_user_tenant_links_user_tenant_idx').on(table.userId, table.tenantId),
+  tenantIdx: index('platform_user_tenant_links_tenant_idx').on(table.tenantId),
 }));
 
 // ==========================================
@@ -509,4 +529,4 @@ export const tableStatuses = pgTable('table_statuses', {
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+});

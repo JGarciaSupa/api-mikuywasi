@@ -5,6 +5,7 @@ import * as path from 'path';
 import { masterDb } from '../../../db';
 import { tenants, subscriptions, plans, dbServers, tenantFeatureGrants, tenantRoleGrants } from '../../../db/master/schema';
 import { fullSyncTenant } from './rbac-sync.service';
+import { copyLinksFromSourceTenant, provisionFlaggedUsersToTenant } from './platform-tenant-admins.service';
 import { createTenantDatabase, runTenantMigrations, dropTenantDatabase } from './tenants.service';
 import type { CreateTenantInput } from '../validations/tenants.validation';
 import { getS3Client } from '../../../utils/s3';
@@ -315,6 +316,18 @@ export async function cloneTenant(sourceId: number, data: CreateTenantInput): Pr
         await fullSyncTenant(newTenant.id);
       } catch (syncError) {
         console.warn('[Tenant Clone] Sync RBAC falló (no crítico):', syncError);
+      }
+
+      // Cuentas Admin de plataforma: vínculos copiados del origen y alta de las que falten
+      try {
+        await copyLinksFromSourceTenant(sourceId, newTenant.id);
+        const provisioned = await provisionFlaggedUsersToTenant(newTenant.id);
+        const notReady = provisioned.filter((r) => r.status !== 'created' && r.status !== 'existing');
+        if (notReady.length > 0) {
+          console.warn('[Tenant Clone] Cuentas Admin no creadas (no crítico):', notReady);
+        }
+      } catch (provisionError) {
+        console.warn('[Tenant Clone] Provisión de cuentas Admin falló (no crítico):', provisionError);
       }
 
       console.log(`[Tenant Clone] "${source.slug}" → "${data.slug}": ${copyStats.tablesCopied} tablas, ${copyStats.rowsCopied} filas, ${images.imagesCopied} imágenes (${images.imagesFailed} fallidas).`);

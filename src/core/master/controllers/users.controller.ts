@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import * as usersService from '../services/users.service';
+import { provisionUserToAllTenants } from '../services/platform-tenant-admins.service';
 
 export const loginController = async (c: Context) => {
   try {
@@ -155,9 +156,30 @@ export const updatePasswordController = async (c: Context) => {
     const payload = c.get('jwtPayload' as never) as any;
     const data = c.req.valid('json' as never);
     const result = await usersService.updatePassword(payload.id, data);
-    return c.json({ success: true, message: result.message || 'Contraseña actualizada correctamente', data: null });
+    return c.json({ success: true, message: result.message || 'Contraseña actualizada correctamente', data: { tenantResults: result.tenantResults } });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error al cambiar la contraseña'), data: null }, 400);
+  }
+};
+
+export const resetUserPasswordController = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const data = c.req.valid('json' as never);
+    const result = await usersService.resetUserPassword(id, data);
+    return c.json({ success: true, message: result.message, data: { tenantResults: result.tenantResults } });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al restablecer la contraseña'), data: null }, 400);
+  }
+};
+
+export const provisionExistingTenantsController = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const result = await provisionUserToAllTenants(id);
+    return c.json({ success: true, message: `Cuenta aplicada: ${result.created} creada(s), ${result.existing} ya existían, ${result.conflict} con conflicto, ${result.failed} con error`, data: result });
+  } catch (error: any) {
+    return c.json({ success: false, message: safeMessage(error, 'Error al aplicar la cuenta a los tenants'), data: null }, 400);
   }
 };
 

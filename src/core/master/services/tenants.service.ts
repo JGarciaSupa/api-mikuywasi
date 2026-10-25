@@ -4,6 +4,7 @@ import { getS3Client } from '../../../utils/s3';
 import { tenants, subscriptions, plans, dbServers, subActions, baseRoles, tenantFeatureGrants, tenantRoleGrants } from '../../../db/master/schema';
 import { and, eq, sql, like } from 'drizzle-orm';
 import { fullSyncTenant } from './rbac-sync.service';
+import { provisionFlaggedUsersToTenant } from './platform-tenant-admins.service';
 import type { CreateTenantInput, UpdateTenantInput, RenewSubscriptionInput } from '../validations/tenants.validation';
 import { Client, Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -390,6 +391,17 @@ export const createTenant = async (data: CreateTenantInput) => {
       await fullSyncTenant(createdTenantId);
     } catch (syncError) {
       console.warn('[RBAC Sync] Sync RBAC inicial falló (no crítico):', syncError);
+    }
+
+    // 7. Crear las cuentas Admin de los usuarios de plataforma marcados (requiere rol_admin ya sincronizado)
+    try {
+      const provisioned = await provisionFlaggedUsersToTenant(createdTenantId);
+      const notCreated = provisioned.filter((r) => r.status !== 'created');
+      if (notCreated.length > 0) {
+        console.warn('[Platform Admins] Cuentas no creadas en el tenant nuevo (no crítico):', notCreated);
+      }
+    } catch (provisionError) {
+      console.warn('[Platform Admins] Provisión de cuentas Admin falló (no crítico):', provisionError);
     }
 
     return newTenant;

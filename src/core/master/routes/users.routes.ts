@@ -4,6 +4,7 @@ import {
   validateCreateUser,
   validateUpdateUser,
   validateUpdatePassword,
+  validateResetPassword,
   validateLogin,
 } from '../validations/users.validation';
 import {
@@ -17,6 +18,8 @@ import {
   updateUserController,
   updatePasswordController,
   deleteUserController,
+  resetUserPasswordController,
+  provisionExistingTenantsController,
 } from '../controllers/users.controller';
 
 const router = new Hono();
@@ -36,6 +39,8 @@ router.get('/', getAllUsersController);
 router.post('/', validateCreateUser, createUserController);
 router.get('/:id', getUserByIdController);
 router.patch('/:id', validateUpdateUser, updateUserController);
+router.patch('/:id/password', validateResetPassword, resetUserPasswordController);
+router.post('/:id/provision-existing', provisionExistingTenantsController);
 router.delete('/:id', deleteUserController);
 
 export default router;
