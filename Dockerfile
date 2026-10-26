@@ -14,8 +14,9 @@ RUN bun install --production --no-cache
 # Copiamos el resto del código del proyecto
 COPY . .
 
-# Exponemos el puerto que configuramos arriba (4001)
-EXPOSE 4001
+# Puerto configurable desde el ENV (PORT); 4001 si no se define
+ENV PORT=4001
+EXPOSE ${PORT}
 
 # Usar el usuario bun por seguridad (usuario no raíz incluido en la imagen base)
 USER bun
