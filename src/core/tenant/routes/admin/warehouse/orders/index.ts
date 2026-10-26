@@ -10,6 +10,7 @@ import {
   getOrderByIdController,
   updateOrderStatusController,
   updateOrderPaymentStatusController,
+  updateOrderPaymentMethodController,
   getOrderStatsController,
   updateOrderCustomerController,
   updateOrderNotesController,
@@ -69,6 +70,7 @@ routes.get('/:id/void-ticket', getOrderVoidTicketController);
 routes.get('/:id', getOrderByIdController);
 routes.patch('/:id/status', updateOrderStatusController);
 routes.patch('/:id/payment-status', updateOrderPaymentStatusController);
+routes.patch('/:id/payment-method', updateOrderPaymentMethodController);
 routes.patch('/:id/customer', updateOrderCustomerController);
 routes.patch('/:id/notes', updateOrderNotesController);
 routes.patch('/:id/order-for', updateOrderForController);

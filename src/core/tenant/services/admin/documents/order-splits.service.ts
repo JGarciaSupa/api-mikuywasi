@@ -332,7 +332,7 @@ export async function assignItems(orderId: string, input: AssignItemsInput) {
 
 // ── Sync order-level paymentStatus from splits ────────────────────────────────
 
-async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderId: string) {
+export async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>, orderId: string) {
   const splits = await db
     .select({
       paymentStatus: orderSplits.paymentStatus,

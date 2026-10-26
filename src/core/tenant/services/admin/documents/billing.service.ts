@@ -9,12 +9,17 @@ import {
   orderItems,
   orderSplits,
   orderPayments,
+  tables,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
-import { getActiveSessionForUser } from './cash.service';
+import { getActiveSessionForUser, reverseOrderSaleMovement, reverseSplitSaleIncome } from './cash.service';
+import { authorizeByPassword } from './security-auth.service';
+import { syncOrderPaymentStatus } from './order-splits.service';
+import { writeAuditLog } from '../warehouse/shared/audit.service';
+import type { AuditActor } from '../warehouse/types';
 import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
 import { type TaxConfig, type TaxSnapshotEntry, DEFAULT_BRANCH_TAXES, aggregateTaxBreakdown, isFixedTax, isServiceChargeTax, resolveLineTaxes, resolveTipoAfectacion } from '../../shared/taxes.service';
@@ -1534,12 +1539,31 @@ function resolveParentSunatStateAfterVoid(
   };
 }
 
-export async function voidDocument(id: number, reason: string, cancelOrder = false) {
+export async function voidDocument(
+  id: number,
+  reason: string,
+  cancelOrder = false,
+  password?: string,
+  actor?: AuditActor,
+) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
   if (doc.status !== 'issued') throw new Error(`No se puede anular un documento en estado '${doc.status}'`);
   if (!reason?.trim()) throw new Error('Se requiere un motivo de anulación');
+
+  // 1. Autorización por contraseña si la activación PASSWORD_VOID_DOCUMENT está activa
+  let authorizedById: number | null = null;
+  const session = actor?.userId ? await getActiveSessionForUser(actor.userId) : null;
+  let effective: Record<string, boolean> = {};
+  if (session?.registerId != null) {
+    effective = await resolveForRegister(session.registerId);
+  }
+  if (effective['PASSWORD_VOID_DOCUMENT']) {
+    const auth = await authorizeByPassword('seguridad.autorizar_anular_documento', password ?? '');
+    if (!auth) throw new Error('Contraseña de autorización inválida');
+    authorizedById = auth.userId;
+  }
 
   let creditNoteNumber: string | null = null;
   let creditNoteStatus: 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null = null;
@@ -1571,11 +1595,71 @@ export async function voidDocument(id: number, reason: string, cancelOrder = fal
 
   await releaseOrderItemLinks(db, id);
 
-  // Cancelar pedido asociado si se solicitó (revierte descuento de stock)
+  // 2. Revertir el cobro en caja y eliminar order_payments
+  try {
+    if (doc.splitId != null) {
+      await reverseSplitSaleIncome(doc.splitId, actor);
+      await db.delete(orderPayments).where(eq(orderPayments.splitId, doc.splitId));
+      await db.update(orderSplits).set({
+        paymentStatus: 'unpaid',
+        paymentMethod: null,
+        paymentMethodId: null,
+        retentionPercentage: '0.00',
+        retentionAmount: '0.00',
+        tipAmount: '0.00',
+        updatedAt: new Date(),
+      }).where(eq(orderSplits.id, doc.splitId));
+      await syncOrderPaymentStatus(db, doc.orderId);
+    } else {
+      await reverseOrderSaleMovement(doc.orderId, actor);
+      await db.delete(orderPayments).where(eq(orderPayments.orderId, doc.orderId));
+    }
+  } catch (err) {
+    console.error('Error al revertir ingreso de caja al anular comprobante:', err);
+  }
+
+  // 3. Destino del pedido: Cancelar O Revivir
   if (cancelOrder) {
     const { updateOrderStatus } = await import('../documents/order.service');
     await updateOrderStatus(doc.orderId, 'cancelled');
+  } else {
+    // REVIVIR EL PEDIDO: vuelve a pendiente de pago y estado activo
+    const [order] = await db.select().from(orders).where(eq(orders.id, doc.orderId));
+    if (order && doc.splitId == null) {
+      const revivedStatus = order.tableId ? ('confirmed' as const) : ('ready_for_pickup' as const);
+      await db.update(orders).set({
+        paymentStatus: 'unpaid',
+        status: revivedStatus,
+        paymentMethod: null,
+        paymentMethodId: null,
+        collectedSessionId: null,
+        retentionPercentage: '0.00',
+        retentionAmount: '0.00',
+        tipAmount: '0.00',
+        updatedAt: new Date(),
+      }).where(eq(orders.id, doc.orderId));
+
+      if (order.tableId) {
+        await db.update(tables).set({
+          statusCode: 'occupied',
+          statusUpdatedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(tables.id, order.tableId));
+      }
+    }
   }
+
+  // 4. Auditoría
+  await writeAuditLog({
+    tableName: 'billing_documents',
+    operation: 'UPDATE',
+    recordId: id,
+    afterData: { status: 'voided', reason, cancelOrder, authorizedById },
+    userId: actor?.userId,
+    userName: actor?.userName,
+    module: 'facturacion',
+    description: `Comprobante ${doc.documentNumber} (${doc.documentType}) anulado. Pedido ${doc.orderId} ${cancelOrder ? 'cancelado' : 'revivido a pendiente de pago'}. Motivo: ${reason.trim()}`,
+  });
 
   const [final] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   return final;

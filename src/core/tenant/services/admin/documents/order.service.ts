@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted, orderPayments, paymentMethods } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted, orderPayments, paymentMethods, orderSplits } from '../../../../../db/tenant/schema';
 
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -7,7 +7,9 @@ import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-conte
 const waiters = alias(users, 'waiters');
 const deletedByUsers = alias(users, 'deleted_by_users');
 const authorizedByUsers = alias(users, 'authorized_by_users');
-import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser } from './cash.service';
+import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser, updateOrderPaymentCashMovements } from './cash.service';
+import { authorizeByPassword } from './security-auth.service';
+import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
 import { restoreProductStockForOrder } from '../../shared/product-stock.service';
@@ -786,3 +788,147 @@ export const updateOrderFor = async (orderId: string, orderFor: string | null) =
 
   return updated;
 };
+
+export interface UpdateOrderPaymentMethodInput {
+  paymentMethod?: string;
+  paymentMethodId?: number | null;
+  payments?: Array<{
+    paymentMethodId?: number | null;
+    paymentMethod: string;
+    amount: number;
+    tipAmount?: number;
+    isCash?: boolean;
+    retentionPercentage?: number;
+    retentionAmount?: number;
+  }>;
+  retentionPercentage?: number;
+  tipAmount?: number;
+  reason: string;
+  password?: string;
+  splitId?: number | null;
+}
+
+/**
+ * Cambia la forma de pago de una venta ya cobrada.
+ * NO anula el comprobante ni revierte la orden: únicamente actualiza los métodos de pago
+ * y corrige el ingreso de caja en el turno abierto correspondiente.
+ */
+export async function updateOrderPaymentMethod(
+  orderId: string,
+  input: UpdateOrderPaymentMethodInput,
+  actor?: AuditActor,
+) {
+  const db = getTenantDb();
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
+  if (order.paymentStatus !== 'paid') throw new Error('Solo se puede cambiar la forma de pago de pedidos pagados');
+  if (!input.reason?.trim()) throw new Error('Debes indicar un motivo para el cambio de forma de pago');
+
+  // Validación de contraseña si PASSWORD_CHANGE_PAYMENT_METHOD está activa
+  let authorizedById: number | null = null;
+  const session = actor?.userId ? await getActiveSessionForUser(actor.userId) : null;
+  let effective: Record<string, boolean> = {};
+  if (session?.registerId != null) {
+    effective = await resolveForRegister(session.registerId);
+  }
+  if (effective['PASSWORD_CHANGE_PAYMENT_METHOD']) {
+    const auth = await authorizeByPassword('seguridad.autorizar_cambiar_forma_pago', input.password ?? '');
+    if (!auth) throw new Error('Contraseña de autorización inválida');
+    authorizedById = auth.userId;
+  }
+
+  const paymentsList = (input.payments && input.payments.length > 0)
+    ? input.payments
+    : [{
+        paymentMethodId: input.paymentMethodId ?? order.paymentMethodId,
+        paymentMethod: input.paymentMethod ?? order.paymentMethod ?? 'Efectivo',
+        amount: toNum(order.total),
+        tipAmount: toNum(input.tipAmount ?? order.tipAmount),
+        retentionPercentage: input.retentionPercentage ?? toNum(order.retentionPercentage),
+        retentionAmount: roundMoney(((toNum(order.total)) * (input.retentionPercentage ?? toNum(order.retentionPercentage))) / 100),
+      }];
+
+  // 1. Actualizar movimientos de caja y recalcular arqueo de la sesión abierta
+  await updateOrderPaymentCashMovements(
+    orderId,
+    input.splitId ?? null,
+    paymentsList.map((p) => ({
+      amount: toNum(p.amount),
+      tipAmount: toNum(p.tipAmount),
+      paymentMethod: p.paymentMethod,
+      paymentMethodId: p.paymentMethodId ?? null,
+      isCash: p.isCash,
+      retentionPercentage: (p.retentionPercentage ?? 0).toFixed(2),
+      retentionAmount: (p.retentionAmount ?? 0).toFixed(2),
+    })),
+    actor,
+  );
+
+  // 2. Actualizar order_payments
+  if (input.splitId != null) {
+    await db.delete(orderPayments).where(eq(orderPayments.splitId, input.splitId));
+  } else {
+    await db.delete(orderPayments).where(and(eq(orderPayments.orderId, orderId), isNull(orderPayments.splitId)));
+  }
+
+  for (const p of paymentsList) {
+    const [m] = p.paymentMethodId ? await db.select({ isCash: paymentMethods.isCash }).from(paymentMethods).where(eq(paymentMethods.id, p.paymentMethodId)) : [];
+    const isCash = m?.isCash ?? (p.paymentMethod.toLowerCase().includes('efectivo') || p.paymentMethod.toLowerCase().includes('cash'));
+    await db.insert(orderPayments).values({
+      orderId,
+      splitId: input.splitId ?? null,
+      paymentMethodId: p.paymentMethodId ?? null,
+      paymentMethod: p.paymentMethod,
+      amount: roundMoney(toNum(p.amount)).toFixed(2),
+      tipAmount: roundMoney(toNum(p.tipAmount)).toFixed(2),
+      isCash,
+      retentionPercentage: roundMoney(toNum(p.retentionPercentage)).toFixed(2),
+      retentionAmount: roundMoney(toNum(p.retentionAmount)).toFixed(2),
+      createdById: actor?.userId ?? null,
+    });
+  }
+
+  // 3. Actualizar order / order_splits
+  const primaryMethod = paymentsList.length === 1
+    ? paymentsList[0].paymentMethod
+    : paymentsList.map((p) => `${p.paymentMethod} (S/ ${toNum(p.amount).toFixed(2)})`).join(', ');
+  const primaryMethodId = paymentsList.length === 1 ? (paymentsList[0].paymentMethodId ?? null) : null;
+  const sumTip = paymentsList.reduce((acc, p) => acc + (toNum(p.tipAmount) || 0), 0);
+  const sumRetPct = paymentsList.length === 1 ? toNum(paymentsList[0].retentionPercentage) : 0;
+  const sumRetAmt = paymentsList.reduce((acc, p) => acc + (toNum(p.retentionAmount) || 0), 0);
+
+  if (input.splitId != null) {
+    await db.update(orderSplits).set({
+      paymentMethod: primaryMethod,
+      paymentMethodId: primaryMethodId,
+      retentionPercentage: sumRetPct.toFixed(2),
+      retentionAmount: sumRetAmt.toFixed(2),
+      tipAmount: sumTip.toFixed(2),
+      updatedAt: new Date(),
+    }).where(eq(orderSplits.id, input.splitId));
+  } else {
+    await db.update(orders).set({
+      paymentMethod: primaryMethod,
+      paymentMethodId: primaryMethodId,
+      retentionPercentage: sumRetPct.toFixed(2),
+      retentionAmount: sumRetAmt.toFixed(2),
+      tipAmount: sumTip.toFixed(2),
+      updatedAt: new Date(),
+    }).where(eq(orders.id, orderId));
+  }
+
+  // 4. Auditoría
+  await writeAuditLog({
+    tableName: 'orders',
+    operation: 'UPDATE',
+    recordId: order.tableId ?? 0,
+    afterData: { paymentMethod: primaryMethod, payments: paymentsList, authorizedById, reason: input.reason },
+    userId: actor?.userId,
+    userName: actor?.userName,
+    module: 'pedidos',
+    description: `Cambio de forma de pago en pedido ${orderId}: anterior [${order.paymentMethod ?? 'sin método'}] ➔ nuevo [${primaryMethod}]. Motivo: ${input.reason}`,
+  });
+
+  const [updated] = await db.select().from(orders).where(eq(orders.id, orderId));
+  return updated;
+}

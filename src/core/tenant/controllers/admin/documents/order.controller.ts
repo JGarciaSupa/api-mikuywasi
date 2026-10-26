@@ -252,6 +252,31 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
 /**
  * Estadísticas de órdenes para el dashboard
  */
+export const updateOrderPaymentMethodController = async (c: Context) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const actor = getAuditActor(c);
+    const result = await orderService.updateOrderPaymentMethod(id, body, actor);
+    return c.json({
+      success: true,
+      message: 'Forma de pago actualizada correctamente',
+      data: result,
+    });
+  } catch (error: any) {
+    const status =
+      error.message?.includes('no encontrado') ? 404 :
+        error.message?.includes('Contraseña') || error.message?.includes('autorizado') ? 403 :
+          error.message?.includes('cerrado') || error.message?.includes('Solo se puede') ? 422 :
+            error.message?.includes('motivo') ? 400 :
+              500;
+    return c.json({
+      success: false,
+      message: safeMessage(error, 'Error al actualizar forma de pago'),
+    }, status as any);
+  }
+};
+
 export const getOrderStatsController = async (c: Context) => {
   try {
     const branchIdQuery = c.req.query('branchId');

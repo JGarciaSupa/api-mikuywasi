@@ -1036,3 +1036,114 @@ export async function closeCashSession(
 
   return closed;
 }
+
+// Actualiza los movimientos de ingreso de caja por un cambio de forma de pago en un pedido cobrado.
+// Valida estrictamente que el turno de caja donde se cobró siga ABIERTO.
+export async function updateOrderPaymentCashMovements(
+  orderId: string,
+  splitId: number | null,
+  payments: Array<{
+    amount: number;
+    tipAmount?: number;
+    paymentMethod: string;
+    paymentMethodId?: number | null;
+    isCash?: boolean;
+    retentionPercentage?: string;
+    retentionAmount?: string;
+  }>,
+  actor?: AuditActor,
+): Promise<{ updated: boolean; reason?: string }> {
+  const db = getTenantDb();
+  const movements = await db
+    .select()
+    .from(cashMovements)
+    .where(and(
+      eq(cashMovements.orderId, orderId),
+      splitId != null ? eq(cashMovements.splitId, splitId) : isNull(cashMovements.splitId),
+      eq(cashMovements.movementType, 'income'),
+    ));
+
+  let sessionId: number;
+  if (movements.length > 0) {
+    sessionId = movements[0].sessionId;
+  } else {
+    const [order] = await db.select({ collectedSessionId: orders.collectedSessionId }).from(orders).where(eq(orders.id, orderId));
+    if (order?.collectedSessionId) {
+      sessionId = order.collectedSessionId;
+    } else {
+      const activeSession = actor?.userId ? await getActiveSessionForUser(actor.userId) : null;
+      if (!activeSession) throw new Error('No se encontró una sesión de caja activa vinculada a esta venta.');
+      sessionId = activeSession.id;
+    }
+  }
+
+  const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
+  if (!session) throw new Error('Sesión de caja no encontrada.');
+  if (session.status !== 'open') throw new Error('No se puede cambiar la forma de pago porque el turno de caja donde se cobró ya fue cerrado.');
+
+  const [order] = await db
+    .select({
+      trackingCode: orders.trackingCode,
+      tableName: orders.tableName,
+      deliveryType: orders.deliveryType,
+    })
+    .from(orders).where(eq(orders.id, orderId)).limit(1);
+
+  let splitLabel = '';
+  if (splitId != null) {
+    const [sp] = await db.select({ label: orderSplits.label }).from(orderSplits).where(eq(orderSplits.id, splitId)).limit(1);
+    splitLabel = ` · ${sp?.label ?? `cuenta #${splitId}`}`;
+  }
+
+  await db.transaction(async (tx) => {
+    // Eliminar movimientos de ingreso anteriores de este pedido/split en esta sesión
+    await tx.delete(cashMovements).where(and(
+      eq(cashMovements.orderId, orderId),
+      splitId != null ? eq(cashMovements.splitId, splitId) : isNull(cashMovements.splitId),
+      eq(cashMovements.sessionId, sessionId),
+      eq(cashMovements.movementType, 'income'),
+    ));
+
+    // Insertar los nuevos movimientos según los métodos indicados
+    for (const [i, p] of payments.entries()) {
+      const tipNum = toNum(p.tipAmount);
+      const totalCharged = round2(toNum(p.amount) + tipNum);
+      const tipNote = tipNum > 0 ? ` (propina S/ ${round2(tipNum)})` : '';
+      const multiNote = payments.length > 1 ? ` · pago ${i + 1}/${payments.length}` : '';
+      const isCash = p.isCash ?? await resolveIsCashByMethod(p.paymentMethodId, p.paymentMethod);
+
+      const [movement] = await tx
+        .insert(cashMovements)
+        .values({
+          sessionId,
+          movementType: 'income',
+          concept: `${formatOrderConcept(order, orderId)}${splitLabel}${multiNote}${tipNote}`,
+          amount: totalCharged,
+          tipAmount: round2(tipNum),
+          paymentMethod: p.paymentMethod,
+          retentionPercentage: p.retentionPercentage ?? '0.00',
+          retentionAmount: p.retentionAmount ?? '0.00',
+          isCash,
+          orderId,
+          splitId,
+          createdBy: actor?.userName ?? 'sistema',
+        })
+        .returning();
+
+      await writeAuditLog({
+        tableName: 'cash_movements',
+        operation: 'UPDATE',
+        recordId: movement.id,
+        afterData: movement,
+        userId: actor?.userId,
+        userName: actor?.userName,
+        module: 'caja',
+        description: `Actualización de ingreso por cambio de forma de pago en venta ${orderId} (${p.paymentMethod}) — S/ ${totalCharged}`,
+      });
+    }
+
+    await recomputeSessionTotals(tx, sessionId);
+  });
+
+  return { updated: true };
+}

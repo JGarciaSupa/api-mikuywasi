@@ -167,6 +167,28 @@ const activationsData = [
 		order: 6,
 		isActive: true,
 		module: "impresion"
+	},
+	{
+		id: 14,
+		code: "PASSWORD_VOID_DOCUMENT",
+		name: "Solicitar contraseña para anular comprobantes",
+		description: "Requiere contraseña de supervisor para anular un comprobante de pago.",
+		category: "Seguridad",
+		defaultEnabled: false,
+		order: 4,
+		isActive: true,
+		module: "caja_chica"
+	},
+	{
+		id: 15,
+		code: "PASSWORD_CHANGE_PAYMENT_METHOD",
+		name: "Solicitar contraseña para cambiar forma de pago",
+		description: "Requiere contraseña de supervisor para cambiar la forma de pago de una venta.",
+		category: "Seguridad",
+		defaultEnabled: false,
+		order: 5,
+		isActive: true,
+		module: "caja_chica"
 	}
 ];
 

@@ -4,6 +4,7 @@ import * as billingService from '../../../services/admin/documents/billing.servi
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
 import { convertirCertificado } from '../../../../../utils/facturador-client';
 import { hasPermissionLive } from '@/utils/permissions';
+import { getAuditActor } from '@/utils/helpers';
 
 // Permiso para marcar ventas como pago pendiente y marcarlas como cobradas
 const PENDING_PAYMENT_PERMISSION = 'facturacion.pago_pendiente';
@@ -233,15 +234,17 @@ export const createDocumentController = async (c: Context) => {
 export const voidDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
-    const { reason, cancelOrder } = await c.req.json();
-    const updated = await billingService.voidDocument(id, reason, cancelOrder === true);
+    const { reason, cancelOrder, password } = await c.req.json();
+    const actor = getAuditActor(c);
+    const updated = await billingService.voidDocument(id, reason, cancelOrder === true, password, actor);
     return c.json({ success: true, data: updated });
   } catch (error: any) {
     const status =
       error.message?.includes('no encontrado') ? 404 :
-        error.message?.includes('No se puede') ? 422 :
-          error.message?.includes('motivo') ? 400 :
-            500;
+        error.message?.includes('Contraseña') || error.message?.includes('autorizado') ? 403 :
+          error.message?.includes('No se puede') ? 422 :
+            error.message?.includes('motivo') ? 400 :
+              500;
     return c.json({ success: false, message: safeMessage(error, 'Error al anular documento') }, status as any);
   }
 };
