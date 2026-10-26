@@ -17,6 +17,45 @@ function round2(n: number): string {
   return n.toFixed(2);
 }
 
+/**
+ * Formatea el concepto de venta amigable para arqueos y movimientos de caja:
+ * ej. "Venta Pedido #2026-0012 (Mesa 3)", "Venta Pedido #2026-0012 (Delivery)", "Venta Mesa 4".
+ */
+function formatOrderConcept(
+  order?: {
+    trackingCode?: string | null;
+    tableName?: string | null;
+    deliveryType?: string | null;
+  } | null,
+  fallbackId?: string,
+): string {
+  const table = order?.tableName?.trim();
+  const tracking = order?.trackingCode?.trim();
+
+  if (tracking) {
+    if (table) {
+      return `Venta Pedido #${tracking} (${table})`;
+    }
+    if (order?.deliveryType === 'delivery') {
+      return `Venta Pedido #${tracking} (Delivery)`;
+    }
+    if (order?.deliveryType === 'pickup') {
+      return `Venta Pedido #${tracking} (Para llevar)`;
+    }
+    return `Venta Pedido #${tracking}`;
+  }
+
+  if (table) {
+    return /^mesa/i.test(table) ? `Venta ${table}` : `Venta Mesa ${table}`;
+  }
+
+  if (fallbackId) {
+    return `Venta pedido ${fallbackId}`;
+  }
+
+  return 'Venta pedido';
+}
+
 // ¿El movimiento afecta el EFECTIVO físico de la caja? (para el arqueo)
 // Efectivo = método vacío/null (movimientos manuales, retiros, depósitos) o 'cash'/'efectivo'.
 // Yape/tarjeta/transferencia NO afectan el efectivo físico (van al banco).
@@ -547,6 +586,8 @@ export async function recordOrderSaleIncome(
       retentionPercentage: orders.retentionPercentage,
       retentionAmount: orders.retentionAmount,
       trackingCode: orders.trackingCode,
+      tableName: orders.tableName,
+      deliveryType: orders.deliveryType,
     })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order?.collectedSessionId) return { created: false, reason: 'no_session_linked' };
@@ -567,7 +608,7 @@ export async function recordOrderSaleIncome(
       .values({
         sessionId: session.id,
         movementType: 'income',
-        concept: `${formatOrderConcept(order)}${tipNote}`,
+        concept: `${formatOrderConcept(order, orderId)}${tipNote}`,
         amount: totalCharged,
         tipAmount: round2(tipNum),
         paymentMethod: data.paymentMethod ?? null,
@@ -615,7 +656,12 @@ export async function recordOrderMultiPaymentIncome(
   if (existing) return { created: false, reason: 'already_recorded' };
 
   const [order] = await db
-    .select({ collectedSessionId: orders.collectedSessionId, trackingCode: orders.trackingCode })
+    .select({
+      collectedSessionId: orders.collectedSessionId,
+      trackingCode: orders.trackingCode,
+      tableName: orders.tableName,
+      deliveryType: orders.deliveryType,
+    })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order?.collectedSessionId) return { created: false, reason: 'no_session_linked' };
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, order.collectedSessionId)).limit(1);
@@ -629,7 +675,7 @@ export async function recordOrderMultiPaymentIncome(
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `${formatOrderConcept(order)} · pago ${i + 1}/${lines.length}`,
+          concept: `${formatOrderConcept(order, orderId)} · pago ${i + 1}/${lines.length}`,
           amount: round2(line.amount),
           paymentMethod: line.paymentMethod,
           retentionPercentage: line.retentionPercentage,
@@ -772,7 +818,7 @@ export async function recordSplitSaleIncome(
           .values({
             sessionId: session.id,
             movementType: 'income',
-            concept: `${formatOrderConcept(order)} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})${tipNote}`,
+            concept: `${formatOrderConcept(order, split.orderId)} · ${split.label ?? 'cuenta'} (${sp.paymentMethod})${tipNote}`,
             amount: totalCharged,
             tipAmount: itemTip.toFixed(2),
             paymentMethod: sp.paymentMethod,
@@ -808,7 +854,7 @@ export async function recordSplitSaleIncome(
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `${formatOrderConcept(order)} · ${split.label ?? 'cuenta'}${tipNote}`,
+          concept: `${formatOrderConcept(order, split.orderId)} · ${split.label ?? 'cuenta'}${tipNote}`,
           amount: totalCharged,
           tipAmount: tip.toFixed(2),
           paymentMethod: split.paymentMethod ?? null,
