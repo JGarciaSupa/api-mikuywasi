@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { manualOrderStatusError, manualPaymentStatusError } from '../../../services/admin/documents/order-status-rules.service';
 import { safeMessage } from '@/utils/errors';
 import * as tenantService from '../../../services/client/tenant.service';
 import * as waiterOrderService from '../../../services/admin/config-local/waiter-order.service';
@@ -231,6 +232,8 @@ export const updateWaiterOrderStatusController = async (c: Context) => {
     if (!status) {
       return c.json({ success: false, message: 'El campo status es requerido' }, 400);
     }
+    const transitionError = await manualOrderStatusError(orderId, status);
+    if (transitionError) return c.json({ success: false, message: transitionError }, 422);
     const updated = await orderService.updateOrderStatus(orderId, status);
     if (!updated) {
       return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
@@ -276,6 +279,8 @@ export const updateWaiterOrderPaymentStatusController = async (c: Context) => {
     if (!paymentStatus) {
       return c.json({ success: false, message: 'El campo paymentStatus es requerido' }, 400);
     }
+    const paymentTransitionError = await manualPaymentStatusError(orderId, paymentStatus);
+    if (paymentTransitionError) return c.json({ success: false, message: paymentTransitionError }, 422);
     const updated = await orderService.updateOrderPaymentStatus(
       orderId,
       paymentStatus,

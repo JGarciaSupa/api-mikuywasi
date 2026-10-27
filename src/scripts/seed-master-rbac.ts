@@ -324,6 +324,10 @@ type SeedResult = {
 // ejecución: así no se re-otorga lo que el super admin quitó a un tenant o a un rol base.
 // Con --grant-all se vuelve al comportamiento anterior (otorgar todo a todos).
 const GRANT_ALL = process.argv.includes('--grant-all');
+// Recuperación sin --grant-all: --grant=codigo1,codigo2 vuelve a otorgar (y sincronizar) solo esos
+// permisos a todos los tenants y a los roles base que los definen. Útil si una ejecución falló a mitad.
+const GRANT_CODES = (process.argv.find((a) => a.startsWith('--grant='))?.slice('--grant='.length) ?? '')
+  .split(',').map((c) => c.trim()).filter(Boolean);
 
 async function seedRbacData(): Promise<SeedResult> {
   const subActionIdByCode = new Map<string, number>();
@@ -391,6 +395,10 @@ async function seedRbacData(): Promise<SeedResult> {
   console.log(`   ✓ Acciones: ${createdActionsCount} creadas, ${existingActionsCount} ya existían`);
   console.log(`   ✓ Sub-acciones: ${createdSubActionsCount} creadas, ${existingSubActionsCount} ya existían`);
 
+  const unknownCodes = GRANT_CODES.filter((code) => !subActionIdByCode.has(code));
+  if (unknownCodes.length > 0) throw new Error(`--grant con códigos inexistentes: ${unknownCodes.join(', ')}`);
+  const grantCodeIds = new Set(GRANT_CODES.map((code) => subActionIdByCode.get(code)!));
+
   let createdRolesCount = 0;
   let existingRolesCount = 0;
 
@@ -423,7 +431,7 @@ async function seedRbacData(): Promise<SeedResult> {
     const permRows = roleSeed.subActionCodes
       .map((code) => subActionIdByCode.get(code))
       .filter((id): id is number => id !== undefined)
-      .filter((id) => GRANT_ALL || isNewRole || createdSubActionIds.includes(id))
+      .filter((id) => GRANT_ALL || isNewRole || createdSubActionIds.includes(id) || grantCodeIds.has(id))
       .map((subActionId) => ({ baseRoleId: existingRole.id, subActionId }));
 
     if (permRows.length > 0) {
@@ -433,7 +441,12 @@ async function seedRbacData(): Promise<SeedResult> {
 
   console.log(`   ✓ Roles base: ${createdRolesCount} creados, ${existingRolesCount} ya existían`);
 
-  return { subActionIdByCode, roleIdByCode, createdSubActionIds, createdRoleIds };
+  return {
+    subActionIdByCode,
+    roleIdByCode,
+    createdSubActionIds: [...new Set([...createdSubActionIds, ...grantCodeIds])],
+    createdRoleIds,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -458,26 +471,43 @@ async function grantAndSyncAllTenants(seed: SeedResult) {
     ? '   ⚠️  --grant-all: se otorgan TODAS las sub-acciones y roles base a todos los tenants'
     : `   ℹ️  Se otorgan solo los nuevos: ${allSubActions.length} sub-acciones y ${allBaseRoles.length} roles base`);
 
+  // Un tenant que falla (p. ej. su BD no responde) no detiene a los demás
+  const failed: string[] = [];
   for (const tenant of allTenants) {
-    // Feature grants (todas las sub-acciones)
-    if (allSubActions.length > 0) {
-      await masterDb
-        .insert(tenantFeatureGrants)
-        .values(allSubActions.map((sa) => ({ tenantId: tenant.id, subActionId: sa.id })))
-        .onConflictDoNothing();
-    }
+    try {
+      // Feature grants (todas las sub-acciones)
+      if (allSubActions.length > 0) {
+        await masterDb
+          .insert(tenantFeatureGrants)
+          .values(allSubActions.map((sa) => ({ tenantId: tenant.id, subActionId: sa.id })))
+          .onConflictDoNothing();
+      }
 
-    // Role grants (todos los roles base)
-    if (allBaseRoles.length > 0) {
-      await masterDb
-        .insert(tenantRoleGrants)
-        .values(allBaseRoles.map((br) => ({ tenantId: tenant.id, baseRoleId: br.id })))
-        .onConflictDoNothing();
-    }
+      // Role grants (todos los roles base)
+      if (allBaseRoles.length > 0) {
+        await masterDb
+          .insert(tenantRoleGrants)
+          .values(allBaseRoles.map((br) => ({ tenantId: tenant.id, baseRoleId: br.id })))
+          .onConflictDoNothing();
+      }
 
-    // Sync hacia la BD del tenant
-    await fullSyncTenant(tenant.id);
-    console.log(`   ✓ Tenant "${tenant.name}" — grants y sync completados`);
+      // Sync hacia la BD del tenant
+      await fullSyncTenant(tenant.id);
+      console.log(`   ✓ Tenant "${tenant.name}" — grants y sync completados`);
+    } catch (error: any) {
+      failed.push(tenant.name);
+      console.error(`   ❌ Tenant "${tenant.name}" — falló: ${error?.message || error}`);
+    }
+  }
+
+  if (failed.length > 0) {
+    const codeById = new Map([...seed.subActionIdByCode].map(([code, id]) => [id, code]));
+    const codes = allSubActions.map((sa) => codeById.get(sa.id)).filter(Boolean).join(',');
+    console.error(`\n   ⚠️  ${failed.length} tenant(s) sin completar: ${failed.join(', ')}`);
+    if (!GRANT_ALL && codes) {
+      console.error(`   Para reintentar sin re-otorgar lo revocado: bun run src/scripts/seed-master-rbac.ts --grant=${codes}`);
+    }
+    throw new Error('Algunos tenants no se sincronizaron');
   }
 }
 

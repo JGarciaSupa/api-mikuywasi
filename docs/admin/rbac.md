@@ -22,6 +22,7 @@ Reglas (las aplica `services/admin/users/rbac.service.ts`; si quien llama no es 
 
 - No puede **otorgar** permisos reservados nuevos en roles propios ni como permiso suelto (`grant`). Puede conservar los que ya tenían o quitarlos.
 - No puede **asignar** `rol_admin` a un usuario (ni por `/rbac/user-roles` ni por alta/edición de personal).
+- No puede **asignar un rol que contenga permisos reservados** (p. ej. un rol propio que creó el implementador): sería otorgarlos de forma indirecta. Sí puede mantenerlo al editar a un usuario que ya lo tiene.
 - No puede modificar, quitar el rol, cambiar permisos sueltos ni eliminar a un usuario `rol_admin`.
 - No puede editar ni eliminar **roles base** (`isCustom = false`); sí los roles propios del tenant.
 
@@ -79,5 +80,7 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 ## Seed RBAC (`src/scripts/seed-master-rbac.ts`)
 
 Por defecto solo otorga a los tenants (y añade a los roles base) las sub-acciones y roles **creados en esa ejecución**, para no re-otorgar lo que el super admin quitó. `bun run src/scripts/seed-master-rbac.ts --grant-all` recupera el comportamiento anterior (otorgar todo a todos).
+
+Si un tenant falla (p. ej. su BD no responde), los demás continúan y al final se listan los fallidos con el comando de recuperación: `bun run src/scripts/seed-master-rbac.ts --grant=codigo1,codigo2` vuelve a otorgar y sincronizar **solo** esos permisos, sin re-otorgar lo revocado.
 
 `requirePermission` lee los permisos del token: tras sincronizar los permisos nuevos, los usuarios deben volver a iniciar sesión (o refrescar el token) para recibirlos.

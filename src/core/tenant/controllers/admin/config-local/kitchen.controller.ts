@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { manualOrderStatusError } from '../../../services/admin/documents/order-status-rules.service';
 import { safeMessage } from '@/utils/errors';
 import * as kitchenService from '../../../services/admin/config-local/kitchen.service';
 
@@ -143,6 +144,12 @@ export const updateKitchenStatusController = async (c: Context) => {
 
     if (!['preparing', 'ready_for_pickup', 'completed'].includes(status)) {
       return c.json({ success: false, message: 'Estado no válido para cocina' }, 400);
+    }
+
+    // "completed" desde cocina solo si el pedido ya está cobrado
+    if (status === 'completed') {
+      const transitionError = await manualOrderStatusError(id, status);
+      if (transitionError) return c.json({ success: false, message: transitionError }, 422);
     }
 
     const result = await kitchenService.updateKitchenOrderStatus(id, status as any);

@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { manualOrderStatusError, manualPaymentStatusError } from '../../../services/admin/documents/order-status-rules.service';
 import { safeMessage } from '@/utils/errors';
 import * as orderService from '../../../services/admin/documents/order.service';
 import { getAuditActor } from '@/utils/helpers';
@@ -113,6 +114,9 @@ export const updateOrderStatusController = async (c: Context) => {
       return c.json({ success: false, message: 'El estado es requerido' }, 400);
     }
 
+    const transitionError = await manualOrderStatusError(id, status);
+    if (transitionError) return c.json({ success: false, message: transitionError }, 422);
+
     const result = await orderService.updateOrderStatus(id, status);
 
     return c.json({
@@ -224,6 +228,9 @@ export const updateOrderPaymentStatusController = async (c: Context) => {
     if (!paymentStatus) {
       return c.json({ success: false, message: 'El estado de pago es requerido' }, 400);
     }
+
+    const paymentTransitionError = await manualPaymentStatusError(id, paymentStatus);
+    if (paymentTransitionError) return c.json({ success: false, message: paymentTransitionError }, 422);
 
     const result = await orderService.updateOrderPaymentStatus(
       id,

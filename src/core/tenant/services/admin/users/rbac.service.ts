@@ -32,12 +32,30 @@ async function assertCanGrantPermissions(actor: RbacActor | undefined, permCatal
   }
 }
 
-export async function assertCanAssignRole(actor: RbacActor | undefined, roleId: number) {
+/**
+ * rol_admin solo lo asigna el implementador. Tampoco se puede asignar un rol que contenga
+ * permisos reservados (sería otorgarlos por la puerta de atrás), salvo que el usuario ya
+ * tenga ese mismo rol (mantenerlo al editar sus datos no otorga nada nuevo).
+ */
+export async function assertCanAssignRole(actor: RbacActor | undefined, roleId: number, targetUserId?: number) {
   if (isImplementer(actor)) return;
   const db = getTenantDb();
   const role = await db.query.roles.findFirst({ where: eq(roles.id, roleId) });
   if (role?.code === IMPLEMENTER_ROLE_CODE) {
     throw new Error('Solo el implementador puede asignar el rol Administrador');
+  }
+  if (targetUserId != null) {
+    const current = await db.query.userRoles.findFirst({ where: eq(userRoles.userId, targetUserId) });
+    if (current?.roleId === roleId) return;
+  }
+  const reserved = await db
+    .select({ code: permissionsCatalog.subActionCode, name: permissionsCatalog.subActionName })
+    .from(rolePermissions)
+    .innerJoin(permissionsCatalog, eq(permissionsCatalog.id, rolePermissions.permCatalogId))
+    .where(eq(rolePermissions.roleId, roleId));
+  const reservedNames = reserved.filter((r) => isReservedPermission(r.code)).map((r) => r.name);
+  if (reservedNames.length > 0) {
+    throw new Error(`Solo el implementador puede asignar este rol: incluye permisos reservados (${reservedNames.join(', ')})`);
   }
 }
 
@@ -235,7 +253,7 @@ export async function assignRoleToUser(userId: number, roleId: number, assignedB
   if (!role) throw new Error('Rol no encontrado');
   if (!role.isActive) throw new Error('El rol está inactivo');
   await assertCanManageUser(actor, userId);
-  await assertCanAssignRole(actor, roleId);
+  await assertCanAssignRole(actor, roleId, userId);
 
   // Upsert: si ya tiene rol, lo reemplaza
   const [result] = await db.insert(userRoles)

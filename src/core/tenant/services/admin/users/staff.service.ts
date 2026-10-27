@@ -133,7 +133,7 @@ export async function updateStaff(id: number, data: UpdateStaffInput, imageFile?
   const [existingUser] = await db.select().from(users).where(eq(users.id, id));
   if (!existingUser) throw new Error('Usuario no encontrado');
   await assertCanManageUser(actor, id);
-  if (data.roleId) await assertCanAssignRole(actor, data.roleId);
+  if (data.roleId) await assertCanAssignRole(actor, data.roleId, id);
 
   if (data.username && data.username !== existingUser.username) {
     const [taken] = await db.select().from(users).where(eq(users.username, data.username));

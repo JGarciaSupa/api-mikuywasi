@@ -701,7 +701,9 @@ export async function createDocument(input: CreateDocumentInput) {
     if (!branchCfg?.allowPendingPayment) {
       throw new Error('La sucursal no tiene activadas las ventas con pago pendiente');
     }
-    if (input.paymentPendingCustomerId != null) {
+    // Si es el mismo cliente que ya tiene el pedido no se revalida: el pedido ya está asociado
+    // y rechazarlo aquí dejaría el pedido cobrado sin comprobante (el POS cobra antes de emitir).
+    if (input.paymentPendingCustomerId != null && Number(input.paymentPendingCustomerId) !== order.customerId) {
       const [customer] = await db
         .select({ id: customers.id, status: customers.status, firstName: customers.firstName, lastName: customers.lastName })
         .from(customers)

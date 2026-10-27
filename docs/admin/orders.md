@@ -147,6 +147,26 @@ Obtiene contadores rápidos para el resumen del día.
 - No afecta importes ni caja (`cash_movements.reference` sigue reservado a las marcas internas `reverso`/`devolucion`).
 - El recibo la muestra en la forma de pago: `"Mastercard S/ 100.00 (REF 004512)"`, así sale en el ticket y en el PDF sin cambios en el front.
 
+## Estados del pedido: cuándo cambian y qué se puede cambiar a mano
+
+Cada estado lo pone una acción concreta; los endpoints genéricos solo aceptan transiciones que no rompen la conciliación de cobros (`order-status-rules.service.ts`, responde **422** con el motivo):
+
+| Transición | Disparador |
+|---|---|
+| → `pending` | Se crea el pedido (POS o web) |
+| `pending` → `confirmed` | Enviar a cocina (comanda) |
+| → `preparing` / `ready_for_pickup` | Cocina (tablet); listo cuando todos los ítems están preparados |
+| → `completed` | **Al cobrar** el pedido completo (ingreso en la caja de quien cobra) |
+| → `cancelled` | `POST /waiter/orders/:id/cancel` o anular desde Documentos (revierte caja y stock) |
+| `paymentStatus` → `review_pending` | Cuentas divididas con pago parcial (lo calcula el sistema) |
+| `paymentStatus` → `paid` | Cobro completo |
+
+Reglas de `PATCH /orders/:id/status`, `PATCH /waiter/orders/:id/status` y `PATCH /kitchen/orders/:id/status` (solo `completed`): no se cambia un pedido `completed`/`cancelled`; `cancelled` no se acepta (usar el endpoint de anulación); `completed` exige `paymentStatus = paid`; no se vuelve a `pending`.
+
+Reglas de `PATCH /orders/:id/payment-status` y `PATCH /waiter/orders/:id/payment-status`: `review_pending` no se acepta (lo calcula el sistema); un pedido `paid` no vuelve a `unpaid` (se revierte anulando el comprobante); no se cambia el pago de un pedido anulado. El cobro normal del POS (`paid`) no cambia.
+
+Conciliación: `paid` ⇒ hay ingreso en caja (`collectedSessionId`) y desglose en `order_payments`. Excepción: las ventas "Cliente no pagó" figuran pagadas en caja; se identifican con `GET /billing/documents?paymentPending=true`.
+
 ## Descuento del pedido
 
 - **URL:** `POST /api/admin/waiter/orders/:id/discount` · `DELETE /api/admin/waiter/orders/:id/discount`
