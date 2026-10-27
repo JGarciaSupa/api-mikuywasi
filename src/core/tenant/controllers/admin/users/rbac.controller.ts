@@ -9,7 +9,7 @@ const actorOf = (c: Context): rbac.RbacActor => ({ roleCode: c.get('jwtPayload')
 
 export const listPermissionsCatalog = async (c: Context) => {
   try {
-    const data = await rbac.listPermissionsCatalog();
+    const data = await rbac.listPermissionsCatalog(actorOf(c));
     return c.json({ success: true, data });
   } catch (e) { return jsonError(c, e, 'Error al listar catálogo de permisos'); }
 };

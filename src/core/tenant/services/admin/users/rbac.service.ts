@@ -66,12 +66,19 @@ async function assertCanEditRole(actor: RbacActor | undefined, roleId: number) {
 // CATÁLOGO DE PERMISOS (solo lectura)
 // ──────────────────────────────────────────
 
-export async function listPermissionsCatalog() {
+export async function listPermissionsCatalog(actor?: RbacActor) {
   const db = getTenantDb();
-  const catalog = await db
+  const rows = await db
     .select()
     .from(permissionsCatalog)
     .orderBy(asc(permissionsCatalog.actionCode), asc(permissionsCatalog.order));
+
+  // isReserved: permiso del implementador · grantable: quien consulta puede otorgarlo
+  const implementer = isImplementer(actor);
+  const catalog = rows.map((entry) => {
+    const isReserved = isReservedPermission(entry.subActionCode);
+    return { ...entry, isReserved, grantable: implementer || !isReserved };
+  });
 
   // Agrupar por acción para facilitar el consumo en el frontend
   const grouped: Record<string, { actionCode: string; actionName: string; subActions: typeof catalog }> = {};

@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
+import { getCurrentUserId, hasPermission } from '@/utils/permissions';
 import * as reportsService from '../../../services/admin/users/user-reports.service';
 import type { UserReportFilters } from '../../../services/admin/users/user-reports.service';
 
@@ -53,6 +54,10 @@ export const getUserReportSummaryController = async (c: Context) => {
     userId = parseInt(userIdRaw, 10);
     if (isNaN(userId)) {
       return c.json({ success: false, message: 'userId debe ser numérico' }, 400);
+    }
+    // El reporte de otro usuario es vista de administración
+    if (userId !== getCurrentUserId(c) && !hasPermission(c, 'administracion.ver_personal')) {
+      return c.json({ success: false, message: 'No tienes permisos para ver el reporte de otro usuario' }, 403);
     }
   } else {
     const payload = c.get('jwtPayload');

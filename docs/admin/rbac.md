@@ -44,5 +44,23 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 | `POST/PATCH/DELETE /api/printers` | `administracion.impresoras` (la lectura `GET` sigue abierta: la usan POS, caja y facturación para imprimir) |
 | `GET /api/audit`, `GET /api/audit/facets` | `administracion.auditoria` |
 | `GET /api/products/import/capacity`, `POST /api/products/import`, `POST /api/products/import/:id/image` | `menu.importar_productos` |
+| `POST /api/staff`, `PATCH /api/staff/:id`, `DELETE /api/staff/:id` | `administracion.gestionar_personal` (el listado `GET /api/staff` sigue abierto: lo usan POS, almacén y RBAC) |
+| `GET /api/staff/reports/ranking` y `GET /api/staff/reports/summary?userId=` de **otro** usuario | `administracion.ver_personal` (sin `userId` cada uno ve su propio reporte) |
+| `POST /api/branches`, `DELETE /api/branches/:id` | `administracion.gestionar_sucursales` |
+| `PATCH /api/branches/:id`, `POST/DELETE /api/branches/:id/facturacion`, `POST /api/branches/:id/facturacion/reuse` | `administracion.parametros` **o** `administracion.gestionar_sucursales` (las lecturas siguen abiertas) |
+
+## Catálogo: `isReserved` y `grantable`
+
+`GET /api/rbac/catalog` añade a cada sub-acción `isReserved` (permiso del implementador) y `grantable` (quien consulta puede otorgarlo: siempre `true` para `rol_admin`). El panel los usa para marcar "Reservado" y deshabilitar el permiso.
+
+## Ampliar permisos del cliente (implementador)
+
+- **Rol propio** del tenant con los permisos que se quieran (recomendado): no lo toca la sincronización.
+- **Permiso suelto** al usuario (`grant`): se conserva al sincronizar.
+- **Editar el rol base** `rol_admin_local` dentro del tenant **no es permanente**: cada sincronización reconstruye los permisos de los roles base desde el master.
+
+## Seed RBAC (`src/scripts/seed-master-rbac.ts`)
+
+Por defecto solo otorga a los tenants (y añade a los roles base) las sub-acciones y roles **creados en esa ejecución**, para no re-otorgar lo que el super admin quitó. `bun run src/scripts/seed-master-rbac.ts --grant-all` recupera el comportamiento anterior (otorgar todo a todos).
 
 `requirePermission` lee los permisos del token: tras sincronizar los permisos nuevos, los usuarios deben volver a iniciar sesión (o refrescar el token) para recibirlos.

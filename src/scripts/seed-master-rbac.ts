@@ -309,9 +309,23 @@ async function cleanMasterRbac() {
 // FASE DE SIEMBRA DE DATOS RBAC (Incremental / Idempotente)
 // ─────────────────────────────────────────────────────────────
 
-async function seedRbacData(): Promise<{ subActionIdByCode: Map<string, number>; roleIdByCode: Map<string, number> }> {
+type SeedResult = {
+  subActionIdByCode: Map<string, number>;
+  roleIdByCode: Map<string, number>;
+  createdSubActionIds: number[];
+  createdRoleIds: number[];
+};
+
+// Por defecto solo se otorga a los tenants (y a los roles base) lo que se crea en esta
+// ejecución: así no se re-otorga lo que el super admin quitó a un tenant o a un rol base.
+// Con --grant-all se vuelve al comportamiento anterior (otorgar todo a todos).
+const GRANT_ALL = process.argv.includes('--grant-all');
+
+async function seedRbacData(): Promise<SeedResult> {
   const subActionIdByCode = new Map<string, number>();
   const roleIdByCode = new Map<string, number>();
+  const createdSubActionIds: number[] = [];
+  const createdRoleIds: number[] = [];
 
   let createdActionsCount = 0;
   let existingActionsCount = 0;
@@ -361,6 +375,7 @@ async function seedRbacData(): Promise<{ subActionIdByCode: Map<string, number>;
           })
           .returning();
         createdSubActionsCount++;
+        createdSubActionIds.push(existingSub.id);
       } else {
         existingSubActionsCount++;
       }
@@ -393,15 +408,18 @@ async function seedRbacData(): Promise<{ subActionIdByCode: Map<string, number>;
         })
         .returning();
       createdRolesCount++;
+      createdRoleIds.push(existingRole.id);
     } else {
       existingRolesCount++;
     }
 
     roleIdByCode.set(roleSeed.code, existingRole.id);
 
+    const isNewRole = createdRoleIds.includes(existingRole.id);
     const permRows = roleSeed.subActionCodes
       .map((code) => subActionIdByCode.get(code))
       .filter((id): id is number => id !== undefined)
+      .filter((id) => GRANT_ALL || isNewRole || createdSubActionIds.includes(id))
       .map((subActionId) => ({ baseRoleId: existingRole.id, subActionId }));
 
     if (permRows.length > 0) {
@@ -411,14 +429,14 @@ async function seedRbacData(): Promise<{ subActionIdByCode: Map<string, number>;
 
   console.log(`   ✓ Roles base: ${createdRolesCount} creados, ${existingRolesCount} ya existían`);
 
-  return { subActionIdByCode, roleIdByCode };
+  return { subActionIdByCode, roleIdByCode, createdSubActionIds, createdRoleIds };
 }
 
 // ─────────────────────────────────────────────────────────────
 // FASE DE GRANTS Y SYNC: Otorgar todo a los tenants + sync
 // ─────────────────────────────────────────────────────────────
 
-async function grantAndSyncAllTenants() {
+async function grantAndSyncAllTenants(seed: SeedResult) {
   const allTenants = await masterDb.select({ id: tenants.id, name: tenants.name }).from(tenants);
 
   if (allTenants.length === 0) {
@@ -426,8 +444,15 @@ async function grantAndSyncAllTenants() {
     return;
   }
 
-  const allSubActions = await masterDb.select({ id: subActions.id }).from(subActions);
-  const allBaseRoles = await masterDb.select({ id: baseRoles.id }).from(baseRoles);
+  const allSubActions = GRANT_ALL
+    ? await masterDb.select({ id: subActions.id }).from(subActions)
+    : seed.createdSubActionIds.map((id) => ({ id }));
+  const allBaseRoles = GRANT_ALL
+    ? await masterDb.select({ id: baseRoles.id }).from(baseRoles)
+    : seed.createdRoleIds.map((id) => ({ id }));
+  console.log(GRANT_ALL
+    ? '   ⚠️  --grant-all: se otorgan TODAS las sub-acciones y roles base a todos los tenants'
+    : `   ℹ️  Se otorgan solo los nuevos: ${allSubActions.length} sub-acciones y ${allBaseRoles.length} roles base`);
 
   for (const tenant of allTenants) {
     // Feature grants (todas las sub-acciones)
@@ -462,12 +487,12 @@ async function run() {
   try {
     // FASE 1: Verificar e insertar nuevas acciones, sub-acciones y roles sin borrar existentes
     console.log('✍️  Fase 1 — Sincronizando acciones, sub-acciones y roles base...');
-    await seedRbacData();
+    const seed = await seedRbacData();
     console.log();
 
     // FASE 2: Otorgar grants a tenants y sincronizar BDs locales
     console.log('🔗 Fase 2 — Otorgando nuevos grants y sincronizando tenants...');
-    await grantAndSyncAllTenants();
+    await grantAndSyncAllTenants(seed);
     console.log();
 
     console.log('✅ [RBAC SEED] Sincronización completada con éxito.');
