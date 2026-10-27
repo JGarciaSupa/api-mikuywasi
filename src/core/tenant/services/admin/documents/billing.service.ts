@@ -11,6 +11,7 @@ import {
   orderPayments,
   tables,
   customers,
+  customerContacts,
   paymentMethods,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
@@ -689,6 +690,8 @@ export async function createDocument(input: CreateDocumentInput) {
   const paymentPending = input.paymentPending === true;
   const paymentPendingNote = input.paymentPendingNote?.trim().slice(0, 200) || null;
   let pendingCustomerId: number | null = null;
+  // Datos del cliente para que el pedido muestre a quién se le asoció la deuda
+  let pendingCustomerData: { name: string; phone: string | null } | null = null;
   if (paymentPending) {
     if (input.splitId != null) throw new Error('El pago pendiente solo aplica al pedido completo, no a cuentas divididas');
     const [branchCfg] = await db
@@ -700,12 +703,23 @@ export async function createDocument(input: CreateDocumentInput) {
     }
     if (input.paymentPendingCustomerId != null) {
       const [customer] = await db
-        .select({ id: customers.id, status: customers.status })
+        .select({ id: customers.id, status: customers.status, firstName: customers.firstName, lastName: customers.lastName })
         .from(customers)
         .where(eq(customers.id, Number(input.paymentPendingCustomerId)));
       if (!customer) throw new Error('El cliente elegido para el pago pendiente no existe');
       if (customer.status !== 'active') throw new Error('El cliente elegido para el pago pendiente está inactivo');
       pendingCustomerId = customer.id;
+      const contacts = await db
+        .select({ contactType: customerContacts.contactType, value: customerContacts.value, isPrimary: customerContacts.isPrimary })
+        .from(customerContacts)
+        .where(eq(customerContacts.customerId, customer.id));
+      const phone = contacts
+        .filter((ct) => ct.contactType !== 'email')
+        .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))[0]?.value ?? null;
+      pendingCustomerData = {
+        name: [customer.firstName, customer.lastName].filter(Boolean).join(' ').slice(0, 100),
+        phone: phone ? phone.slice(0, 20) : null,
+      };
     }
     if (branchCfg.requiresCustomer && pendingCustomerId == null && order.customerId == null) {
       throw new Error('Selecciona el cliente que debe la venta: la sucursal exige un cliente para el pago pendiente');
@@ -860,7 +874,13 @@ export async function createDocument(input: CreateDocumentInput) {
 
     // Pago pendiente con cliente: el pedido queda asociado al cliente frecuente que debe la venta
     if (pendingCustomerId != null && pendingCustomerId !== order.customerId) {
-      await tx.update(orders).set({ customerId: pendingCustomerId, updatedAt: new Date() }).where(eq(orders.id, order.id));
+      await tx.update(orders).set({
+        customerId: pendingCustomerId,
+        ...(pendingCustomerData ? { customerName: pendingCustomerData.name } : {}),
+        // El teléfono solo se completa si el pedido no tenía uno
+        ...(pendingCustomerData?.phone && !order.customerPhone ? { customerPhone: pendingCustomerData.phone } : {}),
+        updatedAt: new Date(),
+      }).where(eq(orders.id, order.id));
     }
 
     return { docId: doc.id, isActiveFacturacion: series.isActiveFacturacion };

@@ -50,7 +50,7 @@ bun run tenants:clear-sessions  # clear tenant sessions
 
 Resolving *which* tenant DB to use for a request is the job of `tenantContextMiddleware` (`src/core/tenant/middleware/tenant-context.middleware.ts`):
 1. Reads tenant identity from `X-Tenant-Slug` header, `X-Tenant-ID` header (falls back to slug if non-numeric), or a `slug`/`tenantSlug` route param/query.
-2. Resolves the tenant via `redis/getTenant.ts` (`getTenantBySlug`), which checks Redis cache first (`tenant:<slug>`, 1h TTL) and falls back to `masterDb` on a cache miss (or if Redis is down).
+2. Resolves the tenant via `redis/getTenant.ts` (`getTenantBySlug`), which checks Redis cache first (`tenant:<slug>`, 1h TTL) and falls back to `masterDb` on a cache miss (or if Redis is down). Redis stores only tenant metadata plus `serverId`/`dbName` — **never DB credentials**; the server credentials are cached in process memory (10 min) and the `dbUrl` is built on each call. Legacy cache entries (with `dbUrl`) are ignored and overwritten.
 3. Gets/creates a pooled Drizzle instance for that tenant's DB (`getTenantDb(dbUrl)`).
 4. Runs the rest of the request inside `AsyncLocalStorage` via `runWithTenantContext()` (`src/utils/tenant-context.ts`), so downstream code never threads a `db`/`tenantId` parameter manually.
 

@@ -85,7 +85,7 @@ Marca **interna** para ventas que el cliente pagará otro día por acuerdo con e
 { "paymentPending": true, "paymentPendingNote": "Paga el viernes", "paymentPendingCustomerId": 15 }
 ```
 
-Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal sin la opción → 422. `paymentPendingCustomerId` (opcional) debe ser un cliente activo; se guarda en `orders.customer_id` dentro de la misma transacción del documento. Si la sucursal exige cliente y no llega ni el pedido ya tiene uno → 422. El panel valida lo mismo **antes de cobrar**, porque el comprobante se emite después del cobro.
+Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal sin la opción → 422. `paymentPendingCustomerId` (opcional) debe ser un cliente activo; se guarda en `orders.customer_id` dentro de la misma transacción del documento, junto con `customer_name` (nombre del cliente) y `customer_phone` (su teléfono principal, solo si el pedido no tenía uno). Si la sucursal exige cliente y no llega ni el pedido ya tiene uno → 422. El panel valida lo mismo **antes de cobrar**, porque el comprobante se emite después del cobro.
 
 **Listado** — `GET /billing/documents?paymentPending=true` devuelve solo los pendientes sin cobrar y no anulados. Toda respuesta del listado incluye `pendingPayments: { count, total }` de la sucursal filtrada. Cada documento trae `paymentPending`, `paymentPendingNote`, `paymentCollectedAt`, `paymentCollectedBy`, `paymentCollectedMethod` y `paymentCollectedReference`.
 
