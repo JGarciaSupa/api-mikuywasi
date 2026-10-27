@@ -48,6 +48,14 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 | `GET /api/staff/reports/ranking` y `GET /api/staff/reports/summary?userId=` de **otro** usuario | `administracion.ver_personal` (sin `userId` cada uno ve su propio reporte) |
 | `POST /api/branches`, `DELETE /api/branches/:id` | `administracion.gestionar_sucursales` |
 | `PATCH /api/branches/:id`, `POST/DELETE /api/branches/:id/facturacion`, `POST /api/branches/:id/facturacion/reuse` | `administracion.parametros` **o** `administracion.gestionar_sucursales` (las lecturas siguen abiertas) |
+| `POST /api/waiter/orders/:id/cancel` (anular pedido completo) | `mozo.cancelar_pedido` **o** `pedidos.anular` |
+
+## Pedidos: anular y operar pedidos de otros
+
+- `POST /api/waiter/orders/:id/cancel` — body opcional `{ reasonId?, motivo?, password? }` (motivo de catálogo y contraseña según las activaciones `ORDER_DELETE_REASON_CATALOG` / `PASSWORD_DELETE_ORDER` de la caja abierta de **quien anula**; sin caja abierta, motivo libre y sin contraseña).
+  - Rechaza (400) pedidos cancelados, completados, transferidos a caja o con un comprobante **emitido** (factura, boleta o nota de venta que no sea nota de crédito): "El pedido tiene el comprobante X emitido: anúlalo primero desde Documentos y luego podrás anular el pedido". Al anular el comprobante (`POST /api/billing/documents/:id/void`, que el panel llama con `cancelOrder: false`) el pedido vuelve a `confirmed`/`unpaid`: se puede refacturar o, ya sin comprobante vigente, anular con este endpoint.
+  - Revierte la descarga de almacén, el stock de productos y el ingreso de caja, y marca `status = 'cancelled'` con motivo, usuario y autorización.
+- `pedidos.operar_otros` (sin endpoint propio): el panel deja retomar en el POS, cobrar y refacturar pedidos de otro usuario o de otra caja/turno. La API ya lo permitía: el cobro entra en la sesión de quien cobra (`collectedSessionId`) y el pedido conserva su turno de origen (`cashSessionId`) para los reportes de ventas.
 
 ## Catálogo: `isReserved` y `grantable`
 

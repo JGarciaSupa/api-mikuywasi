@@ -16,6 +16,7 @@ import {
   ordersItemsDeleted,
   branches,
   productSalesChannelPrices,
+  billingDocuments,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -559,6 +560,22 @@ export async function cancelOrder(orderId: string, actor?: AuditActor, opts: Del
   assertNotTransferred(order, orderId);
   if (order.status === 'cancelled') throw new Error('El pedido ya está cancelado');
   if (order.status === 'completed') throw new Error('No se puede cancelar un pedido completado');
+
+  // Con un comprobante vigente el pedido se anula desde Documentos (nota de crédito /
+  // anulación con "anular pedido"); si no, la boleta o factura seguiría válida ante SUNAT.
+  // Las notas de crédito no cuentan: son la anulación de otro comprobante.
+  const [activeDoc] = await db
+    .select({ documentNumber: billingDocuments.documentNumber })
+    .from(billingDocuments)
+    .where(and(
+      eq(billingDocuments.orderId, orderId),
+      eq(billingDocuments.status, 'issued'),
+      sql`${billingDocuments.documentType} <> 'nota_de_credito'`,
+    ))
+    .limit(1);
+  if (activeDoc) {
+    throw new Error(`El pedido tiene el comprobante ${activeDoc.documentNumber} emitido: anúlalo primero desde Documentos y luego podrás anular el pedido`);
+  }
 
   const gate = await resolveDeleteAuthorization(db, actor?.userId, order.branchId, opts, {
     reasonCatalog: 'ORDER_DELETE_REASON_CATALOG',

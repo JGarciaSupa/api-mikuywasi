@@ -51,6 +51,8 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.crear', name: 'Crear pedidos', description: 'Crear un nuevo pedido.', order: 5 },
       { code: 'pedidos.transferir', name: 'Transferir pedidos', description: 'Transferir un pedido generado a la caja para cobrarlo (bloquea la edición) y regresarlo.', order: 6 },
       { code: 'pedidos.mover_mesa', name: 'Mover pedidos entre mesas', description: 'Mover un pedido completo o productos seleccionados de una mesa a otra (fusiona si la destino tiene pedido).', order: 7 },
+      { code: 'pedidos.operar_otros', name: 'Operar pedidos de otros usuarios o cajas', description: 'Retomar en el POS, cobrar y refacturar pedidos creados por otro usuario o en otra caja/turno (por ejemplo, si el cajero no está).', order: 8 },
+      { code: 'pedidos.anular', name: 'Anular pedidos', description: 'Anular un pedido completo sin comprobante emitido (con comprobante se anula desde Documentos).', order: 9 },
     ],
   },
   {
