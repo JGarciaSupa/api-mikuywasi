@@ -62,6 +62,10 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
   - El pedido queda `cancelled` (revierte descarga y stock) con `motivo` (máx. 200), `deletedDate`, `deletedById` y `authorizedById`, igual que la anulación desde el POS.
 - Modo auditoría de `pedidos.operar_otros` (no bloquea): si un usuario **sin** ese permiso cobra (`POST /api/waiter/orders/:id/payments`), cobra una cuenta dividida (`PATCH .../:orderId/splits/:splitId/payment`) o emite comprobante (`POST /api/billing/documents`) sobre un pedido que no es suyo (no es el mozo, ni el dueño de la caja de origen, ni su caja abierta es la de origen o la de transferencia), y la operación responde OK, se registra en `audit_log` (módulo `pedidos`, `orderId` en `afterData`). Sirve para medir el uso real antes de decidir si se bloquea.
 
+## Exportar catálogos (acta de validación)
+
+- `menu.exportar_productos` y `almacen.exportar_insumos`: muestran el botón "Exportar" (Excel / PDF) en Productos e Insumos. No tienen endpoint propio: el panel genera el archivo con los listados existentes (`GET /api/products`, `GET` de insumos), que siguen protegidos por sus permisos de lectura. Por defecto solo los tienen `rol_admin` y `rol_admin_local` (no son reservados); se pueden dar a otros roles desde RBAC.
+
 ## Catálogo: `isReserved` y `grantable`
 
 `GET /api/rbac/catalog` añade a cada sub-acción `isReserved` (permiso del implementador) y `grantable` (quien consulta puede otorgarlo: siempre `true` para `rol_admin`). El panel los usa para marcar "Reservado" y deshabilitar el permiso.

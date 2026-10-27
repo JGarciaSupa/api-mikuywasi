@@ -82,6 +82,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'menu.gestionar_extras', name: 'Gestionar extras', description: 'Administrar grupos de extras y modificadores.', order: 7 },
       { code: 'menu.gestionar_estaciones', name: 'Gestionar estaciones de cocina', description: 'Administrar el catálogo de estaciones de cocina y su ruteo por producto.', order: 8 },
       { code: 'menu.importar_productos', name: 'Importar productos', description: 'Carga masiva de productos desde archivo (uso del implementador).', order: 9 },
+      { code: 'menu.exportar_productos', name: 'Exportar productos', description: 'Descargar el catálogo de productos en Excel o PDF (p. ej. para el acta de validación).', order: 10 },
     ],
   },
   {
@@ -140,6 +141,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'almacen.kardex', name: 'Kardex', description: 'Ver kardex y movimientos por insumo.', order: 14 },
       { code: 'almacen.descargas_venta', name: 'Descargas por venta', description: 'Ver y procesar descargas automáticas por venta.', order: 15 },
       { code: 'almacen.configuracion', name: 'Configuración de almacén', description: 'Administrar configuración interna del almacén.', order: 16 },
+      { code: 'almacen.exportar_insumos', name: 'Exportar insumos', description: 'Descargar el catálogo de insumos en Excel o PDF (p. ej. para el acta de validación).', order: 17 },
     ],
   },
   {
