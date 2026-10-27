@@ -3,7 +3,7 @@ import { safeMessage } from '@/utils/errors';
 import * as billingService from '../../../services/admin/documents/billing.service';
 import * as billingSeriesService from '../../../services/admin/documents/billing-series.service';
 import { convertirCertificado } from '../../../../../utils/facturador-client';
-import { hasPermissionLive } from '@/utils/permissions';
+import { hasPermission, hasPermissionLive } from '@/utils/permissions';
 import { getAuditActor } from '@/utils/helpers';
 
 // Permiso para marcar ventas como pago pendiente y marcarlas como cobradas
@@ -235,6 +235,9 @@ export const voidDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
     const { reason, cancelOrder, password } = await c.req.json();
+    if (cancelOrder === true && !hasPermission(c, 'pedidos.anular') && !hasPermission(c, 'mozo.cancelar_pedido')) {
+      return c.json({ success: false, message: 'No tienes permisos para anular también el pedido' }, 403);
+    }
     const actor = getAuditActor(c);
     const updated = await billingService.voidDocument(id, reason, cancelOrder === true, password, actor);
     return c.json({ success: true, data: updated });

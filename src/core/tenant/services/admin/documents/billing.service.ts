@@ -1552,6 +1552,25 @@ export async function voidDocument(
   if (doc.status !== 'issued') throw new Error(`No se puede anular un documento en estado '${doc.status}'`);
   if (!reason?.trim()) throw new Error('Se requiere un motivo de anulación');
 
+  // Anular también el pedido: solo si este es su único comprobante vigente (las notas de
+  // crédito no cuentan). Con cuentas divididas, los otros comprobantes quedarían sin pedido.
+  // Se valida antes de emitir la NC o tocar la caja.
+  if (cancelOrder) {
+    const [otherDoc] = await db
+      .select({ documentNumber: billingDocuments.documentNumber })
+      .from(billingDocuments)
+      .where(and(
+        eq(billingDocuments.orderId, doc.orderId),
+        eq(billingDocuments.status, 'issued'),
+        sql`${billingDocuments.id} <> ${doc.id}`,
+        sql`${billingDocuments.documentType} <> 'nota_de_credito'`,
+      ))
+      .limit(1);
+    if (otherDoc) {
+      throw new Error(`No se puede anular también el pedido: tiene otro comprobante vigente (${otherDoc.documentNumber}). Anula solo este comprobante o anula primero los demás`);
+    }
+  }
+
   // 1. Autorización por contraseña si la activación PASSWORD_VOID_DOCUMENT está activa
   let authorizedById: number | null = null;
   const session = actor?.userId ? await getActiveSessionForUser(actor.userId) : null;
@@ -1622,6 +1641,14 @@ export async function voidDocument(
   if (cancelOrder) {
     const { updateOrderStatus } = await import('../documents/order.service');
     await updateOrderStatus(doc.orderId, 'cancelled');
+    // Misma trazabilidad que la anulación de pedido del POS: motivo, quién y cuándo
+    await db.update(orders).set({
+      motivo: reason.trim().slice(0, 200),
+      deletedDate: new Date(),
+      deletedById: actor?.userId ?? null,
+      authorizedById,
+      updatedAt: new Date(),
+    }).where(eq(orders.id, doc.orderId));
   } else {
     // REVIVIR EL PEDIDO: vuelve a pendiente de pago y estado activo
     const [order] = await db.select().from(orders).where(eq(orders.id, doc.orderId));

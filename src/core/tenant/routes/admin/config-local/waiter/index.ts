@@ -1,6 +1,7 @@
 import { Hono, type Context, type Next } from 'hono';
 import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import { hasPermission } from '@/utils/permissions';
+import { auditForeignOrder, orderIdFromParam } from '../../../../middleware/foreign-order-audit.middleware';
 import {
   createWaiterOrderController,
   getWaiterMenuController,
@@ -36,7 +37,7 @@ routes.get('/orders/:id', getWaiterOrderController);
 routes.patch('/orders/:id/status', updateWaiterOrderStatusController);
 routes.patch('/orders/:id/payment-status', updateWaiterOrderPaymentStatusController);
 routes.get('/orders/:id/payments', listOrderPaymentsController);
-routes.post('/orders/:id/payments', validateMultiPayment, payOrderWithMultiplePaymentsController);
+routes.post('/orders/:id/payments', auditForeignOrder('Cobro', orderIdFromParam('id')), validateMultiPayment, payOrderWithMultiplePaymentsController);
 routes.post('/orders/:id/discount', requirePermission('pedidos', 'pedidos.cambiar_estado_pago'), validateApplyDiscount, applyOrderDiscountController);
 routes.delete('/orders/:id/discount', requirePermission('pedidos', 'pedidos.cambiar_estado_pago'), removeOrderDiscountController);
 routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);

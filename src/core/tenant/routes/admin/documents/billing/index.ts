@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { auditForeignOrder, orderIdFromJsonBody } from '../../../../middleware/foreign-order-audit.middleware';
 import {
   listSeriesController,
   createSeriesController,
@@ -67,7 +68,7 @@ routes.get('/documents/:id/receipt', getDocumentReceiptController);
 routes.put('/documents/:id/correct', correctAndRetryController);
 routes.get('/documents/:id/pdf', getDocumentPdfController);
 routes.get('/preview/:orderId', previewDocumentController);
-routes.post('/documents', createDocumentController);
+routes.post('/documents', auditForeignOrder('Emisión de comprobante', orderIdFromJsonBody), createDocumentController);
 routes.post('/documents/:id/void-status', checkVoidStatusController);
 routes.post('/documents/:id/void-retry', retryVoidSunatController);
 routes.post('/documents/:id/void', voidDocumentController);

@@ -53,9 +53,14 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 ## Pedidos: anular y operar pedidos de otros
 
 - `POST /api/waiter/orders/:id/cancel` — body opcional `{ reasonId?, motivo?, password? }` (motivo de catálogo y contraseña según las activaciones `ORDER_DELETE_REASON_CATALOG` / `PASSWORD_DELETE_ORDER` de la caja abierta de **quien anula**; sin caja abierta, motivo libre y sin contraseña).
-  - Rechaza (400) pedidos cancelados, completados, transferidos a caja o con un comprobante **emitido** (factura, boleta o nota de venta que no sea nota de crédito): "El pedido tiene el comprobante X emitido: anúlalo primero desde Documentos y luego podrás anular el pedido". Al anular el comprobante (`POST /api/billing/documents/:id/void`, que el panel llama con `cancelOrder: false`) el pedido vuelve a `confirmed`/`unpaid`: se puede refacturar o, ya sin comprobante vigente, anular con este endpoint.
+  - Rechaza (400) pedidos cancelados, completados, transferidos a caja o con un comprobante **emitido** (factura, boleta o nota de venta que no sea nota de crédito): "El pedido tiene el comprobante X emitido: anúlalo primero desde Documentos y luego podrás anular el pedido". Al anular el comprobante (`POST /api/billing/documents/:id/void`) con `cancelOrder: false` el pedido vuelve a `confirmed`/`unpaid`: se puede refacturar o, ya sin comprobante vigente, anular con este endpoint.
   - Revierte la descarga de almacén, el stock de productos y el ingreso de caja, y marca `status = 'cancelled'` con motivo, usuario y autorización.
 - `pedidos.operar_otros` (sin endpoint propio): el panel deja retomar en el POS, cobrar y refacturar pedidos de otro usuario o de otra caja/turno. La API ya lo permitía: el cobro entra en la sesión de quien cobra (`collectedSessionId`) y el pedido conserva su turno de origen (`cashSessionId`) para los reportes de ventas.
+- Anular comprobante **y** pedido en un paso: `POST /api/billing/documents/:id/void` con `cancelOrder: true` (casilla "Anular también el pedido" en Documentos, desmarcada por defecto).
+  - Exige `pedidos.anular` **o** `mozo.cancelar_pedido` (403 si no). `rol_admin` pasa siempre.
+  - Rechaza (400) si el pedido tiene **otro** comprobante emitido que no sea nota de crédito (cuentas divididas). La validación ocurre antes de emitir la NC o tocar la caja.
+  - El pedido queda `cancelled` (revierte descarga y stock) con `motivo` (máx. 200), `deletedDate`, `deletedById` y `authorizedById`, igual que la anulación desde el POS.
+- Modo auditoría de `pedidos.operar_otros` (no bloquea): si un usuario **sin** ese permiso cobra (`POST /api/waiter/orders/:id/payments`), cobra una cuenta dividida (`PATCH .../:orderId/splits/:splitId/payment`) o emite comprobante (`POST /api/billing/documents`) sobre un pedido que no es suyo (no es el mozo, ni el dueño de la caja de origen, ni su caja abierta es la de origen o la de transferencia), y la operación responde OK, se registra en `audit_log` (módulo `pedidos`, `orderId` en `afterData`). Sirve para medir el uso real antes de decidir si se bloquea.
 
 ## Catálogo: `isReserved` y `grantable`
 

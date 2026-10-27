@@ -5,6 +5,7 @@ import {
 import { getOrderVoidTicketController } from '../../../../controllers/admin/documents/order-void-ticket.controller';
 import { Hono } from 'hono';
 import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
+import { auditForeignOrder, orderIdFromParam } from '../../../../middleware/foreign-order-audit.middleware';
 import {
   getOrdersController,
   getOrderByIdController,
@@ -83,7 +84,7 @@ routes.post('/:orderId/splits/by-amount', createCustomAmountSplitsController);
 routes.patch('/:orderId/splits/:splitId/label', updateSplitLabelController);
 routes.patch('/:orderId/splits/items', assignItemsController);
 routes.post('/:orderId/splits/items/split-qty', splitItemQtyController);
-routes.patch('/:orderId/splits/:splitId/payment', updateSplitPaymentController);
+routes.patch('/:orderId/splits/:splitId/payment', auditForeignOrder('Cobro de cuenta dividida', orderIdFromParam('orderId')), updateSplitPaymentController);
 routes.delete('/:orderId/splits/:splitId', deleteSplitController);
 
 export default routes;
