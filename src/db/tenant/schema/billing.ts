@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { orders, orderSplits, orderItems, products, branches } from './core';
+import { orders, orderSplits, orderItems, products, branches, paymentMethods } from './core';
 import { cashRegisters } from './warehouse';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
@@ -75,6 +75,10 @@ export const billingDocuments = pgTable('billing_documents', {
 	paymentPendingNote: varchar('payment_pending_note', { length: 200 }),
 	paymentCollectedAt: timestamp('payment_collected_at', { withTimezone: true }),
 	paymentCollectedBy: varchar('payment_collected_by', { length: 100 }),
+	// Cómo pagó el cliente al cobrar la venta pendiente (informativo: la caja ya registró el pago al vender)
+	paymentCollectedMethodId: integer('payment_collected_method_id').references(() => paymentMethods.id),
+	paymentCollectedMethod: varchar('payment_collected_method', { length: 100 }),
+	paymentCollectedReference: varchar('payment_collected_reference', { length: 50 }),
 
 	// Campos SUNAT — poblados tras llamar al facturador-restaurante
 	sunatStatus: varchar('sunat_status', { length: 20 }),    // ACEPTADO | RECHAZADO | ERROR

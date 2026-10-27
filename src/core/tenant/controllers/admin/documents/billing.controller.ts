@@ -431,7 +431,15 @@ export const markDocumentCollectedController = async (c: Context) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ success: false, message: 'ID inválido' }, 400);
     const payload = c.get('jwtPayload') as { username?: string } | undefined;
-    const data = await billingService.markDocumentCollected(id, payload?.username ?? null);
+    // Body opcional (retrocompatible): forma de pago real con la que pagó el cliente y su REF
+    const body = await c.req.json().catch(() => ({})) as { paymentMethodId?: unknown; reference?: unknown };
+    const paymentMethodId = body.paymentMethodId == null ? null : Number(body.paymentMethodId);
+    if (paymentMethodId != null && (!Number.isInteger(paymentMethodId) || paymentMethodId <= 0)) {
+      return c.json({ success: false, message: 'Método de pago inválido' }, 400);
+    }
+    const reference = typeof body.reference === 'string' ? body.reference.trim() : '';
+    if (reference.length > 50) return c.json({ success: false, message: 'La referencia admite máximo 50 caracteres' }, 400);
+    const data = await billingService.markDocumentCollected(id, payload?.username ?? null, { paymentMethodId, reference: reference || null });
     return c.json({ success: true, data, message: 'Cobro registrado' });
   } catch (error: any) {
     const status = error.message?.includes('no encontrado') ? 404 : 422;

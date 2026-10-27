@@ -77,15 +77,18 @@ Marca **interna** para ventas que el cliente pagará otro día por acuerdo con e
 
 - Sucursal con `allowPendingPayment = true` (`PATCH /branches/:id`, Parámetros). Apagado por defecto.
 - Permiso `facturacion.pago_pendiente` (`rol_admin` siempre pasa).
+- Opcional por sucursal: `pendingPaymentRequiresCustomer = true` (migración `0092`) exige asociar un cliente frecuente.
 
 **Emitir con la marca** — `POST /billing/documents` acepta además:
 
 ```json
-{ "paymentPending": true, "paymentPendingNote": "Paga el viernes" }
+{ "paymentPending": true, "paymentPendingNote": "Paga el viernes", "paymentPendingCustomerId": 15 }
 ```
 
-Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal sin la opción → 422.
+Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal sin la opción → 422. `paymentPendingCustomerId` (opcional) debe ser un cliente activo; se guarda en `orders.customer_id` dentro de la misma transacción del documento. Si la sucursal exige cliente y no llega ni el pedido ya tiene uno → 422. El panel valida lo mismo **antes de cobrar**, porque el comprobante se emite después del cobro.
 
-**Listado** — `GET /billing/documents?paymentPending=true` devuelve solo los pendientes sin cobrar y no anulados. Toda respuesta del listado incluye `pendingPayments: { count, total }` de la sucursal filtrada. Cada documento trae `paymentPending`, `paymentPendingNote`, `paymentCollectedAt` y `paymentCollectedBy`.
+**Listado** — `GET /billing/documents?paymentPending=true` devuelve solo los pendientes sin cobrar y no anulados. Toda respuesta del listado incluye `pendingPayments: { count, total }` de la sucursal filtrada. Cada documento trae `paymentPending`, `paymentPendingNote`, `paymentCollectedAt`, `paymentCollectedBy`, `paymentCollectedMethod` y `paymentCollectedReference`.
 
-**Marcar como cobrado** — `PATCH /billing/documents/:id/collected` (permiso `facturacion.pago_pendiente`): guarda `paymentCollectedAt` y `paymentCollectedBy`. No toca SUNAT ni la caja. 422 si el documento no tiene pago pendiente, ya fue cobrado o está anulado.
+**Marcar como cobrado** — `PATCH /billing/documents/:id/collected` (permiso `facturacion.pago_pendiente`). Body opcional (retrocompatible): `{ "paymentMethodId": 3, "reference": "004512" }`. Guarda `paymentCollectedAt`, `paymentCollectedBy` y, si se envía, la forma de pago real (`paymentCollectedMethodId`, snapshot `paymentCollectedMethod`) y su REF (máx. 50). El método debe estar activo y ser de la sucursal del comprobante. Es **informativo**: no toca SUNAT ni la caja. 422 si el documento no tiene pago pendiente, ya fue cobrado o está anulado.
+
+**Consumo por cliente** — `GET /customers/:id/history?page=&limit=&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`. Requiere `facturacion.ver_documentos` **o** `administracion.configuracion` (403 si no). Devuelve `summary { orders, consumed, lastVisit, pendingCount, pendingTotal }`, `data` (pedidos no anulados del cliente en todas las sucursales, con sus comprobantes vigentes) y `pagination`.

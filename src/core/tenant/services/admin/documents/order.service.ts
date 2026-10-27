@@ -578,6 +578,7 @@ export const updateOrderPaymentStatus = async (
           isCash,
           retentionPercentage: roundMoney(toNum(p.retentionPercentage)).toFixed(2),
           retentionAmount: roundMoney(toNum(p.retentionAmount)).toFixed(2),
+          reference: p.reference?.trim().slice(0, 50) || null,
           createdById: actor?.userId ?? null,
         });
       }
@@ -800,6 +801,7 @@ export interface UpdateOrderPaymentMethodInput {
     isCash?: boolean;
     retentionPercentage?: number;
     retentionAmount?: number;
+    reference?: string;
   }>;
   retentionPercentage?: number;
   tipAmount?: number;
@@ -884,6 +886,7 @@ export async function updateOrderPaymentMethod(
       isCash,
       retentionPercentage: roundMoney(toNum(p.retentionPercentage)).toFixed(2),
       retentionAmount: roundMoney(toNum(p.retentionAmount)).toFixed(2),
+      reference: p.reference?.trim().slice(0, 50) || null,
       createdById: actor?.userId ?? null,
     });
   }

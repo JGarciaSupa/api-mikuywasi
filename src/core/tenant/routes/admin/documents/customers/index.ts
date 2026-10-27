@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../../../middleware/auth.middleware';
 import * as customers from '../../../../controllers/admin/documents/customers.controller';
+import { getCustomerHistoryController } from '../../../../controllers/admin/documents/customer-history.controller';
 
 const routes = new Hono();
 
@@ -9,6 +10,7 @@ routes.use('*', authMiddleware);
 routes.get('/', customers.searchCustomersController);
 routes.post('/', customers.createCustomerController);
 routes.get('/:id', customers.getCustomerController);
+routes.get('/:id/history', getCustomerHistoryController);
 routes.patch('/:id', customers.updateCustomerController);
 
 routes.post('/:id/contacts', customers.addContactController);

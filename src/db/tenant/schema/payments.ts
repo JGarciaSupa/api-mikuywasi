@@ -18,6 +18,7 @@ export const orderPayments = pgTable('order_payments', {
 	isCash: boolean('is_cash').default(false).notNull(),
 	retentionPercentage: decimal('retention_percentage', { precision: 5, scale: 2 }).default('0.00').notNull(),
 	retentionAmount: decimal('retention_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
+	reference: varchar('reference', { length: 50 }), // N° de voucher/operación del pago digital (conciliación)
 	createdById: integer('created_by_id').references(() => users.id),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

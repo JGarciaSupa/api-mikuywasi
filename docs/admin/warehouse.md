@@ -26,6 +26,8 @@ Ver también: [`gastropro360_flujos.md`](../../gastropro360_flujos.md) (flujos e
 | GET | `/items?search=&subfamilyId=` | Maestro de artículos |
 | POST | `/items` | Crear artículo (asigna área central por defecto) |
 | GET | `/items/:id` | Detalle con asignaciones por área |
+| PUT | `/items/:id` | Editar artículo — exige `almacen.gestionar_insumos` |
+| POST | `/items/import` | Importación masiva — exige `almacen.gestionar_insumos` (crear con `POST /items` sigue abierto para el alta al vuelo desde Requerimientos/Traslados) |
 | GET | `/areas/:areaId/items?search=` | Artículos asignados al área |
 | POST | `/items/:itemId/areas` | Body: `{ "areaId": number }` |
 

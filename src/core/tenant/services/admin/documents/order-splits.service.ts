@@ -486,6 +486,7 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
         isCash,
         retentionPercentage: Number(p.retentionPercentage ?? 0).toFixed(2),
         retentionAmount: Number(p.retentionAmount ?? 0).toFixed(2),
+        reference: p.reference?.trim().slice(0, 50) || null,
         createdById: actor?.userId ?? null,
       });
     }

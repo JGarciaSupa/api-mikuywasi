@@ -141,6 +141,12 @@ Obtiene contadores rápidos para el resumen del día.
 - **Efecto:** guarda el desglose en `order_payments` (migración `0086`), marca el pedido `paid` + `completed`, `payment_method = 'Mixto'`, y registra **un ingreso de caja por método** (cada uno con su `is_cash` y su retención). La mesa pasa a `dirty`. El cobro con un solo método no cambia.
 - **Comprobante:** `GET /billing/documents/:id/receipt` devuelve `paymentSummary.paymentMethod` desglosado (`"Efectivo S/ 40.00 + Yape S/ 22.10"`).
 
+## REF / N° de voucher por pago (conciliación)
+
+- Cada línea de pago acepta `reference` opcional (máx. 50; migración `0092`, columna `order_payments.reference`). Se guarda en los 4 caminos de cobro: `PATCH .../payment-status` (`payments[].reference`), `POST /waiter/orders/:id/payments` (validado por Zod), `PATCH /orders/:orderId/splits/:splitId/payment` y `PATCH /orders/:id/payment-method`.
+- No afecta importes ni caja (`cash_movements.reference` sigue reservado a las marcas internas `reverso`/`devolucion`).
+- El recibo la muestra en la forma de pago: `"Mastercard S/ 100.00 (REF 004512)"`, así sale en el ticket y en el PDF sin cambios en el front.
+
 ## Descuento del pedido
 
 - **URL:** `POST /api/admin/waiter/orders/:id/discount` · `DELETE /api/admin/waiter/orders/:id/discount`

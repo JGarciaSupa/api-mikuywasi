@@ -9,6 +9,7 @@ export interface OrderPaymentLineInput {
   paymentMethodId: number;
   amount: number;
   tipAmount?: number;
+  reference?: string;
 }
 
 // Etiqueta que queda en orders.payment_method para un cobro mixto (los reportes que
@@ -67,6 +68,7 @@ export async function payOrderWithMultiplePayments(
       isCash: m.isCash,
       retentionPercentage: pct.toFixed(2),
       retentionAmount: roundMoney((l.amount * pct) / 100, 2).toFixed(2),
+      reference: l.reference?.trim().slice(0, 50) || null,
       createdById: actor?.userId ?? null,
     };
   });

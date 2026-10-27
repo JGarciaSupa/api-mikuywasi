@@ -645,6 +645,13 @@
       "when": 1792860000000,
       "tag": "0091_add_tip_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792950000000,
+      "tag": "0092_add_payment_reference_and_collected_method",
+      "breakpoints": true
     }
   ]
 }

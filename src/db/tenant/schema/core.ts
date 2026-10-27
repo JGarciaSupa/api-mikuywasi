@@ -123,6 +123,8 @@ export const branches = pgTable('branches', {
 	allowSellWithoutStock: boolean('allow_sell_without_stock').default(false).notNull(),
 	// Permite marcar ventas como "pago pendiente" (cliente paga otro día). Apagado por defecto.
 	allowPendingPayment: boolean('allow_pending_payment').default(false).notNull(),
+	// Con pago pendiente activo: exige asociar un cliente frecuente al marcar "Cliente no pagó"
+	pendingPaymentRequiresCustomer: boolean('pending_payment_requires_customer').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

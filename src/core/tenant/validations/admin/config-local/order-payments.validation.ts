@@ -7,6 +7,7 @@ const paymentLineSchema = z.object({
     .positive('Cada importe debe ser mayor a 0')
     .max(9_999_999, 'Importe demasiado alto')
     .refine((v) => Math.round(v * 100) === v * 100 || Math.abs(Math.round(v * 100) - v * 100) < 1e-6, 'Máximo 2 decimales por importe'),
+  reference: z.string().trim().max(50, 'La referencia admite máximo 50 caracteres').optional(),
 });
 
 export const multiPaymentSchema = z.object({

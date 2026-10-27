@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../middleware/auth.middleware';
 import {
   validateCreatePurchaseDocument,
   validateCreateRequisition,
@@ -47,9 +47,10 @@ routes.put('/measurement-units/:id', catalog.updateMeasurementUnit);
 
 routes.get('/items', catalog.listItems);
 routes.post('/items', catalog.createItem);
-routes.post('/items/import', catalog.importItems);
+// Editar e importar insumos exige gestionar_insumos; crear sigue abierto (alta al vuelo desde Requerimientos/Traslados)
+routes.post('/items/import', requirePermission('almacen', 'almacen.gestionar_insumos'), catalog.importItems);
 routes.get('/items/:id', catalog.getItem);
-routes.put('/items/:id', catalog.updateItem);
+routes.put('/items/:id', requirePermission('almacen', 'almacen.gestionar_insumos'), catalog.updateItem);
 routes.get('/areas/:areaId/items', catalog.listItemsByArea);
 routes.post('/items/:itemId/areas', catalog.assignItemArea);
 routes.delete('/items/:itemId/areas/:areaId', catalog.removeItemArea);

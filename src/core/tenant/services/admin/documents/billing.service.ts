@@ -10,6 +10,8 @@ import {
   orderSplits,
   orderPayments,
   tables,
+  customers,
+  paymentMethods,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
@@ -47,6 +49,8 @@ export interface CreateDocumentInput {
   // valida en el controller). No cambia SUNAT ni la caja.
   paymentPending?: boolean;
   paymentPendingNote?: string | null;
+  // Cliente frecuente que debe la venta (se asocia al pedido: orders.customer_id)
+  paymentPendingCustomerId?: number | null;
 }
 
 export interface ListDocumentsFilters {
@@ -684,14 +688,27 @@ export async function createDocument(input: CreateDocumentInput) {
   // Pago pendiente: solo pedido completo y con la opción activada en la sucursal
   const paymentPending = input.paymentPending === true;
   const paymentPendingNote = input.paymentPendingNote?.trim().slice(0, 200) || null;
+  let pendingCustomerId: number | null = null;
   if (paymentPending) {
     if (input.splitId != null) throw new Error('El pago pendiente solo aplica al pedido completo, no a cuentas divididas');
     const [branchCfg] = await db
-      .select({ allowPendingPayment: branches.allowPendingPayment })
+      .select({ allowPendingPayment: branches.allowPendingPayment, requiresCustomer: branches.pendingPaymentRequiresCustomer })
       .from(branches)
       .where(eq(branches.id, order.branchId));
     if (!branchCfg?.allowPendingPayment) {
       throw new Error('La sucursal no tiene activadas las ventas con pago pendiente');
+    }
+    if (input.paymentPendingCustomerId != null) {
+      const [customer] = await db
+        .select({ id: customers.id, status: customers.status })
+        .from(customers)
+        .where(eq(customers.id, Number(input.paymentPendingCustomerId)));
+      if (!customer) throw new Error('El cliente elegido para el pago pendiente no existe');
+      if (customer.status !== 'active') throw new Error('El cliente elegido para el pago pendiente está inactivo');
+      pendingCustomerId = customer.id;
+    }
+    if (branchCfg.requiresCustomer && pendingCustomerId == null && order.customerId == null) {
+      throw new Error('Selecciona el cliente que debe la venta: la sucursal exige un cliente para el pago pendiente');
     }
   }
 
@@ -840,6 +857,11 @@ export async function createDocument(input: CreateDocumentInput) {
     }));
 
     await tx.insert(billingDocumentLines).values(lineRows);
+
+    // Pago pendiente con cliente: el pedido queda asociado al cliente frecuente que debe la venta
+    if (pendingCustomerId != null && pendingCustomerId !== order.customerId) {
+      await tx.update(orders).set({ customerId: pendingCustomerId, updatedAt: new Date() }).where(eq(orders.id, order.id));
+    }
 
     return { docId: doc.id, isActiveFacturacion: series.isActiveFacturacion };
   });
@@ -1065,9 +1087,14 @@ function pendingPaymentCondition() {
 
 /**
  * "Marcar como cobrado": el dueño cobró por su cuenta una venta marcada como pago pendiente.
- * Solo registra quién y cuándo; no toca SUNAT ni la caja (el pago ya se registró al vender).
+ * Registra quién, cuándo y (opcional) con qué forma de pago y REF pagó el cliente. Es
+ * informativo: no toca SUNAT ni la caja (el pago ya se registró al vender).
  */
-export async function markDocumentCollected(id: number, collectedBy: string | null) {
+export async function markDocumentCollected(
+  id: number,
+  collectedBy: string | null,
+  collected: { paymentMethodId?: number | null; reference?: string | null } = {},
+) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
   if (!doc) throw new Error('Documento no encontrado');
@@ -1075,9 +1102,27 @@ export async function markDocumentCollected(id: number, collectedBy: string | nu
   if (doc.paymentCollectedAt) throw new Error('El documento ya fue marcado como cobrado');
   if (doc.status === 'voided') throw new Error('El documento está anulado');
 
+  let method: { id: number; name: string } | null = null;
+  if (collected.paymentMethodId != null) {
+    const [m] = await db
+      .select({ id: paymentMethods.id, name: paymentMethods.name, branchId: paymentMethods.branchId, isActive: paymentMethods.isActive })
+      .from(paymentMethods)
+      .where(eq(paymentMethods.id, collected.paymentMethodId));
+    if (!m || !m.isActive) throw new Error('El método de pago no existe o está inactivo');
+    if (m.branchId != null && m.branchId !== doc.branchId) throw new Error(`El método "${m.name}" no pertenece a la sucursal del comprobante`);
+    method = { id: m.id, name: m.name };
+  }
+
   const [updated] = await db
     .update(billingDocuments)
-    .set({ paymentCollectedAt: new Date(), paymentCollectedBy: collectedBy, updatedAt: new Date() })
+    .set({
+      paymentCollectedAt: new Date(),
+      paymentCollectedBy: collectedBy,
+      paymentCollectedMethodId: method?.id ?? null,
+      paymentCollectedMethod: method?.name ?? null,
+      paymentCollectedReference: collected.reference?.slice(0, 50) || null,
+      updatedAt: new Date(),
+    })
     .where(eq(billingDocuments.id, id))
     .returning();
   return updated;
@@ -1406,14 +1451,14 @@ export async function getDocumentReceipt(id: number, userId?: number) {
 
     if (split) {
       const mixed = await db
-        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount })
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount, reference: orderPayments.reference })
         .from(orderPayments)
         .where(eq(orderPayments.splitId, doc.splitId))
         .orderBy(orderPayments.id);
 
       paymentSummary = {
         paymentMethod: mixed.length > 0
-          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}`).join(' + ')
+          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}${p.reference ? ` (REF ${p.reference})` : ''}`).join(' + ')
           : (split.paymentMethod ?? null),
         retentionPercentage: split.retentionPercentage ?? '0.00',
         retentionAmount: split.retentionAmount ?? '0.00',
@@ -1434,13 +1479,13 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     if (order) {
       // Pago mixto: la forma de pago se muestra desglosada ("Efectivo S/ 50.00 + Yape S/ 30.00")
       const mixed = await db
-        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount })
+        .select({ paymentMethod: orderPayments.paymentMethod, amount: orderPayments.amount, tipAmount: orderPayments.tipAmount, reference: orderPayments.reference })
         .from(orderPayments)
         .where(eq(orderPayments.orderId, doc.orderId))
         .orderBy(orderPayments.id);
       paymentSummary = {
         paymentMethod: mixed.length > 0
-          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}`).join(' + ')
+          ? mixed.map((p) => `${p.paymentMethod} S/ ${toNum(p.amount).toFixed(2)}${p.reference ? ` (REF ${p.reference})` : ''}`).join(' + ')
           : (order.paymentMethod ?? null),
         retentionPercentage: order.retentionPercentage ?? '0.00',
         retentionAmount: order.retentionAmount ?? '0.00',
