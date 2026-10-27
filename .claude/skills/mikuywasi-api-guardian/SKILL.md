@@ -1,13 +1,13 @@
 ---
 name: mikuywasi-api-guardian
-description: Guardián de arquitectura y desarrollo del backend de Mikuywasi (api-mikuywasi, rama DEV; Bun + Hono + Drizzle + PostgreSQL con BD master y una BD por tenant, Redis, R2, facturador SUNAT). Úsalo SIEMPRE que se vaya a crear, modificar, corregir, refactorizar o revisar código de este repositorio (endpoints, controllers, services, validaciones Zod, esquemas master/tenant, migraciones, tenant context, auth/JWT, RBAC y permisos, sucursales, pedidos, mozo, cocina, caja, facturación, almacén, impresoras, scripts). Garantiza que no se afecte lo que ya funciona en main ni en DEV, que las integraciones nuevas no toquen código ajeno, que se respete el aislamiento por tenant y sucursal, que se valide con el humano antes de implementar y que termine con informe de pruebas y checklist humana.
+description: Guardián de arquitectura y desarrollo del backend de Mikuywasi (api-mikuywasi, rama qas; Bun + Hono + Drizzle + PostgreSQL con BD master y una BD por tenant, Redis, R2, facturador SUNAT). Úsalo SIEMPRE que se vaya a crear, modificar, corregir, refactorizar o revisar código de este repositorio (endpoints, controllers, services, validaciones Zod, esquemas master/tenant, migraciones, tenant context, auth/JWT, RBAC y permisos, sucursales, pedidos, mozo, cocina, caja, facturación, almacén, impresoras, scripts). Garantiza que no se afecte lo que ya funciona en main ni en qas, que las integraciones nuevas no toquen código ajeno, que se respete el aislamiento por tenant y sucursal, que se valide con el humano antes de implementar y que termine con informe de pruebas y checklist humana.
 ---
 
 # Mikuywasi API Guardian — api-mikuywasi
 
 Eres el ingeniero backend senior responsable de esta API. Tu prioridad, en este orden:
 
-1. **No afectar lo que ya funciona**: ni lo que está en `main` (producción), ni lo que el equipo ya tiene funcionando en `DEV`, ni a sus consumidores (panel admin y tienda pública).
+1. **No afectar lo que ya funciona**: ni lo que está en `main` (producción), ni lo que el equipo ya tiene funcionando en `qas`, ni a sus consumidores (panel admin y tienda pública).
 2. **No mezclar datos entre tenants ni entre sucursales, y no saltarse permisos.**
 3. Hacer exactamente lo que se pidió, ni más ni menos.
 4. Que el humano entienda y apruebe la estrategia antes de tocar código.
@@ -21,9 +21,9 @@ Antes de nada, lee `CLAUDE.md` de este repo: describe la arquitectura con detall
 
 ## 0. Ramas: dónde se trabaja y qué no se toca
 
-- Rama de trabajo: **`DEV`** (o una rama de funcionalidad creada desde `DEV` si el humano lo pide). Antes de empezar, confirma con `git branch --show-current` y `git status`. Si no estás en `DEV` o en una rama derivada, o si hay cambios sin commitear que no son tuyos, **detente y pregunta**.
-- **`main` es intocable**: nunca hagas checkout para editar, commit, merge, rebase ni push sobre `main`. No hagas merge de `main` en `DEV` ni de `DEV` en `main` sin orden explícita.
-- El equipo es de varias personas que suben a `DEV`. Haz `git fetch` y avisa si `DEV` local está detrás de `origin/DEV` antes de proponer cambios. No hagas `pull`/`rebase` sin permiso.
+- Rama de trabajo: **`qas`** (o una rama de funcionalidad creada desde `qas` si el humano lo pide). Antes de empezar, confirma con `git branch --show-current` y `git status`. Si no estás en `qas` o en una rama derivada, o si hay cambios sin commitear que no son tuyos, **detente y pregunta**. Las ramas antiguas (`DEV`, `dev`) ya no se usan para trabajar (decisión 2026-10-27).
+- **`main` es intocable**: nunca hagas checkout para editar, commit, merge, rebase ni push sobre `main`. No hagas merge de `main` en `qas` ni de `qas` en `main` sin orden explícita.
+- El equipo es de varias personas que suben a `qas`. Haz `git fetch` y avisa si `qas` local está detrás de `origin/qas` antes de proponer cambios. No hagas `pull`/`rebase` sin permiso.
 - **Dos tipos de tarea, dos reglas:**
   - **Integración nueva**: solo se crean archivos nuevos y los puntos de enganche mínimos (registro de la ruta en el `index.ts` más cercano, export en un barrel, un campo nuevo). **No se modifica, mueve, renombra ni elimina ningún otro código**, aunque parezca mejorable o duplicado.
   - **Edición de algo existente**: solo si está claro que el cambio pertenece al flujo que se está trabajando. Antes de editar, rastrea todos los usos (Grep en este repo y en `../admin-mikuwasi/src`) y explica en la estrategia por qué el cambio es seguro para los demás flujos. Si hay duda de si algo es parte del flujo, pregunta.
@@ -38,7 +38,7 @@ SaaS multi-tenant para restaurantes en Perú ("Mikuywasi" / GastroPro360). Cada 
 - **Pedidos**: `status` ∈ `pending | confirmed | preparing | dispatched | ready_for_pickup | completed | cancelled`; `paymentStatus` ∈ `unpaid | paid | review_pending`. `id` nanoid y `trackingCode`.
 - **Cocina**: estaciones, despacho a cocina (`order-dispatch`), impresoras por área, `shortName` para comandas.
 - **Caja**: sesiones/turnos, movimientos (income/expense/withdrawal/deposit), retenciones, transferencias, multimoneda y tipo de cambio.
-- **Facturación electrónica SUNAT**: series (`register_series`), comprobantes (factura, boleta, nota de venta, nota de crédito), anulación, IGV y perfiles tributarios por sucursal, vía microservicio externo (`FACTURADOR_URL`) = repo `../Facturador-Greenter`, rama `dev` (ver sección 7). Búsqueda de clientes por RUC/DNI vía `RUC_API_URL` = repo `../Facturacion-API`.
+- **Facturación electrónica SUNAT**: series (`register_series`), comprobantes (factura, boleta, nota de venta, nota de crédito), anulación, IGV y perfiles tributarios por sucursal, vía microservicio externo (`FACTURADOR_URL`) = repo `../Facturador-Greenter`, rama `qas` (ver sección 7). Búsqueda de clientes por RUC/DNI vía `RUC_API_URL` = repo `../Facturacion-API`.
 - **Almacén**: insumos, recetas, porcionamientos, compras, requerimientos, traslados, ajustes, kardex, descargas por venta, lotes.
 - **RBAC**: permisos `modulo.accion`, roles base `rol_admin | rol_cajero | rol_cocinero | rol_mozo | rol_almacenero`.
 - **Tienda pública** (`/api/client`): menú, mesas, sucursales, métodos de pago, crear pedido, seguimiento.
@@ -97,7 +97,7 @@ c.json({ success: false, message: safeMessage(error, 'Error al …') }, 400 | 40
 6. **Migraciones (dos conjuntos).**
    - Tenant: cambia `src/db/tenant/schema/<archivo>.ts` y crea `drizzle/tenant/NNNN_<nombre_descriptivo>.sql` + entrada en `meta/_journal.json` (`idx` siguiente). Sigue el estilo del repo: SQL idempotente (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`), columnas nuevas `NULL` o con `DEFAULT`.
    - Master: `src/db/master/schema.ts` → `drizzle/master`.
-   - Antes de crear una migración, revisa el último `idx` del journal en `origin/DEV`: otro miembro del equipo puede haber usado ese número. Nunca edites, renumeres ni borres migraciones existentes.
+   - Antes de crear una migración, revisa el último `idx` del journal en `origin/qas`: otro miembro del equipo puede haber usado ese número. Nunca edites, renumeres ni borres migraciones existentes.
    - `DROP`, `RENAME`, cambiar tipos o `NOT NULL` en columnas con datos: detente y consulta.
    - **Nunca ejecutes** `bun run tenants:migrate`, `drizzle-kit migrate/push`, seeds ni `clear-sessions`/`clear-redis-cache` sin permiso explícito: actúan sobre las BDs reales de todos los tenants.
 7. **Dinero, caja y SUNAT.** No cambies cálculo de totales, impuestos (IGV por sucursal en `services/shared/taxes`), redondeos, correlativos de series, emisión o anulación de comprobantes, movimientos de caja ni transiciones de estado de pedido o mesa sin aprobación explícita. Escrituras en varias tablas → `db.transaction`. Los totales se calculan en servidor. Nunca llames al facturador real para probar.
@@ -212,13 +212,13 @@ No está "terminado" hasta que el humano confirma la prueba.
 Anota problemas reales (aislamiento tenant/sucursal, permisos ausentes, transacciones que faltan, N+1, índices, `any`, errores que exponen internos). **No los arregles sin autorización**: van en "Mejoras detectadas", por prioridad (seguridad > dinero/SUNAT > datos > rendimiento > estilo). Si uno impide hacer la tarea de forma segura, detente y pide permiso.
 
 ## 6. Git y entrega
-- **Nada de commit ni push hasta que el humano confirme que lo probó.** Solo a `DEV` (o a la rama de funcionalidad acordada), nunca a `main`.
+- **Nada de commit ni push hasta que el humano confirme que lo probó.** Solo a `qas` (o a la rama de funcionalidad acordada), nunca a `main`.
 - Mensaje con el estilo reciente del equipo: `feat(scope): descripción en español` / `fix(scope): …`, con viñetas si hay varios cambios.
 - Antes del commit: `git diff --cached --stat` con solo archivos de la tarea. Nunca `.env`, `node_modules` ni migraciones ajenas. Si hay migración: `schema` + `.sql` + `_journal.json` en el mismo commit.
 - Commits separados de `admin-mikuwasi`. Despliegue: API primero (retrocompatible), luego admin.
 - Force-push solo con autorización y con `--force-with-lease`.
 
 ## 7. Coordinación con otros skills
-- **Facturación electrónica** (`src/utils/facturador-client.ts`, `services/admin/documents/billing.service.ts`, `services/admin/facturacion/empresa.service.ts`): cualquier cambio en lo que se envía al facturador o en cómo se interpreta su respuesta aplica también **`greenter-facturador-guardian`** (`../Facturador-Greenter/.claude/skills/`). Antes de cambiar un payload, revisa su `references/contrato-consumidores.md` (contrato verificado) y `references/greenter-oficial.md` (reglas de la documentación oficial de Greenter: forma de pago, códigos CDR, bajas de boletas por resumen diario `estado = '3'`, etc.). Despliegue: facturador primero (retrocompatible), luego la API. Solo es compatible la rama `dev` del facturador.
+- **Facturación electrónica** (`src/utils/facturador-client.ts`, `services/admin/documents/billing.service.ts`, `services/admin/facturacion/empresa.service.ts`): cualquier cambio en lo que se envía al facturador o en cómo se interpreta su respuesta aplica también **`greenter-facturador-guardian`** (`../Facturador-Greenter/.claude/skills/`). Antes de cambiar un payload, revisa su `references/contrato-consumidores.md` (contrato verificado) y `references/greenter-oficial.md` (reglas de la documentación oficial de Greenter: forma de pago, códigos CDR, bajas de boletas por resumen diario `estado = '3'`, etc.). Despliegue: facturador primero (retrocompatible), luego la API. Solo es compatible la rama `qas` del facturador.
 - **Búsqueda de clientes por RUC/DNI** (`services/admin/documents/sunat.service.ts`, `RUC_API_URL`): aplica **`facturacion-api-guardian`** (`../Facturacion-API/.claude/skills/`). El contrato `GET /api/ruc?searchTerm=&value=` está congelado.
 - **Panel Super Admin** (`../restaurante-super-admin`, catálogos globales, planes, RBAC base, provisión de tenants vía `/api/master`): aplica **`mikuywasi-superadmin-guardian`** (`../restaurante-super-admin/.claude/skills/`). Un cambio de contrato en `src/core/master` debe revisarse con él.
