@@ -36,7 +36,7 @@ type SeedRole = {
   subActionCodes: string[];
 };
 
-const RBAC_ACTIONS: SeedAction[] = [
+export const RBAC_ACTIONS: SeedAction[] = [
   {
     code: 'pedidos',
     name: 'Pedidos',
@@ -196,7 +196,7 @@ const RBAC_ACTIONS: SeedAction[] = [
   },
 ];
 
-const RBAC_ROLES: SeedRole[] = [
+export const RBAC_ROLES: SeedRole[] = [
   {
     code: 'rol_admin',
     name: 'Administrador',
@@ -538,4 +538,5 @@ async function run() {
   }
 }
 
-run();
+// Solo al ejecutarlo directamente: rbac-add-missing.ts importa RBAC_ACTIONS y RBAC_ROLES.
+if (process.argv[1]?.endsWith('seed-master-rbac.ts')) run();

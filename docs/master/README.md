@@ -109,3 +109,15 @@ Cuando se elimina un tenant, se decrementa `currentTenants` automáticamente.
 | Auth | JWT (`hono/jwt`) |
 | Hash | `Bun.password` (bcrypt) |
 | Base de datos | PostgreSQL (`masterDb`) |
+
+## Permisos nuevos sin perder los existentes (`rbac:add-missing`)
+
+`bun run master:seed-rbac` reescribe los permisos de los roles base en todos los tenants (`fullSyncTenant`): se pierde lo que se haya añadido a mano a un rol base. Para dar de alta permisos o roles base nuevos del seed sin quitar nada:
+
+```bash
+bun run rbac:add-missing                               # simulación, no escribe
+bun run rbac:add-missing --apply                       # aplica (solo añade)
+bun run rbac:add-missing --apply --revoke-mozo-caja    # además quita caja.ver_sesiones/abrir/cerrar a rol_mozo
+```
+
+Escribe en la master de `DATABASE_URL` y en todos sus tenants. Los usuarios deben volver a iniciar sesión.
