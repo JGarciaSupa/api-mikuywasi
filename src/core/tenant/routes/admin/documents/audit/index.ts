@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import * as audit from '../../../../controllers/admin/documents/audit-log.controller';
 
 const routes = new Hono();
 
+const canViewAudit = requirePermission('administracion', 'administracion.auditoria');
+
 routes.use('*', authMiddleware);
 
-routes.get('/', audit.listAuditLogs);
-routes.get('/facets', audit.getAuditFacets);
+routes.get('/', canViewAudit, audit.listAuditLogs);
+routes.get('/facets', canViewAudit, audit.getAuditFacets);
 
 export default routes;

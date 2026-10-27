@@ -14,6 +14,7 @@ import {
 } from '../db/master/schema';
 import * as tenantSchema from '../db/tenant/schema';
 import { fullSyncTenant } from '../core/master/services/rbac-sync.service';
+import { isReservedPermission } from '../utils/reserved-permissions';
 
 // ─────────────────────────────────────────────────────────────
 // DATOS RBAC — definición completa del sistema Mikuywasi
@@ -78,6 +79,7 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'menu.gestionar_mesas', name: 'Gestionar mesas', description: 'Crear, editar y eliminar mesas.', order: 6 },
       { code: 'menu.gestionar_extras', name: 'Gestionar extras', description: 'Administrar grupos de extras y modificadores.', order: 7 },
       { code: 'menu.gestionar_estaciones', name: 'Gestionar estaciones de cocina', description: 'Administrar el catálogo de estaciones de cocina y su ruteo por producto.', order: 8 },
+      { code: 'menu.importar_productos', name: 'Importar productos', description: 'Carga masiva de productos desde archivo (uso del implementador).', order: 9 },
     ],
   },
   {
@@ -156,6 +158,11 @@ const RBAC_ACTIONS: SeedAction[] = [
       { code: 'administracion.rbac', name: 'Roles y permisos', description: 'Gestionar roles y permisos de usuarios.', order: 9 },
       { code: 'administracion.canales_venta', name: 'Canales de venta', description: 'Administrar el catálogo de canales de venta (Salón, Delivery Propio, Rappi, etc).', order: 10 },
       { code: 'administracion.ver_todos_los_pedidos', name: 'Ver todos los pedidos', description: 'Ver todos los pedidos de la sucursal, no solo los generados/cobrados por el usuario.', order: 11 },
+      { code: 'administracion.ver_inicio', name: 'Ver inicio', description: 'Ver el panel de inicio con las estadísticas del negocio.', order: 12 },
+      { code: 'administracion.impresoras', name: 'Gestionar impresoras', description: 'Crear, editar y eliminar impresoras de la sucursal (uso del implementador).', order: 13 },
+      { code: 'administracion.auditoria', name: 'Ver auditoría', description: 'Consultar el registro de auditoría (uso del implementador).', order: 14 },
+      { code: 'administracion.parametros', name: 'Parámetros de sucursal', description: 'Ver y editar los parámetros operativos de la sucursal (uso del implementador).', order: 15 },
+      { code: 'administracion.ajustes_sistema', name: 'Configuración del sistema', description: 'Acceder a la pantalla de configuración del sistema (uso del implementador).', order: 16 },
     ],
   },
   {
@@ -193,10 +200,17 @@ const RBAC_ROLES: SeedRole[] = [
     subActionCodes: RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code)),
   },
   {
+    code: 'rol_admin_local',
+    name: 'Administrador del local',
+    description: 'Administra el restaurante sin las opciones reservadas al implementador.',
+    subActionCodes: RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code)).filter((code) => !isReservedPermission(code)),
+  },
+  {
     code: 'rol_cajero',
     name: 'Cajero',
     description: 'Atiende la caja, ve pedidos y emite comprobantes.',
     subActionCodes: [
+      'administracion.ver_inicio',
       'pedidos.ver_lista',
       'pedidos.ver_detalle',
       'pedidos.cambiar_estado_pago',
@@ -241,6 +255,7 @@ const RBAC_ROLES: SeedRole[] = [
     name: 'Almacenero',
     description: 'Gestiona insumos, compras, movimientos y kardex.',
     subActionCodes: [
+      'administracion.ver_inicio',
       'almacen.ver_insumos',
       'almacen.gestionar_insumos',
       'almacen.ver_proveedores',

@@ -1,9 +1,66 @@
-import { eq, asc, and } from 'drizzle-orm';
+import { eq, asc, and, inArray } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import {
   permissionsCatalog, roles, rolePermissions, userRoles, users, userPermissionOverrides,
 } from '@/db/tenant/schema';
 import type { PermissionsMap } from '@/utils/jwt';
+import { IMPLEMENTER_ROLE_CODE, isReservedPermission } from '@/utils/reserved-permissions';
+
+// ──────────────────────────────────────────
+// PROTECCIÓN DEL IMPLEMENTADOR
+// Solo rol_admin asigna rol_admin, modifica a usuarios rol_admin, edita roles base
+// y otorga permisos reservados. Sin actor (scripts internos) no se restringe.
+// ──────────────────────────────────────────
+
+export type RbacActor = { roleCode?: string | null };
+
+const isImplementer = (actor?: RbacActor) => !actor || actor.roleCode === IMPLEMENTER_ROLE_CODE;
+
+/** Rechaza permisos reservados nuevos (los que ya tenía el rol/usuario se pueden conservar). */
+async function assertCanGrantPermissions(actor: RbacActor | undefined, permCatalogIds: number[], alreadyGranted: number[] = []) {
+  if (isImplementer(actor)) return;
+  const added = permCatalogIds.filter((id) => !alreadyGranted.includes(id));
+  if (added.length === 0) return;
+  const db = getTenantDb();
+  const rows = await db
+    .select({ code: permissionsCatalog.subActionCode, name: permissionsCatalog.subActionName })
+    .from(permissionsCatalog)
+    .where(inArray(permissionsCatalog.id, added));
+  const reserved = rows.filter((r) => isReservedPermission(r.code));
+  if (reserved.length > 0) {
+    throw new Error(`Solo el implementador puede otorgar: ${reserved.map((r) => r.name).join(', ')}`);
+  }
+}
+
+export async function assertCanAssignRole(actor: RbacActor | undefined, roleId: number) {
+  if (isImplementer(actor)) return;
+  const db = getTenantDb();
+  const role = await db.query.roles.findFirst({ where: eq(roles.id, roleId) });
+  if (role?.code === IMPLEMENTER_ROLE_CODE) {
+    throw new Error('Solo el implementador puede asignar el rol Administrador');
+  }
+}
+
+export async function assertCanManageUser(actor: RbacActor | undefined, userId: number) {
+  if (isImplementer(actor)) return;
+  const db = getTenantDb();
+  const current = await db.query.userRoles.findFirst({
+    where: eq(userRoles.userId, userId),
+    with: { role: true },
+  });
+  if (current?.role.code === IMPLEMENTER_ROLE_CODE) {
+    throw new Error('Solo el implementador puede modificar a un usuario Administrador');
+  }
+}
+
+async function assertCanEditRole(actor: RbacActor | undefined, roleId: number) {
+  if (isImplementer(actor)) return;
+  const db = getTenantDb();
+  const role = await db.query.roles.findFirst({ where: eq(roles.id, roleId) });
+  if (role && !role.isCustom) {
+    throw new Error('Los roles base solo los modifica el implementador');
+  }
+}
 
 // ──────────────────────────────────────────
 // CATÁLOGO DE PERMISOS (solo lectura)
@@ -66,7 +123,7 @@ export async function createCustomRole(data: {
   name: string;
   description?: string;
   permCatalogIds: number[];
-}) {
+}, actor?: RbacActor) {
   const db = getTenantDb();
 
   const existing = await db.query.roles.findFirst({ where: eq(roles.code, data.code) });
@@ -81,6 +138,7 @@ export async function createCustomRole(data: {
       throw new Error(`Permisos no disponibles para este tenant: [${invalid.join(', ')}]`);
     }
   }
+  await assertCanGrantPermissions(actor, data.permCatalogIds);
 
   return db.transaction(async (tx) => {
     const [role] = await tx.insert(roles).values({
@@ -106,9 +164,15 @@ export async function updateRole(id: number, data: {
   description?: string;
   isActive?: boolean;
   permCatalogIds?: number[];
-}) {
+}, actor?: RbacActor) {
   const db = getTenantDb();
   const { permCatalogIds, ...headerData } = data;
+
+  await assertCanEditRole(actor, id);
+  if (permCatalogIds !== undefined) {
+    const current = await db.select({ id: rolePermissions.permCatalogId }).from(rolePermissions).where(eq(rolePermissions.roleId, id));
+    await assertCanGrantPermissions(actor, permCatalogIds, current.map((p) => p.id));
+  }
 
   return db.transaction(async (tx) => {
     const [updated] = await tx.update(roles)
@@ -137,9 +201,10 @@ export async function updateRole(id: number, data: {
   });
 }
 
-export async function deleteRole(id: number) {
+export async function deleteRole(id: number, actor?: RbacActor) {
   const db = getTenantDb();
 
+  await assertCanEditRole(actor, id);
   // No eliminar si hay usuarios con este rol
   const assigned = await db.query.userRoles.findFirst({ where: eq(userRoles.roleId, id) });
   if (assigned) throw new Error('No se puede eliminar un rol que tiene usuarios asignados');
@@ -153,7 +218,7 @@ export async function deleteRole(id: number) {
 // ASIGNACIÓN USUARIO → ROL
 // ──────────────────────────────────────────
 
-export async function assignRoleToUser(userId: number, roleId: number, assignedBy?: number) {
+export async function assignRoleToUser(userId: number, roleId: number, assignedBy?: number, actor?: RbacActor) {
   const db = getTenantDb();
 
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -162,6 +227,8 @@ export async function assignRoleToUser(userId: number, roleId: number, assignedB
   const role = await db.query.roles.findFirst({ where: eq(roles.id, roleId) });
   if (!role) throw new Error('Rol no encontrado');
   if (!role.isActive) throw new Error('El rol está inactivo');
+  await assertCanManageUser(actor, userId);
+  await assertCanAssignRole(actor, roleId);
 
   // Upsert: si ya tiene rol, lo reemplaza
   const [result] = await db.insert(userRoles)
@@ -175,8 +242,9 @@ export async function assignRoleToUser(userId: number, roleId: number, assignedB
   return result;
 }
 
-export async function removeRoleFromUser(userId: number) {
+export async function removeRoleFromUser(userId: number, actor?: RbacActor) {
   const db = getTenantDb();
+  await assertCanManageUser(actor, userId);
   const [deleted] = await db.delete(userRoles).where(eq(userRoles.userId, userId)).returning();
   if (!deleted) throw new Error('El usuario no tiene rol asignado');
   return deleted;
@@ -212,6 +280,7 @@ export async function setUserOverrides(
   userId: number,
   overrides: { permCatalogId: number; type: 'grant' | 'deny' }[],
   grantedBy?: number,
+  actor?: RbacActor,
 ) {
   const db = getTenantDb();
 
@@ -226,6 +295,17 @@ export async function setUserOverrides(
       throw new Error(`Permisos no disponibles: [${invalid.map((o) => o.permCatalogId).join(', ')}]`);
     }
   }
+
+  await assertCanManageUser(actor, userId);
+  const currentGrants = await db
+    .select({ id: userPermissionOverrides.permCatalogId })
+    .from(userPermissionOverrides)
+    .where(and(eq(userPermissionOverrides.userId, userId), eq(userPermissionOverrides.type, 'grant')));
+  await assertCanGrantPermissions(
+    actor,
+    overrides.filter((o) => o.type === 'grant').map((o) => o.permCatalogId),
+    currentGrants.map((g) => g.id),
+  );
 
   return db.transaction(async (tx) => {
     // Replace all overrides for this user
@@ -244,8 +324,9 @@ export async function setUserOverrides(
   });
 }
 
-export async function removeUserOverride(userId: number, permCatalogId: number) {
+export async function removeUserOverride(userId: number, permCatalogId: number, actor?: RbacActor) {
   const db = getTenantDb();
+  await assertCanManageUser(actor, userId);
   const [deleted] = await db
     .delete(userPermissionOverrides)
     .where(and(

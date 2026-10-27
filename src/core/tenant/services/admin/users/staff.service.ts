@@ -4,9 +4,11 @@ import { uploadToR2, deleteFromR2, getImageUrl } from '@/utils/r2';
 import { getTenantDb } from '@/utils/tenant-context';
 import { assertPlanLimit } from '@/core/tenant/services/shared/plan-limits.service';
 import type { CreateStaffInput, UpdateStaffInput, StaffQueryInput } from '../../../validations/admin/users/staff.validation';
+import { assertCanAssignRole, assertCanManageUser, type RbacActor } from './rbac.service';
 
-export async function createStaff(data: CreateStaffInput, imageFile?: File) {
+export async function createStaff(data: CreateStaffInput, imageFile?: File, actor?: RbacActor) {
   const db = getTenantDb();
+  if (data.roleId) await assertCanAssignRole(actor, data.roleId);
 
   const [existing] = await db.select().from(users).where(eq(users.username, data.username));
 
@@ -125,11 +127,13 @@ export async function getStaffList(currentUserId: number, params: StaffQueryInpu
   };
 }
 
-export async function updateStaff(id: number, data: UpdateStaffInput, imageFile?: File) {
+export async function updateStaff(id: number, data: UpdateStaffInput, imageFile?: File, actor?: RbacActor) {
   const db = getTenantDb();
 
   const [existingUser] = await db.select().from(users).where(eq(users.id, id));
   if (!existingUser) throw new Error('Usuario no encontrado');
+  await assertCanManageUser(actor, id);
+  if (data.roleId) await assertCanAssignRole(actor, data.roleId);
 
   if (data.username && data.username !== existingUser.username) {
     const [taken] = await db.select().from(users).where(eq(users.username, data.username));
@@ -167,11 +171,12 @@ export async function updateStaff(id: number, data: UpdateStaffInput, imageFile?
   return { ...safeUser, image: getImageUrl(safeUser.image) };
 }
 
-export async function deleteStaff(id: number) {
+export async function deleteStaff(id: number, actor?: RbacActor) {
   const db = getTenantDb();
 
   const [existingUser] = await db.select().from(users).where(eq(users.id, id));
   if (!existingUser) throw new Error('Usuario no encontrado');
+  await assertCanManageUser(actor, id);
   if (existingUser.deletedAt) throw new Error('El usuario ya está eliminado');
 
   // Borrado lógico: se marca deletedAt y se conserva la fila (username, historial,

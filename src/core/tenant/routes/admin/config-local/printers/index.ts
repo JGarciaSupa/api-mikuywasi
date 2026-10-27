@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { authMiddleware } from '../../../../middleware/auth.middleware';
+import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import {
   validateCreatePrinter,
   validateUpdatePrinter,
@@ -14,12 +14,15 @@ import {
 
 const routes = new Hono();
 
+// Leer impresoras lo necesitan POS, caja y facturación para imprimir; solo se protege la gestión
+const canManagePrinters = requirePermission('administracion', 'administracion.impresoras');
+
 routes.use('*', authMiddleware);
 
 routes.get('/', listPrintersController);
 routes.get('/:id', getPrinterByIdController);
-routes.post('/', validateCreatePrinter, createPrinterController);
-routes.patch('/:id', validateUpdatePrinter, updatePrinterController);
-routes.delete('/:id', deletePrinterController);
+routes.post('/', canManagePrinters, validateCreatePrinter, createPrinterController);
+routes.patch('/:id', canManagePrinters, validateUpdatePrinter, updatePrinterController);
+routes.delete('/:id', canManagePrinters, deletePrinterController);
 
 export default routes;

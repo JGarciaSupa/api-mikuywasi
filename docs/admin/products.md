@@ -127,7 +127,7 @@ Crea productos en lote para una sucursal. Cada fila se guarda en su propia trans
 
 **POST** `/import`
 
-**Permiso:** `menu.gestionar_productos`
+**Permiso:** `menu.importar_productos` (reservado al implementador; `rol_admin` siempre pasa)
 
 **Body (JSON):**
 ```json
@@ -200,7 +200,7 @@ Devuelve el límite del plan, los productos existentes y cuántos se pueden crea
 
 **GET** `/import/capacity`
 
-**Permiso:** `menu.gestionar_productos`
+**Permiso:** `menu.importar_productos`
 
 **Response:**
 ```json
@@ -215,7 +215,7 @@ Asigna la imagen a un producto (paso final del asistente de importación). **Sol
 
 **POST** `/import/:id/image` · `multipart/form-data` con el campo `image`
 
-**Permiso:** `menu.gestionar_productos`
+**Permiso:** `menu.importar_productos`
 
 - Formatos: JPG, PNG o WEBP · máximo 5 MB.
 - Se procesa igual que el alta manual: `uploadToR2` redimensiona a 500 px y convierte a WebP en `<slug>/productos/`.

@@ -2,6 +2,9 @@ import type { Context } from 'hono';
 import * as rbac from '../../../services/admin/users/rbac.service';
 import { jsonError } from '@/utils/helpers';
 
+// Quién hace el cambio: las reglas del implementador dependen de su rol
+const actorOf = (c: Context): rbac.RbacActor => ({ roleCode: c.get('jwtPayload')?.role ?? null });
+
 // ── Catálogo ──────────────────────────────────────────────────────────────────
 
 export const listPermissionsCatalog = async (c: Context) => {
@@ -31,7 +34,7 @@ export const getRole = async (c: Context) => {
 export const createRole = async (c: Context) => {
   try {
     const body = c.req.valid('json' as never);
-    const data = await rbac.createCustomRole(body);
+    const data = await rbac.createCustomRole(body, actorOf(c));
     return c.json({ success: true, data }, 201);
   } catch (e) { return jsonError(c, e, 'Error al crear rol'); }
 };
@@ -40,7 +43,7 @@ export const updateRole = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id'));
     const body = c.req.valid('json' as never);
-    const data = await rbac.updateRole(id, body);
+    const data = await rbac.updateRole(id, body, actorOf(c));
     return c.json({ success: true, data });
   } catch (e) { return jsonError(c, e, 'Error al actualizar rol'); }
 };
@@ -48,7 +51,7 @@ export const updateRole = async (c: Context) => {
 export const deleteRole = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id'));
-    await rbac.deleteRole(id);
+    await rbac.deleteRole(id, actorOf(c));
     return c.json({ success: true, message: 'Rol eliminado' });
   } catch (e) { return jsonError(c, e, 'Error al eliminar rol'); }
 };
@@ -59,7 +62,7 @@ export const assignRole = async (c: Context) => {
   try {
     const { userId, roleId } = c.req.valid('json' as never) as { userId: number; roleId: number };
     const assignedBy = c.get('jwtPayload').userId;
-    const data = await rbac.assignRoleToUser(userId, roleId, assignedBy);
+    const data = await rbac.assignRoleToUser(userId, roleId, assignedBy, actorOf(c));
     return c.json({ success: true, data });
   } catch (e) { return jsonError(c, e, 'Error al asignar rol'); }
 };
@@ -67,7 +70,7 @@ export const assignRole = async (c: Context) => {
 export const removeRole = async (c: Context) => {
   try {
     const userId = parseInt(c.req.param('userId'));
-    await rbac.removeRoleFromUser(userId);
+    await rbac.removeRoleFromUser(userId, actorOf(c));
     return c.json({ success: true, message: 'Rol removido del usuario' });
   } catch (e) { return jsonError(c, e, 'Error al remover rol'); }
 };
@@ -97,7 +100,7 @@ export const setUserOverrides = async (c: Context) => {
       overrides: { permCatalogId: number; type: 'grant' | 'deny' }[];
     };
     const assignedBy = c.get('jwtPayload').userId;
-    const data = await rbac.setUserOverrides(userId, overrides, assignedBy);
+    const data = await rbac.setUserOverrides(userId, overrides, assignedBy, actorOf(c));
     return c.json({ success: true, data });
   } catch (e) { return jsonError(c, e, 'Error al guardar overrides del usuario'); }
 };
@@ -106,7 +109,7 @@ export const removeUserOverride = async (c: Context) => {
   try {
     const userId = parseInt(c.req.param('userId'));
     const permCatalogId = parseInt(c.req.param('permCatalogId'));
-    await rbac.removeUserOverride(userId, permCatalogId);
+    await rbac.removeUserOverride(userId, permCatalogId, actorOf(c));
     return c.json({ success: true, message: 'Override eliminado' });
   } catch (e) { return jsonError(c, e, 'Error al eliminar override'); }
 };

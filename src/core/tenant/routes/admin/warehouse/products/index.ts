@@ -48,9 +48,9 @@ routes.use('*', authMiddleware);
 // ── Productos ────────────────────────────────────────────────────────────────
 routes.get('/', getAllProductsController);
 routes.post('/', validateCreateProduct, createProductController);
-routes.get('/import/capacity', requirePermission('menu', 'menu.gestionar_productos'), getProductImportCapacityController);
-routes.post('/import', requirePermission('menu', 'menu.gestionar_productos'), validateProductImport, importProductsController);
-routes.post('/import/:id/image', requirePermission('menu', 'menu.gestionar_productos'), uploadImportedProductImageController);
+routes.get('/import/capacity', requirePermission('menu', 'menu.importar_productos'), getProductImportCapacityController);
+routes.post('/import', requirePermission('menu', 'menu.importar_productos'), validateProductImport, importProductsController);
+routes.post('/import/:id/image', requirePermission('menu', 'menu.importar_productos'), uploadImportedProductImageController);
 routes.get('/:id', getProductByIdController);
 routes.patch('/:id', validateUpdateProduct, updateProductController);
 routes.delete('/:id', deleteProductController);

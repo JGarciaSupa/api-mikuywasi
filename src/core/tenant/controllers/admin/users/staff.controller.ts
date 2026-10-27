@@ -19,7 +19,7 @@ export const createStaffController = async (c: Context) => {
     const body = await c.req.parseBody();
     const imageFile = body['image'] as File | undefined;
     const data = c.req.valid('form' as never) as CreateStaffInput;
-    const result = await staffService.createStaff(data, imageFile);
+    const result = await staffService.createStaff(data, imageFile, { roleCode: c.get('jwtPayload')?.role ?? null });
     const reactivated = (result as { reactivated?: boolean }).reactivated;
     return c.json({
       success: true,
@@ -41,7 +41,7 @@ export const updateStaffController = async (c: Context) => {
     const body = await c.req.parseBody();
     const imageFile = body['image'] as File | undefined;
     const data = c.req.valid('form' as never) as UpdateStaffInput;
-    const result = await staffService.updateStaff(id, data, imageFile);
+    const result = await staffService.updateStaff(id, data, imageFile, { roleCode: c.get('jwtPayload')?.role ?? null });
     return c.json({ success: true, message: 'Usuario actualizado con éxito', data: result });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error al actualizar el usuario') }, 400);
@@ -56,7 +56,7 @@ export const deleteStaffController = async (c: Context) => {
     if (id === userId) {
       return c.json({ success: false, message: 'No puedes eliminar tu propio usuario' }, 400);
     }
-    const result = await staffService.deleteStaff(id);
+    const result = await staffService.deleteStaff(id, { roleCode: c.get('jwtPayload')?.role ?? null });
     return c.json({ success: true, message: 'Usuario eliminado con éxito', data: result });
   } catch (error: any) {
     return c.json({ success: false, message: safeMessage(error, 'Error al eliminar el usuario') }, 400);
