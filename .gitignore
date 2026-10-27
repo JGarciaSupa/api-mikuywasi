@@ -1,4 +1,5 @@
 # deps
 node_modules/
 
-.env.env.qas
+.env
+.env.qas
