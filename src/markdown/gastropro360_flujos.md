@@ -1,7 +1,7 @@
 # GastroPro 360 — Flujos del Sistema de Almacenes e Inventarios
 
 **Empresa:** Estrategia Gastronómica A & G S.A.C.  
-**Sistema:** Almacenes e Inventarios (Mikuy Wasi)  
+**Sistema:** Almacenes e Inventarios (GastroPro 360)  
 **Versión:** Manual Completo · Ingeniería Inversa + API multi-tenant  
 **Esquema Drizzle:** `src/db/tenant/schema.ts`  
 **Implementación API:** `src/core/tenant/routes/admin/warehouse/`

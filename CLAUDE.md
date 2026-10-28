@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Multi-tenant restaurant/POS SaaS backend ("Mikuywasi" / GastroPro360) built with **Hono** on **Bun**, using **Drizzle ORM** over **PostgreSQL**, with **Redis** caching and **Cloudflare R2** for file storage.
+Multi-tenant restaurant/POS SaaS backend ("GastroPro 360") built with **Hono** on **Bun**, using **Drizzle ORM** over **PostgreSQL**, with **Redis** caching and **Cloudflare R2** for file storage.
 
 ## Commands
 

@@ -17,7 +17,7 @@ import { fullSyncTenant } from '../core/master/services/rbac-sync.service';
 import { isReservedPermission } from '../utils/reserved-permissions';
 
 // ─────────────────────────────────────────────────────────────
-// DATOS RBAC — definición completa del sistema Mikuywasi
+// DATOS RBAC — definición completa del sistema GastroPro 360
 // ─────────────────────────────────────────────────────────────
 
 type SeedAction = {
