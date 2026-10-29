@@ -9,7 +9,8 @@ export const geoSchema = z.object({
   status: z.enum(['ok', 'denied', 'unavailable', 'timeout']),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
-  accuracy: z.number().min(0).max(1_000_000).optional(),
+  // Sin tope: una precisión grande (ubicación aproximada) sigue siendo una ubicación válida
+  accuracy: z.number().min(0).optional(),
 });
 
 export type GeoInput = z.infer<typeof geoSchema>;
@@ -55,7 +56,7 @@ export async function geoAuditFields(geo: GeoInput | null, branchId?: number | n
   const fields: GeoAuditFields = {
     latitude: geo.lat != null ? geo.lat.toFixed(7) : null,
     longitude: geo.lng != null ? geo.lng.toFixed(7) : null,
-    geoAccuracy: geo.accuracy != null ? Math.round(geo.accuracy) : null,
+    geoAccuracy: geo.accuracy != null && Number.isFinite(geo.accuracy) ? Math.min(Math.round(geo.accuracy), 2_000_000_000) : null,
     geoStatus: geo.status,
     distanceToBranch: null,
   };
