@@ -3,6 +3,7 @@ import * as cash from '../../../services/admin/documents/cash.service';
 import { getAuditActor, jsonError } from '@/utils/helpers';
 import { hasPermission, getCurrentUserId } from '@/utils/permissions';
 import { PlanLimitError } from '../../../services/shared/plan-limits.service';
+import { parseGeo } from '@/utils/geo';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
@@ -164,10 +165,13 @@ export const openCashSession = async (c: Context) => {
         foreignCurrency: body.foreignCurrency,
         allowCustomRate: canSetRate,
         userId: body.userId !== undefined && body.userId !== null ? parseInt(body.userId) : undefined,
-        notes: body.notes
+        notes: body.notes,
+        geo: parseGeo(body.geo),
       },
       getAuditActor(c)
     );
+    // El service ya escribe su propio registro (con ubicación) en audit_log
+    c.set('auditLogged', true);
     return c.json({ success: true, message: 'Sesión de caja abierta', data }, 201);
   } catch (e) {
     return jsonError(c, e, 'Error al abrir sesión');
@@ -180,7 +184,7 @@ export const closeCashSession = async (c: Context) => {
     const body = await c.req.json();
     const data = await cash.closeCashSession(
       id,
-      { closingBalance: parseFloat(body.closingBalance) || 0, notes: body.notes, password: body.password },
+      { closingBalance: parseFloat(body.closingBalance) || 0, notes: body.notes, password: body.password, geo: parseGeo(body.geo) },
       getAuditActor(c)
     );
     // El service ya escribe su propio registro en audit_log

@@ -7,6 +7,7 @@ import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
 import { authorizeByPassword } from './security-auth.service';
+import { geoAuditFields, type GeoInput } from '../../../../../utils/geo';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,7 @@ export async function openCashSession(
     allowCustomRate?: boolean;
     userId?: number;
     notes?: string;
+    geo?: GeoInput | null;
   },
   actor?: AuditActor
 ) {
@@ -470,6 +472,8 @@ export async function openCashSession(
       userName: actor?.userName,
       module: 'caja',
       description: `Turno de caja abierto en "${reg.name}": ${code} (cajero: ${openedByName}) con saldo inicial S/ ${round2(data.openingBalance)}`,
+      ipAddress: actor?.ip ?? null,
+      geo: await geoAuditFields(data.geo ?? null, reg.branchId),
     });
 
     return session;
@@ -1011,7 +1015,7 @@ export class OpenOrdersOnCloseError extends Error {
 
 export async function closeCashSession(
   id: number,
-  data: { closingBalance: number; notes?: string; password?: string },
+  data: { closingBalance: number; notes?: string; password?: string; geo?: GeoInput | null },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -1057,6 +1061,10 @@ export async function closeCashSession(
     closedByName = u?.name ?? null;
   }
 
+  const [closingRegister] = session.registerId != null
+    ? await db.select({ branchId: cashRegisters.branchId }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId))
+    : [];
+
   const difference = data.closingBalance - toNum(session.expectedBalance);
 
   const [closed] = await db
@@ -1084,6 +1092,7 @@ export async function closeCashSession(
     description: `Sesión de caja cerrada: ${session.code}. Diferencia: S/ ${round2(difference)}`
       + (openOrders.length > 0 ? `. Cerrada con ${openOrders.length} pedido(s) abierto(s), autorizado por ${authorizer?.name ?? `usuario ${authorizedById}`}` : ''),
     ipAddress: actor?.ip ?? null,
+    geo: await geoAuditFields(data.geo ?? null, closingRegister?.branchId),
   });
 
   return closed;

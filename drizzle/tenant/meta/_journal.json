@@ -659,6 +659,13 @@
       "when": 1793036400000,
       "tag": "0093_add_billing_documents_voided_by",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1793122800000,
+      "tag": "0094_add_audit_log_geolocation",
+      "breakpoints": true
     }
   ]
 }

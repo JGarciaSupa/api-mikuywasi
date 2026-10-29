@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { validationHook } from "../../hook";
+import { geoSchema } from "@/utils/geo";
 
 // Schemas
 export const loginSchema = z.object({
@@ -13,6 +14,8 @@ export const loginSchema = z.object({
     .string({ error: "La contraseña es requerida" })
     .min(1, "La contraseña es requerida")
     .max(255, "La contraseña no puede exceder los 255 caracteres"),
+  // Ubicación del dispositivo (opcional): se registra en Auditoría
+  geo: geoSchema.optional(),
 });
 
 export const updateProfileSchema = z.object({

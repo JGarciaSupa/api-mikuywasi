@@ -728,6 +728,12 @@ export const auditLog = pgTable('audit_log', {
 	module: varchar('module', { length: 100 }),
 	description: varchar('description', { length: 300 }),
 	ipAddress: varchar('ip_address', { length: 45 }),
+	// Ubicación del dispositivo (login y apertura/cierre de caja). geo_status: ok | denied | unavailable | timeout
+	latitude: decimal('latitude', { precision: 10, scale: 7 }),
+	longitude: decimal('longitude', { precision: 10, scale: 7 }),
+	geoAccuracy: integer('geo_accuracy'), // metros
+	geoStatus: varchar('geo_status', { length: 20 }),
+	distanceToBranch: integer('distance_to_branch'), // metros a la sucursal (si tiene coordenadas)
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	tableIdx: index('audit_log_table_idx').on(table.tableName),

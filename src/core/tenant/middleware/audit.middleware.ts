@@ -1,5 +1,8 @@
 import type { Context, Next } from 'hono';
+import { eq } from 'drizzle-orm';
 import { writeAuditLog } from '../services/admin/warehouse/shared/audit.service';
+import { orders } from '@/db/tenant/schema';
+import { getTenantDb } from '@/utils/tenant-context';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -89,7 +92,21 @@ export async function auditMiddleware(c: Context, next: Next) {
         recordId = null;
       }
 
-      const description = `${method} ${path}`;
+      // Rutas de pedidos: el id es interno (nanoid); se muestra el número de pedido (trackingCode,
+      // único) para que en Auditoría se identifique el pedido. Si no se encuentra, queda la ruta.
+      let description = `${method} ${path}`;
+      const orderMatch = path.match(/\/orders\/([A-Za-z0-9_-]{6,})(?=\/|$)/);
+      if (orderMatch) {
+        try {
+          const [order] = await getTenantDb()
+            .select({ trackingCode: orders.trackingCode })
+            .from(orders)
+            .where(eq(orders.id, orderMatch[1]));
+          if (order?.trackingCode) description = `${method} ${path.replace(orderMatch[1], `#${order.trackingCode}`)}`;
+        } catch {
+          // se deja la ruta tal cual
+        }
+      }
 
       await writeAuditLog({
         tableName,

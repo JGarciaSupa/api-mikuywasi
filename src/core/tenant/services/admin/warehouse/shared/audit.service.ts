@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { auditLog, users } from '../../../../../../db/tenant/schema';
 import { getTenantDb, type TenantDb } from '../../../../../../utils/tenant-context';
+import type { GeoAuditFields } from '../../../../../../utils/geo';
 
 type AuditOperation = 'INSERT' | 'UPDATE' | 'DELETE' | 'PROCESS' | 'VOID' | 'ADJUST';
 
@@ -15,6 +16,8 @@ export interface AuditParams {
   module: string;
   description: string;
   ipAddress?: string | null;
+  /** Ubicación del dispositivo (login y apertura/cierre de caja), ver utils/geo */
+  geo?: GeoAuditFields;
 }
 
 export async function writeAuditLog(params: AuditParams, tx?: TenantDb) {
@@ -44,5 +47,6 @@ export async function writeAuditLog(params: AuditParams, tx?: TenantDb) {
     module: params.module,
     description: params.description,
     ipAddress: params.ipAddress ?? null,
+    ...(params.geo ?? {}),
   });
 }

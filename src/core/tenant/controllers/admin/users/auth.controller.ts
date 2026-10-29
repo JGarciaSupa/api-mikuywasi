@@ -5,6 +5,8 @@ import { getClientIp } from '../../../../../utils/ip';
 import { login, refreshAccessToken, logout, getProfile, updateProfile, updatePassword, AuthError } from '../../../services/admin/users/auth.service';
 import redisApi from '@/redis/index';
 import { getTenantDb } from '@/db';
+import { writeAuditLog } from '../../../services/admin/warehouse/shared/audit.service';
+import { parseGeo, geoAuditFields } from '@/utils/geo';
 
 // ────────────────────────────────────────────
 // Helpers
@@ -49,13 +51,31 @@ export async function loginController(c: Context) {
   console.log("Login Controller");
 
   try {
-    const { username, password } = c.req.valid('json' as never);
+    const { username, password, geo } = c.req.valid('json' as never);
 
     const platform = getPlatform(c);
     const userAgent = c.req.header('user-agent') || '';
     const ipAddress = getClientIp(c);
 
     const result = await login(username, password, userAgent, ipAddress);
+
+    // Auditoría del inicio de sesión con la ubicación del dispositivo (nunca bloquea el login)
+    try {
+      await writeAuditLog({
+        tableName: 'users',
+        operation: 'PROCESS',
+        recordId: result.user.id,
+        userId: result.user.id,
+        userName: result.user.name,
+        module: 'usuarios',
+        description: `Inicio de sesión (${platform})`,
+        ipAddress,
+        geo: await geoAuditFields(parseGeo(geo), result.currentBranch?.id),
+      });
+      c.set('auditLogged', true);
+    } catch (auditError) {
+      console.error('No se pudo auditar el inicio de sesión:', auditError);
+    }
 
     if (platform === 'web') {
       setRefreshTokenCookie(c, result.refreshToken);

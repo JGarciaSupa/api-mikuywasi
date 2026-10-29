@@ -10,3 +10,12 @@ Cuerpo: `{ closingBalance: number, notes?: string, password?: string }`.
     `{ success: false, message, requiresAuthorization: true, openOrders: [{ id, trackingCode }] }`.
   - Con contraseña válida, cierra el turno; los pedidos siguen abiertos y los cobra el turno siguiente (el ingreso va al turno de quien cobra, `collectedSessionId`).
 - `closedBy` guarda el nombre del usuario que cierra. La auditoría (`audit_log`, módulo `caja`) registra quién autorizó y qué pedidos quedaron abiertos.
+
+## Ubicación del dispositivo (apertura y cierre)
+
+`POST /api/cash/sessions/open` y `POST /api/cash/sessions/:id/close` aceptan `geo` opcional:
+`{ status: 'ok' | 'denied' | 'unavailable' | 'timeout', lat?, lng?, accuracy? }`. No bloquea nunca:
+se guarda en `audit_log` (`latitude`, `longitude`, `geo_accuracy`, `geo_status`, `distance_to_branch`,
+migración `0094`) junto con la IP. La distancia se calcula contra `branches.address.lat/lng`.
+El login (`POST /api/admin/login`) acepta el mismo `geo` y registra «Inicio de sesión» en Auditoría.
+En Auditoría, las rutas con `/orders/:id` muestran el número de pedido (`#trackingCode`) en lugar del id interno.
