@@ -17,6 +17,8 @@ import {
   branches,
   productSalesChannelPrices,
   billingDocuments,
+  cashRegisters,
+  cashSessions,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -511,7 +513,35 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
 export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; }
 
-// Resuelve el motivo y la autorización según las activaciones de la caja del actor.
+// Caja cuyas activaciones rigen la anulación. Mismo criterio que el POS (MenuPage →
+// effectiveRegisterId): la del turno propio del actor; si no tiene (mozo, o sin turno), la
+// primera caja activa de la sucursal (por nombre) con turno abierto y, si no hay ninguna,
+// la primera caja activa. Antes solo se miraba el turno propio: sin turno no se exigían
+// catálogo ni contraseña y el motivo del listado que enviaba el POS se rechazaba.
+async function resolveActivationRegisterId(
+  db: ReturnType<typeof getTenantDb>,
+  actorUserId: number | undefined,
+  branchId: number,
+): Promise<number | null> {
+  const own = actorUserId ? await getActiveSessionForUser(actorUserId) : null;
+  if (own?.registerId != null) return own.registerId;
+
+  const activeRegisters = await db
+    .select({ id: cashRegisters.id })
+    .from(cashRegisters)
+    .where(and(eq(cashRegisters.branchId, branchId), eq(cashRegisters.isActive, true)))
+    .orderBy(cashRegisters.name);
+  if (activeRegisters.length === 0) return null;
+
+  const openRows = await db
+    .select({ registerId: cashSessions.registerId })
+    .from(cashSessions)
+    .where(and(inArray(cashSessions.registerId, activeRegisters.map((r) => r.id)), eq(cashSessions.status, 'open')));
+  const withOpenShift = new Set(openRows.map((r) => r.registerId));
+  return (activeRegisters.find((r) => withOpenShift.has(r.id)) ?? activeRegisters[0]).id;
+}
+
+// Resuelve el motivo y la autorización según las activaciones de la caja efectiva.
 // Lanza error si falta el motivo/contraseña exigidos.
 async function resolveDeleteAuthorization(
   db: ReturnType<typeof getTenantDb>,
@@ -521,14 +551,21 @@ async function resolveDeleteAuthorization(
   codes: { reasonCatalog: string; password: string; authSubAction: string },
 ): Promise<{ reasonId: number | null; motivo: string | null; authorizedById: number | null }> {
   let effective: Record<string, boolean> = {};
-  const session = actorUserId ? await getActiveSessionForUser(actorUserId) : null;
-  if (session?.registerId != null) effective = await resolveForRegister(session.registerId);
+  const registerId = await resolveActivationRegisterId(db, actorUserId, branchId);
+  if (registerId != null) effective = await resolveForRegister(registerId);
 
   // Motivo: del catálogo (order_cancel de la sucursal) si la activación está ON; si no, libre.
   let reasonId: number | null = null;
   let motivo: string | null = (opts.motivo ?? '').trim() || null;
   if (effective[codes.reasonCatalog]) {
     if (!opts.reasonId) throw new Error('Debes seleccionar un motivo del listado');
+    const [r] = await db.select().from(reasons)
+      .where(and(eq(reasons.id, opts.reasonId), eq(reasons.branchId, branchId), eq(reasons.type, 'order_cancel')));
+    if (!r) throw new Error('Motivo inválido');
+    reasonId = r.id;
+    motivo = r.description;
+  } else if (!motivo && opts.reasonId) {
+    // Catálogo no exigido, pero llegó un motivo del listado: se acepta igual
     const [r] = await db.select().from(reasons)
       .where(and(eq(reasons.id, opts.reasonId), eq(reasons.branchId, branchId), eq(reasons.type, 'order_cancel')));
     if (!r) throw new Error('Motivo inválido');
