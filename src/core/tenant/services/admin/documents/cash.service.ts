@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, sql, ilike, isNull } from 'drizzle-orm';
+import { eq, desc, and, gte, lte, sql, ilike, isNull, or, ne } from 'drizzle-orm';
 import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
@@ -6,6 +6,7 @@ import type { AuditActor } from '../warehouse/types';
 import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
+import { authorizeByPassword } from './security-auth.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -996,9 +997,21 @@ export async function refundOrder(
   });
 }
 
+/**
+ * Cierre de turno con pedidos abiertos sin una contraseña de autorización válida.
+ * El controller responde 409 con `requiresAuthorization` y la lista de pedidos.
+ */
+export class OpenOrdersOnCloseError extends Error {
+  openOrders: { id: string; trackingCode: string | null }[];
+  constructor(message: string, openOrders: { id: string; trackingCode: string | null }[]) {
+    super(message);
+    this.openOrders = openOrders;
+  }
+}
+
 export async function closeCashSession(
   id: number,
-  data: { closingBalance: number; notes?: string },
+  data: { closingBalance: number; notes?: string; password?: string },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -1007,13 +1020,50 @@ export async function closeCashSession(
   if (!session) throw new Error('Sesión no encontrada');
   if (session.status !== 'open') throw new Error('La sesión ya está cerrada');
 
+  // Pedidos abiertos del turno (creados en él o transferidos a él): sin cobrar o sin terminar.
+  // Se puede cerrar igual con contraseña de autorización; los pedidos siguen abiertos y los
+  // cobra el siguiente turno (el ingreso va al turno de quien cobra: collectedSessionId).
+  const openOrders = await db
+    .select({ id: orders.id, trackingCode: orders.trackingCode })
+    .from(orders)
+    .where(and(
+      or(eq(orders.cashSessionId, id), eq(orders.transferredSessionId, id)),
+      ne(orders.status, 'cancelled'),
+      or(ne(orders.status, 'completed'), ne(orders.paymentStatus, 'paid')),
+    ));
+
+  let authorizedById: number | null = null;
+  if (openOrders.length > 0) {
+    const pwd = data.password?.trim() ?? '';
+    const auth = pwd ? await authorizeByPassword('seguridad.autorizar_cierre_turno', pwd) : null;
+    if (!auth) {
+      throw new OpenOrdersOnCloseError(
+        pwd
+          ? 'Contraseña de autorización inválida'
+          : `Hay ${openOrders.length} pedido(s) abierto(s) en este turno: se requiere contraseña de autorización para cerrarlo`,
+        openOrders,
+      );
+    }
+    authorizedById = auth.userId;
+  }
+  const [authorizer] = authorizedById
+    ? await db.select({ name: users.name }).from(users).where(eq(users.id, authorizedById))
+    : [];
+
+  // Nombre de quien cierra: el token del tenant solo trae userId
+  let closedByName = actor?.userName ?? null;
+  if (!closedByName && actor?.userId) {
+    const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.userId));
+    closedByName = u?.name ?? null;
+  }
+
   const difference = data.closingBalance - toNum(session.expectedBalance);
 
   const [closed] = await db
     .update(cashSessions)
     .set({
       status: 'closed',
-      closedBy: actor?.userName ?? 'sistema',
+      closedBy: closedByName ?? 'sistema',
       closingBalance: round2(data.closingBalance),
       difference: round2(difference),
       notes: data.notes ?? session.notes,
@@ -1027,11 +1077,13 @@ export async function closeCashSession(
     operation: 'UPDATE',
     recordId: id,
     beforeData: session,
-    afterData: closed,
+    afterData: openOrders.length > 0 ? { ...closed, openOrders, authorizedById } : closed,
     userId: actor?.userId,
-    userName: actor?.userName,
+    userName: closedByName,
     module: 'caja',
-    description: `Sesión de caja cerrada: ${session.code}. Diferencia: S/ ${round2(difference)}`,
+    description: `Sesión de caja cerrada: ${session.code}. Diferencia: S/ ${round2(difference)}`
+      + (openOrders.length > 0 ? `. Cerrada con ${openOrders.length} pedido(s) abierto(s), autorizado por ${authorizer?.name ?? `usuario ${authorizedById}`}` : ''),
+    ipAddress: actor?.ip ?? null,
   });
 
   return closed;

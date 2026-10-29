@@ -192,6 +192,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
     subActions: [
       { code: 'seguridad.autorizar_eliminar_pedido', name: 'Autorizar eliminar pedidos', description: 'Su contraseña autoriza la eliminación/anulación de un pedido.', order: 1 },
       { code: 'seguridad.autorizar_eliminar_producto', name: 'Autorizar eliminar productos', description: 'Su contraseña autoriza la anulación de un producto ya enviado.', order: 2 },
+      { code: 'seguridad.autorizar_cierre_turno', name: 'Autorizar cierre de turno con pedidos abiertos', description: 'Su contraseña autoriza cerrar un turno que aún tiene pedidos abiertos (pasan al siguiente turno).', order: 3 },
     ],
   },
 ];

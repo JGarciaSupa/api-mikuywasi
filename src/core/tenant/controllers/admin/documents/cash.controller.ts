@@ -180,11 +180,16 @@ export const closeCashSession = async (c: Context) => {
     const body = await c.req.json();
     const data = await cash.closeCashSession(
       id,
-      { closingBalance: parseFloat(body.closingBalance) || 0, notes: body.notes },
+      { closingBalance: parseFloat(body.closingBalance) || 0, notes: body.notes, password: body.password },
       getAuditActor(c)
     );
+    // El service ya escribe su propio registro en audit_log
+    c.set('auditLogged', true);
     return c.json({ success: true, message: 'Sesión de caja cerrada', data });
   } catch (e) {
+    if (e instanceof cash.OpenOrdersOnCloseError) {
+      return c.json({ success: false, message: e.message, requiresAuthorization: true, openOrders: e.openOrders }, 409);
+    }
     return jsonError(c, e, 'Error al cerrar sesión');
   }
 };
