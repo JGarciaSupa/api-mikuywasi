@@ -21,5 +21,5 @@ EXPOSE ${PORT}
 # Usar el usuario bun por seguridad (usuario no raíz incluido en la imagen base)
 USER bun
 
-# Comando para iniciar la aplicación
-CMD ["bun", "run", "src/index.ts"]
+# Comando para iniciar la aplicación: migra los tenants y arranca la API (ver docker/start.sh)
+CMD ["sh", "docker/start.sh"]
