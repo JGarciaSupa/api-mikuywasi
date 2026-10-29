@@ -382,6 +382,9 @@ export async function openCashSession(
   },
   actor?: AuditActor
 ) {
+  // Ubicación del dispositivo obligatoria para abrir caja
+  assertDeviceLocation(data.geo);
+
   const db = getTenantDb();
 
   // Validate register exists and is active
@@ -1005,6 +1008,20 @@ export async function refundOrder(
  * Cierre de turno con pedidos abiertos sin una contraseña de autorización válida.
  * El controller responde 409 con `requiresAuthorization` y la lista de pedidos.
  */
+// Ubicación del dispositivo obligatoria para abrir/cerrar caja: el navegador debe entregar
+// lat/lng reales (geo.status === 'ok'). El controller responde 422 con requiresLocation.
+export class LocationRequiredError extends Error {
+  constructor(message = 'Se requiere la ubicación del dispositivo (activa la ubicación) para operar la caja') {
+    super(message);
+  }
+}
+
+function assertDeviceLocation(geo?: GeoInput | null) {
+  if (!geo || geo.status !== 'ok' || geo.lat == null || geo.lng == null) {
+    throw new LocationRequiredError();
+  }
+}
+
 export class OpenOrdersOnCloseError extends Error {
   openOrders: { id: string; trackingCode: string | null }[];
   constructor(message: string, openOrders: { id: string; trackingCode: string | null }[]) {
@@ -1023,6 +1040,9 @@ export async function closeCashSession(
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, id));
   if (!session) throw new Error('Sesión no encontrada');
   if (session.status !== 'open') throw new Error('La sesión ya está cerrada');
+
+  // Ubicación del dispositivo obligatoria para cerrar caja
+  assertDeviceLocation(data.geo);
 
   // Pedidos abiertos del turno (creados en él o transferidos a él): sin cobrar o sin terminar.
   // Se puede cerrar igual con contraseña de autorización; los pedidos siguen abiertos y los

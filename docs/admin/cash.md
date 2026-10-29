@@ -17,5 +17,8 @@ Cuerpo: `{ closingBalance: number, notes?: string, password?: string }`.
 `{ status: 'ok' | 'denied' | 'unavailable' | 'timeout', lat?, lng?, accuracy? }`. No bloquea nunca:
 se guarda en `audit_log` (`latitude`, `longitude`, `geo_accuracy`, `geo_status`, `distance_to_branch`,
 migración `0094`) junto con la IP. La distancia se calcula contra `branches.address.lat/lng`.
-El login (`POST /api/admin/login`) acepta el mismo `geo` y registra «Inicio de sesión» en Auditoría.
+`geo` es **obligatorio** en apertura y cierre: debe traer `status: 'ok'` con `lat`/`lng` reales
+del dispositivo (GPS o WiFi; un VPN no la altera porque no depende de la IP). Sin ubicación válida,
+ambos endpoints responden **422** `{ success:false, requiresLocation:true, message }` y no abren/cierran.
+El login (`POST /api/admin/login`) acepta el mismo `geo` y solo lo registra en Auditoría (no bloquea).
 En Auditoría, las rutas con `/orders/:id` muestran el número de pedido (`#trackingCode`) en lugar del id interno.

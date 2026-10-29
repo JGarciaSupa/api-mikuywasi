@@ -174,6 +174,9 @@ export const openCashSession = async (c: Context) => {
     c.set('auditLogged', true);
     return c.json({ success: true, message: 'Sesión de caja abierta', data }, 201);
   } catch (e) {
+    if (e instanceof cash.LocationRequiredError) {
+      return c.json({ success: false, message: e.message, requiresLocation: true }, 422);
+    }
     return jsonError(c, e, 'Error al abrir sesión');
   }
 };
@@ -191,6 +194,9 @@ export const closeCashSession = async (c: Context) => {
     c.set('auditLogged', true);
     return c.json({ success: true, message: 'Sesión de caja cerrada', data });
   } catch (e) {
+    if (e instanceof cash.LocationRequiredError) {
+      return c.json({ success: false, message: e.message, requiresLocation: true }, 422);
+    }
     if (e instanceof cash.OpenOrdersOnCloseError) {
       return c.json({ success: false, message: e.message, requiresAuthorization: true, openOrders: e.openOrders }, 409);
     }
