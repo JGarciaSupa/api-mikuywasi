@@ -666,6 +666,13 @@
       "when": 1793122800000,
       "tag": "0094_add_audit_log_geolocation",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1793209200000,
+      "tag": "0095_add_audit_log_geo_captured_at",
+      "breakpoints": true
     }
   ]
 }

@@ -734,6 +734,7 @@ export const auditLog = pgTable('audit_log', {
 	geoAccuracy: integer('geo_accuracy'), // metros
 	geoStatus: varchar('geo_status', { length: 20 }),
 	distanceToBranch: integer('distance_to_branch'), // metros a la sucursal (si tiene coordenadas)
+	geoCapturedAt: timestamp('geo_captured_at', { withTimezone: true }), // cuándo tomó la posición el dispositivo
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	tableIdx: index('audit_log_table_idx').on(table.tableName),

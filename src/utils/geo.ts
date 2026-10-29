@@ -9,9 +9,14 @@ export const geoSchema = z.object({
   status: z.enum(['ok', 'denied', 'unavailable', 'timeout']),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
-  // Sin tope: una precisión grande (ubicación aproximada) sigue siendo una ubicación válida
+  // Sin tope en el esquema: la regla de negocio (MAX_CASH_ACCURACY_M) se aplica en la caja
   accuracy: z.number().min(0).optional(),
+  // Momento en que el dispositivo tomó la posición (ISO); se valida al guardar
+  capturedAt: z.string().max(40).optional(),
 });
+
+/** Precisión máxima aceptada para abrir/cerrar caja (el admin aplica el mismo tope). */
+export const MAX_CASH_ACCURACY_M = 5000;
 
 export type GeoInput = z.infer<typeof geoSchema>;
 
@@ -22,6 +27,7 @@ export interface GeoAuditFields {
   geoAccuracy: number | null;
   geoStatus: string | null;
   distanceToBranch: number | null;
+  geoCapturedAt: Date | null;
 }
 
 /** Valida la ubicación recibida en un body; null si no viene o no es válida (nunca lanza). */
@@ -34,6 +40,13 @@ export function parseGeo(raw: unknown): GeoInput | null {
     return { status: geo.status === 'ok' ? 'unavailable' : geo.status };
   }
   return geo;
+}
+
+/** Fecha válida del capturedAt enviado por el dispositivo, o null. */
+function parseCapturedAt(raw?: string): Date | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /** Distancia en metros entre dos puntos (haversine). */
@@ -59,6 +72,7 @@ export async function geoAuditFields(geo: GeoInput | null, branchId?: number | n
     geoAccuracy: geo.accuracy != null && Number.isFinite(geo.accuracy) ? Math.min(Math.round(geo.accuracy), 2_000_000_000) : null,
     geoStatus: geo.status,
     distanceToBranch: null,
+    geoCapturedAt: parseCapturedAt(geo.capturedAt),
   };
   if (geo.lat == null || geo.lng == null || !branchId) return fields;
   try {

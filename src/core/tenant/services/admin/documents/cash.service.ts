@@ -7,7 +7,7 @@ import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
 import { authorizeByPassword } from './security-auth.service';
-import { geoAuditFields, type GeoInput } from '../../../../../utils/geo';
+import { geoAuditFields, MAX_CASH_ACCURACY_M, type GeoInput } from '../../../../../utils/geo';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -1016,9 +1016,16 @@ export class LocationRequiredError extends Error {
   }
 }
 
+// Se exigen lat, lng y precisión; una precisión mayor a 5 km no sirve como ubicación de caja.
+// No se confía solo en el admin: la API aplica la misma regla.
 function assertDeviceLocation(geo?: GeoInput | null) {
-  if (!geo || geo.status !== 'ok' || geo.lat == null || geo.lng == null) {
+  if (!geo || geo.status !== 'ok' || geo.lat == null || geo.lng == null || geo.accuracy == null) {
     throw new LocationRequiredError();
+  }
+  if (geo.accuracy > MAX_CASH_ACCURACY_M) {
+    throw new LocationRequiredError(
+      `La ubicación es demasiado imprecisa (±${Math.round(geo.accuracy / 1000)} km). Activa el WiFi o el GPS del dispositivo y reintenta`,
+    );
   }
 }
 
