@@ -73,7 +73,10 @@ export async function auditMiddleware(c: Context, next: Next) {
       const path = c.req.path;
       const moduleName = inferModuleFromPath(path);
       const tableName = inferTableNameFromPath(path);
-      const operation = method === 'POST' ? 'INSERT' : method === 'DELETE' ? 'DELETE' : 'UPDATE';
+      // Anulaciones (comprobantes, pedidos, ítems y documentos de almacén) se registran como VOID
+      // para poder filtrarlas en Auditoría; void-status y void-retry no terminan en /void.
+      const isVoid = /\/(void|cancel|annul)$/.test(path);
+      const operation = isVoid ? 'VOID' : method === 'POST' ? 'INSERT' : method === 'DELETE' ? 'DELETE' : 'UPDATE';
 
       const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? null;
 

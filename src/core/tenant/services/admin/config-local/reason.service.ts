@@ -3,7 +3,7 @@ import { eq, and, asc, ne } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import type { CreateReasonInput, UpdateReasonInput } from '@/core/tenant/validations/admin/config-local/reason.validation';
 
-type ReasonType = 'courtesy' | 'order_cancel' | 'document_void' | 'discount';
+type ReasonType = 'courtesy' | 'order_cancel' | 'document_void' | 'discount' | 'payment_change';
 
 // ─── Catálogo de motivos (por sucursal) ──────────────────────────────────────
 

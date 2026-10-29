@@ -93,6 +93,7 @@ export const billingDocuments = pgTable('billing_documents', {
 	voidedReason: text('voided_reason'),
 	voidedTicket: varchar('voided_ticket', { length: 60 }),
 	voidedSunatStatus: varchar('voided_sunat_status', { length: 20 }),
+	voidedBy: varchar('voided_by', { length: 100 }), // usuario que anuló (mismo criterio que created_by)
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

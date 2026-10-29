@@ -20,8 +20,9 @@ export const reasons = pgTable('reasons', {
 	branchId: integer('branch_id').notNull().references(() => branches.id, { onDelete: 'cascade' }),
 	// courtesy = Cortesía | order_cancel = Eliminación de pedidos (ORDER)
 	// document_void = Anulaciones (DOCUMENT) | discount = Motivos de descuento
+	// payment_change = Cambio de forma de pago
 	type: varchar('type', { length: 20,
-		enum: ['courtesy', 'order_cancel', 'document_void', 'discount'] as const }).notNull(),
+		enum: ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change'] as const }).notNull(),
 	description: varchar('description', { length: 50 }).notNull(),
 	longDescription: varchar('long_description', { length: 150 }),
 	// TOPE (monto máximo). Solo courtesy y discount; en discount es por pedido.

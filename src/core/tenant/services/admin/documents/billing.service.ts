@@ -13,6 +13,7 @@ import {
   customers,
   customerContacts,
   paymentMethods,
+  users,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
@@ -1664,6 +1665,13 @@ export async function voidDocument(
     creditNoteStatus = nc.document?.sunatStatus as 'ACEPTADO' | 'RECHAZADO' | 'ERROR' | null;
   }
 
+  // Nombre de quien anula: el token del tenant solo trae userId
+  let voidedByName: string | null = actor?.userName ?? null;
+  if (!voidedByName && actor?.userId) {
+    const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, actor.userId));
+    voidedByName = u?.name ?? null;
+  }
+
   // Anular localmente después de emitir la NC, porque createNotaCredito valida que
   // el documento original aún no esté marcado como voided.
   await db
@@ -1672,6 +1680,7 @@ export async function voidDocument(
       status: 'voided',
       voidedAt: new Date(),
       voidedReason: reason.trim(),
+      voidedBy: voidedByName,
       voidedTicket: creditNoteNumber,
       voidedSunatStatus: creditNoteStatus,
       ...resolveParentSunatStateAfterVoid(creditNoteStatus, creditNoteNumber),
@@ -1746,12 +1755,13 @@ export async function voidDocument(
   // 4. Auditoría
   await writeAuditLog({
     tableName: 'billing_documents',
-    operation: 'UPDATE',
+    operation: 'VOID',
     recordId: id,
     afterData: { status: 'voided', reason, cancelOrder, authorizedById },
     userId: actor?.userId,
-    userName: actor?.userName,
+    userName: voidedByName ?? undefined,
     module: 'facturacion',
+    ipAddress: actor?.ip ?? null,
     description: `Comprobante ${doc.documentNumber} (${doc.documentType}) anulado. Pedido ${doc.orderId} ${cancelOrder ? 'cancelado' : 'revivido a pendiente de pago'}. Motivo: ${reason.trim()}`,
   });
 

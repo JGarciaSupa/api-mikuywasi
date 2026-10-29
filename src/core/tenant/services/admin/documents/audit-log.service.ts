@@ -1,5 +1,5 @@
-import { eq, and, gte, lte, desc, count, ilike, sql } from 'drizzle-orm';
-import { auditLog } from '../../../../../db/tenant/schema';
+import { eq, and, gte, lte, desc, count, ilike, sql, getTableColumns } from 'drizzle-orm';
+import { auditLog, users } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
 export interface AuditLogFilters {
@@ -34,9 +34,14 @@ export async function listAuditLogs(filters: AuditLogFilters = {}) {
   const [totalRow] = await db.select({ total: count() }).from(auditLog).where(where);
   const total = totalRow?.total ?? 0;
 
+  // Registros antiguos sin user_name: el nombre se completa con el usuario actual
   const items = await db
-    .select()
+    .select({
+      ...getTableColumns(auditLog),
+      userName: sql<string | null>`coalesce(${auditLog.userName}, ${users.name})`,
+    })
     .from(auditLog)
+    .leftJoin(users, eq(auditLog.userId, users.id))
     .where(where)
     .orderBy(desc(auditLog.createdAt))
     .limit(limit)
@@ -60,14 +65,20 @@ export async function getAuditFacets() {
     .from(auditLog)
     .orderBy(auditLog.module);
 
-  const users = await db
-    .selectDistinct({ userId: auditLog.userId, userName: auditLog.userName })
+  // Un registro por usuario (antes salía repetido si tenía filas con y sin nombre)
+  const auditUsers = await db
+    .select({
+      userId: auditLog.userId,
+      userName: sql<string | null>`coalesce(max(${users.name}), max(${auditLog.userName}))`,
+    })
     .from(auditLog)
-    .where(sql`${auditLog.userId} is not null`);
+    .leftJoin(users, eq(auditLog.userId, users.id))
+    .where(sql`${auditLog.userId} is not null`)
+    .groupBy(auditLog.userId);
 
   return {
     modules: modules.map((m) => m.module).filter(Boolean),
-    users: users
+    users: auditUsers
       .filter((u) => u.userId != null)
       .map((u) => ({ userId: u.userId as number, userName: u.userName ?? `Usuario ${u.userId}` })),
   };

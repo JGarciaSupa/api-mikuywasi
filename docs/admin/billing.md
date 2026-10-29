@@ -92,3 +92,15 @@ Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal s
 **Marcar como cobrado** — `PATCH /billing/documents/:id/collected` (permiso `facturacion.pago_pendiente`). Body opcional (retrocompatible): `{ "paymentMethodId": 3, "reference": "004512" }`. Guarda `paymentCollectedAt`, `paymentCollectedBy` y, si se envía, la forma de pago real (`paymentCollectedMethodId`, snapshot `paymentCollectedMethod`) y su REF (máx. 50). El método debe estar activo y ser de la sucursal del comprobante. Es **informativo**: no toca SUNAT ni la caja. 422 si el documento no tiene pago pendiente, ya fue cobrado o está anulado.
 
 **Consumo por cliente** — `GET /customers/:id/history?page=&limit=&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`. Requiere `facturacion.ver_documentos` **o** `administracion.configuracion` (403 si no). Devuelve `summary { orders, consumed, lastVisit, pendingCount, pendingTotal }`, `data` (pedidos no anulados del cliente en todas las sucursales, con sus comprobantes vigentes) y `pagination`.
+
+## Anulación de comprobantes y auditoría
+
+`POST /api/billing/documents/:id/void` — cuerpo `{ reason, cancelOrder?, password? }` (sin cambios de contrato).
+
+- `reason` es texto: el admin lo arma con un motivo del catálogo `reasons` de tipo `document_void` (o «Otro» libre) más un detalle opcional.
+- Al anular se guarda `billing_documents.voided_by` (nombre del usuario que anuló, migración `0093`), junto a `voided_at` y `voided_reason`. Los listados (`GET /api/billing/documents`) y el detalle del pedido lo devuelven como `voidedBy` (`null` en anulaciones anteriores a la migración).
+- Auditoría: la anulación queda en `audit_log` con `operation = 'VOID'`, módulo `facturacion`, usuario e IP. El middleware de auditoría registra además como `VOID` cualquier mutación cuya ruta termine en `/void`, `/cancel` o `/annul` (pedidos, ítems y documentos de almacén), para poder filtrar todas las anulaciones.
+
+## Motivos de cambio de forma de pago
+
+El catálogo `reasons` admite el tipo `payment_change` («Cambio de forma de pago»). El admin lo usa en «Cambiar forma de pago»; a la API sigue llegando `reason` como texto.

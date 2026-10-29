@@ -652,6 +652,13 @@
       "when": 1792950000000,
       "tag": "0092_add_payment_reference_and_collected_method",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1793036400000,
+      "tag": "0093_add_billing_documents_voided_by",
+      "breakpoints": true
     }
   ]
 }

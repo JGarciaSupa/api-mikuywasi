@@ -240,6 +240,8 @@ export const voidDocumentController = async (c: Context) => {
     }
     const actor = getAuditActor(c);
     const updated = await billingService.voidDocument(id, reason, cancelOrder === true, password, actor);
+    // El service ya escribe su propio registro (VOID) en audit_log
+    c.set('auditLogged', true);
     return c.json({ success: true, data: updated });
   } catch (error: any) {
     const status =

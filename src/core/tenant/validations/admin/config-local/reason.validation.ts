@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
-export const REASON_TYPES = ['courtesy', 'order_cancel', 'document_void', 'discount'] as const;
+export const REASON_TYPES = ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change'] as const;
 export const DISCOUNT_MODES = ['percentage', 'amount', 'manual'] as const;
 
 const baseFields = {
