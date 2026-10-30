@@ -382,8 +382,9 @@ export async function openCashSession(
   },
   actor?: AuditActor
 ) {
-  // Ubicación del dispositivo obligatoria para abrir caja
-  assertDeviceLocation(data.geo);
+  // La ubicación del dispositivo es OPCIONAL al abrir caja: el GPS falla a veces y no debe impedir
+  // abrir turno. Si llega (válida o no) se registra en la auditoría con su estado; si no, se omite.
+  // Al cerrar caja sigue siendo obligatoria (assertDeviceLocation en closeCashSession).
 
   const db = getTenantDb();
 
@@ -1008,8 +1009,8 @@ export async function refundOrder(
  * Cierre de turno con pedidos abiertos sin una contraseña de autorización válida.
  * El controller responde 409 con `requiresAuthorization` y la lista de pedidos.
  */
-// Ubicación del dispositivo obligatoria para abrir/cerrar caja: el navegador debe entregar
-// lat/lng reales (geo.status === 'ok'). El controller responde 422 con requiresLocation.
+// Ubicación del dispositivo obligatoria para CERRAR caja (al abrir es opcional): el navegador debe
+// entregar lat/lng reales (geo.status === 'ok'). El controller responde 422 con requiresLocation.
 export class LocationRequiredError extends Error {
   constructor(message = 'Se requiere la ubicación del dispositivo (activa la ubicación) para operar la caja') {
     super(message);
