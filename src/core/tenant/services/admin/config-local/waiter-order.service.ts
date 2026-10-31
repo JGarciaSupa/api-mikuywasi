@@ -19,6 +19,7 @@ import {
   billingDocuments,
   cashRegisters,
   cashSessions,
+  tables,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney, roundQty } from './../warehouse/shared/numbers';
@@ -643,6 +644,14 @@ export async function cancelOrder(orderId: string, actor?: AuditActor, opts: Del
     })
     .where(eq(orders.id, orderId))
     .returning();
+
+  if (updated?.tableId) {
+    await db.update(tables).set({
+      statusCode: 'dirty',
+      statusUpdatedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(tables.id, updated.tableId));
+  }
 
   return updated;
 }

@@ -424,11 +424,20 @@ export const updateOrderStatus = async (id: string, status: string) => {
   const db = getTenantDb();
   await assertOrderNotTransferred(db, id);
 
-  // If order status is updated to 'cancelled', revert the stock discharge
+  // If order status is updated to 'cancelled', revert the stock discharge and mark table as dirty
   if (status === 'cancelled') {
     const { reverseDischargeForOrder } = await import('../warehouse/sales-discharge.service');
     await reverseDischargeForOrder(id);
     await restoreProductStockForOrder(db, id);
+
+    const [currentOrder] = await db.select({ tableId: orders.tableId }).from(orders).where(eq(orders.id, id));
+    if (currentOrder?.tableId) {
+      await db.update(tables).set({
+        statusCode: 'dirty',
+        statusUpdatedAt: new Date(),
+        updatedAt: new Date()
+      }).where(eq(tables.id, currentOrder.tableId));
+    }
   }
 
   const [updated] = await db
