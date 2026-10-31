@@ -644,6 +644,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           updatedAt: new Date(),
         }).returning();
 
+        let savedItems: any[] = [];
         if (computedItems.length > 0) {
           const insertedItems = await tx.insert(orderItems).values(
             computedItems.map((item) => ({
@@ -662,6 +663,13 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
               taxSnapshot: item.taxSnapshot,
             }))
           ).returning();
+
+          savedItems = computedItems.map((item, idx) => ({
+            ...item,
+            id: insertedItems[idx]?.id,
+            orderId,
+            createdAt: insertedItems[idx]?.createdAt,
+          }));
 
           for (let i = 0; i < insertedItems.length; i++) {
             const orderItem = insertedItems[i];
@@ -694,7 +702,7 @@ export const createOrder = async (orderData: any, initialStatus: 'pending' | 'co
           }).where(eq(tables.id, orderData.tableId));
         }
 
-        return { ...result, items: computedItems, taxBreakdown };
+        return { ...result, items: savedItems, taxBreakdown };
       });
 
     } catch (error: any) {
