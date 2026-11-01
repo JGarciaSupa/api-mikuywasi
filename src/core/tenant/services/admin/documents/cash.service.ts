@@ -1059,7 +1059,7 @@ export async function closeCashSession(
     .select({ id: orders.id, trackingCode: orders.trackingCode })
     .from(orders)
     .where(and(
-      or(eq(orders.cashSessionId, id), eq(orders.transferredSessionId, id)),
+      eq(orders.branchId, session.branchId),
       ne(orders.status, 'cancelled'),
       or(ne(orders.status, 'completed'), ne(orders.paymentStatus, 'paid')),
     ));

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { masterDb } from '../db';
 import { activations } from '../db/master/schema';
+import { sql } from 'drizzle-orm';
 
 const activationsData = [
 	{
@@ -195,20 +196,24 @@ const activationsData = [
 async function seedActivations() {
 	console.log('🌱 Iniciando seeder de Activaciones...');
 	try {
+		await masterDb.execute(
+			sql`SELECT setval(pg_get_serial_sequence('activations', 'id'), COALESCE((SELECT MAX(id) FROM activations), 0) + 1, false);`
+		);
 		for (const act of activationsData) {
+			const { id: _id, ...data } = act;
 			await masterDb
 				.insert(activations)
-				.values(act)
+				.values(data)
 				.onConflictDoUpdate({
 					target: activations.code,
 					set: {
-						name: act.name,
-						description: act.description,
-						module: act.module,
-						category: act.category,
-						defaultEnabled: act.defaultEnabled,
-						order: act.order,
-						isActive: act.isActive,
+						name: data.name,
+						description: data.description,
+						module: data.module,
+						category: data.category,
+						defaultEnabled: data.defaultEnabled,
+						order: data.order,
+						isActive: data.isActive,
 					},
 				});
 		}
