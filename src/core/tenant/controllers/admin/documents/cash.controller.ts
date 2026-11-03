@@ -4,6 +4,7 @@ import { getAuditActor, jsonError } from '@/utils/helpers';
 import { hasPermission, getCurrentUserId } from '@/utils/permissions';
 import { PlanLimitError } from '../../../services/shared/plan-limits.service';
 import { parseGeo } from '@/utils/geo';
+import { TerminalRequiredError } from '../../../services/admin/documents/cash-terminals.service';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
@@ -167,6 +168,8 @@ export const openCashSession = async (c: Context) => {
         userId: body.userId !== undefined && body.userId !== null ? parseInt(body.userId) : undefined,
         notes: body.notes,
         geo: parseGeo(body.geo),
+        terminalToken: c.req.header('X-Cash-Terminal') ?? null,
+        canOperateAnyRegister: hasPermission(c, 'caja.gestionar_cajas'),
       },
       getAuditActor(c)
     );
@@ -176,6 +179,9 @@ export const openCashSession = async (c: Context) => {
   } catch (e) {
     if (e instanceof cash.LocationRequiredError) {
       return c.json({ success: false, message: e.message, requiresLocation: true }, 422);
+    }
+    if (e instanceof TerminalRequiredError) {
+      return c.json({ success: false, message: e.message, requiresTerminal: true }, 403);
     }
     return jsonError(c, e, 'Error al abrir sesión');
   }
@@ -187,7 +193,15 @@ export const closeCashSession = async (c: Context) => {
     const body = await c.req.json();
     const data = await cash.closeCashSession(
       id,
-      { closingBalance: parseFloat(body.closingBalance) || 0, notes: body.notes, password: body.password, geo: parseGeo(body.geo) },
+      {
+        closingBalance: parseFloat(body.closingBalance) || 0,
+        notes: body.notes,
+        password: body.password,
+        authCode: typeof body.authCode === 'string' ? body.authCode : undefined,
+        geo: parseGeo(body.geo),
+        terminalToken: c.req.header('X-Cash-Terminal') ?? null,
+        canOperateAnyRegister: hasPermission(c, 'caja.gestionar_cajas'),
+      },
       getAuditActor(c)
     );
     // El service ya escribe su propio registro en audit_log
@@ -196,6 +210,9 @@ export const closeCashSession = async (c: Context) => {
   } catch (e) {
     if (e instanceof cash.LocationRequiredError) {
       return c.json({ success: false, message: e.message, requiresLocation: true }, 422);
+    }
+    if (e instanceof TerminalRequiredError) {
+      return c.json({ success: false, message: e.message, requiresTerminal: true }, 403);
     }
     if (e instanceof cash.OpenOrdersOnCloseError) {
       return c.json({ success: false, message: e.message, requiresAuthorization: true, openOrders: e.openOrders }, 409);

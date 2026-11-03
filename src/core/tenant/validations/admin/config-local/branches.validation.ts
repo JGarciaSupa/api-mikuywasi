@@ -34,6 +34,8 @@ export const createBranchSchema = z.object({
   allowSellWithoutStock: z.boolean().optional(),
   allowPendingPayment: z.boolean().optional(),
   pendingPaymentRequiresCustomer: z.boolean().optional(),
+  requireCashTerminal: z.boolean().optional(),
+  requireCashLocation: z.boolean().optional(),
   address: addressSchema,
   phone: z.string().max(30).nullable().optional(),
   whatsapp: z.string().max(30).nullable().optional(),

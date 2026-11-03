@@ -125,6 +125,11 @@ export const branches = pgTable('branches', {
 	allowPendingPayment: boolean('allow_pending_payment').default(false).notNull(),
 	// Con pago pendiente activo: exige asociar un cliente frecuente al marcar "Cliente no pagó"
 	pendingPaymentRequiresCustomer: boolean('pending_payment_requires_customer').default(false).notNull(),
+	// Control de equipos de caja (apagados por defecto): exigir que el turno se abra/cierre desde un
+	// equipo vinculado a esa caja (cash_terminals) y/o con ubicación del dispositivo.
+	// Quien tiene caja.gestionar_cajas opera desde cualquier equipo.
+	requireCashTerminal: boolean('require_cash_terminal').default(false).notNull(),
+	requireCashLocation: boolean('require_cash_location').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

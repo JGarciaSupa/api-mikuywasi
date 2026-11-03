@@ -7,6 +7,7 @@ import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
 import { authorizeByPassword } from './security-auth.service';
+import { consumeCloseAuthorizationCode, isTerminalLinkedToRegister, TerminalRequiredError } from './cash-terminals.service';
 import { geoAuditFields, MAX_CASH_ACCURACY_M, type GeoInput } from '../../../../../utils/geo';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -379,12 +380,11 @@ export async function openCashSession(
     userId?: number;
     notes?: string;
     geo?: GeoInput | null;
-  },
+  } & CashDeviceInput,
   actor?: AuditActor
 ) {
-  // La ubicación del dispositivo es OPCIONAL al abrir caja: el GPS falla a veces y no debe impedir
-  // abrir turno. Si llega (válida o no) se registra en la auditoría con su estado; si no, se omite.
-  // Al cerrar caja sigue siendo obligatoria (assertDeviceLocation en closeCashSession).
+  // La ubicación del dispositivo solo es obligatoria si la sucursal lo exige (require_cash_location).
+  // Si llega (válida o no) se registra en la auditoría con su estado; si no, se omite.
 
   const db = getTenantDb();
 
@@ -392,6 +392,8 @@ export async function openCashSession(
   const [reg] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, data.registerId)).limit(1);
   if (!reg) throw new Error('Caja no encontrada');
   if (!reg.isActive) throw new Error('La caja está inactiva');
+
+  await assertCashDevice(reg.branchId, reg.id, data);
 
   // Cajero del turno: el seleccionado al abrir; si no se envía, el que realiza la apertura.
   const cashierId = data.userId ?? actor?.userId ?? null;
@@ -1009,8 +1011,8 @@ export async function refundOrder(
  * Cierre de turno con pedidos abiertos sin una contraseña de autorización válida.
  * El controller responde 409 con `requiresAuthorization` y la lista de pedidos.
  */
-// Ubicación del dispositivo obligatoria para CERRAR caja (al abrir es opcional): el navegador debe
-// entregar lat/lng reales (geo.status === 'ok'). El controller responde 422 con requiresLocation.
+// Ubicación del dispositivo obligatoria para abrir/cerrar caja cuando la sucursal lo exige: el navegador
+// debe entregar lat/lng reales (geo.status === 'ok'). El controller responde 422 con requiresLocation.
 export class LocationRequiredError extends Error {
   constructor(message = 'Se requiere la ubicación del dispositivo (activa la ubicación) para operar la caja') {
     super(message);
@@ -1030,6 +1032,31 @@ function assertDeviceLocation(geo?: GeoInput | null) {
   }
 }
 
+/** Datos del equipo que opera la caja (los arma el controller con la cabecera y los permisos). */
+export interface CashDeviceInput {
+  geo?: GeoInput | null;
+  // Token del equipo vinculado (cabecera X-Cash-Terminal)
+  terminalToken?: string | null;
+  // Quien gestiona cajas (caja.gestionar_cajas) opera desde cualquier equipo
+  canOperateAnyRegister?: boolean;
+}
+
+// Control de equipos por sucursal (apagado por defecto): equipo vinculado a la caja y/o ubicación.
+async function assertCashDevice(branchId: number, registerId: number | null, device: CashDeviceInput) {
+  if (device.canOperateAnyRegister) return;
+  const db = getTenantDb();
+  const [cfg] = await db
+    .select({ requireCashTerminal: branches.requireCashTerminal, requireCashLocation: branches.requireCashLocation })
+    .from(branches)
+    .where(eq(branches.id, branchId))
+    .limit(1);
+  if (!cfg) return;
+  if (cfg.requireCashTerminal && registerId != null && !(await isTerminalLinkedToRegister(device.terminalToken, registerId))) {
+    throw new TerminalRequiredError();
+  }
+  if (cfg.requireCashLocation) assertDeviceLocation(device.geo);
+}
+
 export class OpenOrdersOnCloseError extends Error {
   openOrders: { id: string; trackingCode: string | null }[];
   constructor(message: string, openOrders: { id: string; trackingCode: string | null }[]) {
@@ -1040,7 +1067,7 @@ export class OpenOrdersOnCloseError extends Error {
 
 export async function closeCashSession(
   id: number,
-  data: { closingBalance: number; notes?: string; password?: string; geo?: GeoInput | null },
+  data: { closingBalance: number; notes?: string; password?: string; authCode?: string } & CashDeviceInput,
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -1049,8 +1076,8 @@ export async function closeCashSession(
   if (!session) throw new Error('Sesión no encontrada');
   if (session.status !== 'open') throw new Error('La sesión ya está cerrada');
 
-  // Ubicación del dispositivo obligatoria para cerrar caja
-  assertDeviceLocation(data.geo);
+  // Equipo vinculado y/o ubicación, según la configuración de la sucursal
+  await assertCashDevice(session.branchId, session.registerId, data);
 
   // Pedidos abiertos del turno (creados en él o transferidos a él): sin cobrar o sin terminar.
   // Se puede cerrar igual con contraseña de autorización; los pedidos siguen abiertos y los
@@ -1066,17 +1093,25 @@ export async function closeCashSession(
 
   let authorizedById: number | null = null;
   if (openOrders.length > 0) {
+    // Autoriza el código de 6 dígitos del cierre remoto o la contraseña de un supervisor presente.
+    // Un mismo texto puede llegar como ambos (una contraseña numérica de 6 dígitos): primero el código.
+    const authCode = data.authCode?.trim() ?? '';
     const pwd = data.password?.trim() ?? '';
-    const auth = pwd ? await authorizeByPassword('seguridad.autorizar_cierre_turno', pwd) : null;
-    if (!auth) {
+    if (authCode) authorizedById = await consumeCloseAuthorizationCode(id, authCode);
+    if (!authorizedById && pwd) {
+      const auth = await authorizeByPassword('seguridad.autorizar_cierre_turno', pwd);
+      authorizedById = auth?.userId ?? null;
+    }
+    if (!authorizedById) {
       throw new OpenOrdersOnCloseError(
-        pwd
-          ? 'Contraseña de autorización inválida'
-          : `Hay ${openOrders.length} pedido(s) abierto(s) en este turno: se requiere contraseña de autorización para cerrarlo`,
+        authCode
+          ? 'Código de autorización o contraseña inválidos. Si el código venció o ya se usó, solicita uno nuevo.'
+          : pwd
+            ? 'Contraseña de autorización inválida'
+            : `Hay ${openOrders.length} pedido(s) abierto(s) en este turno: se requiere contraseña de autorización para cerrarlo`,
         openOrders,
       );
     }
-    authorizedById = auth.userId;
   }
   const [authorizer] = authorizedById
     ? await db.select({ name: users.name }).from(users).where(eq(users.id, authorizedById))

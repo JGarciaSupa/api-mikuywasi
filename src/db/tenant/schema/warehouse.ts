@@ -644,6 +644,63 @@ export const cashSessions = pgTable('cash_sessions', {
 	openedAtIdx: index('cash_sessions_opened_at_idx').on(table.openedAt),
 }));
 
+// Equipo (navegador) vinculado a una caja. El token lo guarda el equipo; aquí solo su hash SHA-256.
+export const cashTerminals = pgTable('cash_terminals', {
+	id: serial('id').primaryKey(),
+	registerId: integer('register_id').notNull().references(() => cashRegisters.id),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	name: varchar('name', { length: 100 }),
+	tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+	pairedById: integer('paired_by_id').references(() => users.id),
+	pairedAt: timestamp('paired_at', { withTimezone: true }).defaultNow(),
+	lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+	revokedAt: timestamp('revoked_at', { withTimezone: true }),
+	revokedById: integer('revoked_by_id').references(() => users.id),
+}, (table) => ({
+	tokenHashUnique: uniqueIndex('cash_terminals_token_hash_idx').on(table.tokenHash),
+	registerIdx: index('cash_terminals_register_idx').on(table.registerId),
+	branchIdx: index('cash_terminals_branch_idx').on(table.branchId),
+}));
+
+// Código de vinculación de un equipo: PIN de 6 dígitos o enlace (token), de un solo uso y con vencimiento.
+export const cashTerminalPairingCodes = pgTable('cash_terminal_pairing_codes', {
+	id: serial('id').primaryKey(),
+	registerId: integer('register_id').notNull().references(() => cashRegisters.id),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	codeHash: varchar('code_hash', { length: 64 }).notNull(),
+	tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+	createdById: integer('created_by_id').references(() => users.id),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	usedAt: timestamp('used_at', { withTimezone: true }),
+	terminalId: integer('terminal_id').references(() => cashTerminals.id),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	tokenHashUnique: uniqueIndex('cash_terminal_pairing_codes_token_hash_idx').on(table.tokenHash),
+	codeHashIdx: index('cash_terminal_pairing_codes_code_hash_idx').on(table.codeHash),
+	registerIdx: index('cash_terminal_pairing_codes_register_idx').on(table.registerId),
+}));
+
+// Autorización remota para cerrar un turno con pedidos abiertos: el supervisor valida su contraseña
+// en su celular (enlace con token) y la API genera un código de 6 dígitos de un solo uso para el cajero.
+export const cashCloseAuthorizations = pgTable('cash_close_authorizations', {
+	id: serial('id').primaryKey(),
+	sessionId: integer('session_id').notNull().references(() => cashSessions.id),
+	requestTokenHash: varchar('request_token_hash', { length: 64 }).notNull(),
+	requestedById: integer('requested_by_id').references(() => users.id),
+	status: varchar('status', { length: 20, enum: ['pending', 'approved', 'used', 'locked'] as const }).notNull().default('pending'),
+	codeHash: varchar('code_hash', { length: 64 }),
+	approvedById: integer('approved_by_id').references(() => users.id),
+	approvedAt: timestamp('approved_at', { withTimezone: true }),
+	usedAt: timestamp('used_at', { withTimezone: true }),
+	// Intentos fallidos (contraseña del supervisor o código del cajero); al llegar al tope queda bloqueada
+	failedAttempts: integer('failed_attempts').notNull().default(0),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	requestTokenHashUnique: uniqueIndex('cash_close_authorizations_request_token_hash_idx').on(table.requestTokenHash),
+	sessionIdx: index('cash_close_authorizations_session_idx').on(table.sessionId),
+}));
+
 export const cashMovements = pgTable('cash_movements', {
 	id: serial('id').primaryKey(),
 	sessionId: integer('session_id').notNull().references(() => cashSessions.id),
