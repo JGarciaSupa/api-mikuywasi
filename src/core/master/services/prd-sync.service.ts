@@ -481,6 +481,19 @@ async function mirrorGrantsAndSync(rbac: PrdRbac, qasTenantId: number, job: PrdS
 const jobs: PrdSyncJob[] = [];
 let running = false;
 
+/** Mensaje para el panel: los errores de permisos conocidos dicen qué falta; el resto se oculta. */
+function syncErrorMessage(error: unknown): string {
+  const e = error as { code?: string; message?: string };
+  if (e?.code === '42501' && e.message?.includes('session_replication_role')) {
+    return 'El usuario de BD de QAS no puede desactivar las claves foráneas durante la copia. '
+      + 'En el Postgres de QAS ejecuta: GRANT SET ON PARAMETER session_replication_role TO <usuario de db_servers>;';
+  }
+  if (e?.code === '42501') {
+    return 'Falta un permiso en la base de datos (de QAS o del usuario de lectura de PRD). Revisa los logs de la API';
+  }
+  return safeMessage(error, 'La sincronización falló. Revisa los logs de la API');
+}
+
 function startJob(
   mode: PrdSyncJob['mode'],
   prdSlug: string,
@@ -518,7 +531,7 @@ function startJob(
     .catch((error) => {
       console.error(`[PRD Sync] Falló ${mode} "${prdSlug}":`, error);
       job.status = 'failed';
-      job.message = safeMessage(error, 'La sincronización falló. Revisa los logs de la API');
+      job.message = syncErrorMessage(error);
     })
     .finally(async () => {
       job.finishedAt = new Date().toISOString();
