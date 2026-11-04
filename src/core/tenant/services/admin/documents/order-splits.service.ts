@@ -436,6 +436,16 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
 
   if (!split) throw new Error('Cuenta no encontrada');
 
+  // Al cobrar, validar el turno ANTES de tocar la cuenta: si no hay turno válido (o es de otra
+  // sucursal), la cuenta no debe quedar pagada sin su ingreso en caja.
+  let cajeraSessionId: number | null = null;
+  if (input.paymentStatus === 'paid') {
+    const [splitOrder] = await db.select({ branchId: orders.branchId }).from(orders).where(eq(orders.id, orderId)).limit(1);
+    const cajeraSession = await getActiveSessionForUserInBranch(actor?.userId, splitOrder?.branchId);
+    if (!cajeraSession) throw new Error('Necesitas un turno de caja abierto para cobrar esta cuenta');
+    cajeraSessionId = cajeraSession.id;
+  }
+
   const baseAmount = Number(split.subtotal ?? 0);
   const retentionPercentage = input.paymentStatus === 'paid'
     ? Number((input.retentionPercentage ?? split.retentionPercentage ?? 0))
@@ -499,12 +509,9 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
   // #5: ingreso a caja por cuenta/split. Al pagar registra; al desmarcar revierte.
   // El ingreso va al turno del cajero que cobra (actor), no al del mozo que creó el pedido.
   try {
-    if (input.paymentStatus === 'paid') {
-      const [splitOrder] = await db.select({ branchId: orders.branchId }).from(orders).where(eq(orders.id, orderId)).limit(1);
-      const cajeraSession = await getActiveSessionForUserInBranch(actor?.userId, splitOrder?.branchId);
-      if (!cajeraSession) throw new Error('Necesitas un turno de caja abierto para cobrar esta cuenta');
-      await recordSplitSaleIncome(splitId, actor, cajeraSession.id);
-    } else {
+    if (input.paymentStatus === 'paid' && cajeraSessionId != null) {
+      await recordSplitSaleIncome(splitId, actor, cajeraSessionId);
+    } else if (input.paymentStatus !== 'paid') {
       await reverseSplitSaleIncome(splitId, actor);
     }
   } catch (e: any) {
