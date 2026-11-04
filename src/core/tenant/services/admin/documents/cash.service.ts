@@ -1,5 +1,5 @@
 import { eq, desc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -7,7 +7,9 @@ import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
 import { authorizeByPassword } from './security-auth.service';
-import { consumeCloseAuthorizationCode, isTerminalLinkedToRegister, TerminalRequiredError } from './cash-terminals.service';
+import { consumeCloseAuthorizationCode, isTerminalLinkedToRegister, TerminalRequiredError, getTerminalByToken } from './cash-terminals.service';
+import { getCashOperationContext } from '../../../../../utils/cash-operation-context';
+import { buildPermissionsForUser } from '../users/rbac.service';
 import { geoAuditFields, MAX_CASH_ACCURACY_M, type GeoInput } from '../../../../../utils/geo';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -436,10 +438,15 @@ export async function openCashSession(
   const cashierId = data.userId ?? actor?.userId ?? null;
   if (!cashierId) throw new Error('Debes seleccionar el cajero del turno');
 
-  // Regla A: un usuario no puede tener 2 turnos abiertos a la vez (la caja sí puede
+  // Regla A: un usuario está como máximo en un turno por caja. Estar a la vez en turnos de
+  // varias cajas exige caja.turnos_multiples; sin él, un solo turno abierto (la caja sí puede
   // tener varios turnos abiertos, pero de distintos cajeros).
-  const userOpen = await getActiveSessionForUser(cashierId);
-  if (userOpen) throw new Error(`El cajero ya tiene un turno abierto: ${userOpen.code}. Debe cerrarlo antes de abrir otro.`);
+  const userOpen = await getOpenSessionsForUser(cashierId);
+  const sameRegister = userOpen.find((s) => s.registerId === reg.id);
+  if (sameRegister) throw new Error(`El cajero ya está en el turno ${sameRegister.code} de esta caja.`);
+  if (userOpen.length > 0 && !(await userHasPermission(cashierId, 'caja.turnos_multiples'))) {
+    throw new Error(`El cajero ya tiene un turno abierto: ${userOpen[0].code}. Debe cerrarlo antes de abrir otro (o tener el permiso "Abrir turnos en varias cajas").`);
+  }
 
   // Turno compartido (branches.shared_cash_session): si la caja ya tiene un turno abierto, el usuario
   // lo continúa en lugar de abrir otro (sin saldo inicial; una sola liquidación por caja).
@@ -559,45 +566,109 @@ async function joinCashSession(
   return { ...session, joined: true as const };
 }
 
-// Devuelve la sesión/turno de caja ABIERTO asociado a un usuario (cajero), o null.
-// Se usa para bloquear la creación de pedidos si el usuario no tiene caja aperturada.
-export async function getActiveSessionForUser(userId?: number) {
+type CashSessionRow = typeof cashSessions.$inferSelect;
+
+/** El usuario (cajero del turno) tiene el permiso. rol_admin siempre lo tiene. */
+async function userHasPermission(userId: number, code: string) {
+  const { roleCode, permissions } = await buildPermissionsForUser(userId);
+  if (roleCode === 'rol_admin') return true;
+  const [actionCode] = code.split('.');
+  return permissions[actionCode]?.includes(code) ?? false;
+}
+
+/**
+ * Turnos ABIERTOS en los que participa el usuario: los que abrió como cajero y los turnos
+ * compartidos que continuó. Más recientes primero. Con caja.turnos_multiples puede estar en
+ * un turno por caja a la vez.
+ */
+export async function getOpenSessionsForUser(userId?: number): Promise<CashSessionRow[]> {
   const db = getTenantDb();
-  if (!userId) return null;
-  const [session] = await db
+  if (!userId) return [];
+  const own = await db
     .select()
     .from(cashSessions)
     .where(and(eq(cashSessions.userId, userId), eq(cashSessions.status, 'open')))
-    .orderBy(desc(cashSessions.openedAt))
-    .limit(1);
-  if (session) return session;
-
-  // Turno compartido: el turno abierto que el usuario continuó (abierto por otro cajero)
-  const [joined] = await db
+    .orderBy(desc(cashSessions.openedAt));
+  const joined = await db
     .select({ session: cashSessions })
     .from(cashSessionParticipants)
     .innerJoin(cashSessions, eq(cashSessionParticipants.sessionId, cashSessions.id))
     .where(and(eq(cashSessionParticipants.userId, userId), eq(cashSessions.status, 'open')))
-    .orderBy(desc(cashSessionParticipants.joinedAt))
-    .limit(1);
-  return joined?.session ?? null;
+    .orderBy(desc(cashSessionParticipants.joinedAt));
+  const seen = new Set(own.map((s) => s.id));
+  return [...own, ...joined.map((j) => j.session).filter((s) => !seen.has(s.id))];
 }
 
-/** El usuario tiene su turno abierto en otra sucursal: no se registra dinero de esta sucursal en él. */
+/** Turnos abiertos del usuario con su caja y las series de la caja (selector "Vendiendo en" del POS). */
+export async function getOpenSessionsWithRegisterForUser(userId?: number) {
+  const sessions = await getOpenSessionsForUser(userId);
+  const registerIds = [...new Set(sessions.map((s) => s.registerId).filter((id): id is number => id != null))];
+  if (registerIds.length === 0) return sessions.map((s) => ({ ...s, registerName: null as string | null, series: [] as string[] }));
+  const db = getTenantDb();
+  const [registers, series] = await Promise.all([
+    db.select({ id: cashRegisters.id, name: cashRegisters.name }).from(cashRegisters).where(inArray(cashRegisters.id, registerIds)),
+    db.select({ registerId: cashRegisterDocumentSeries.registerId, series: cashRegisterDocumentSeries.series })
+      .from(cashRegisterDocumentSeries)
+      .where(inArray(cashRegisterDocumentSeries.registerId, registerIds)),
+  ]);
+  const nameById = new Map(registers.map((r) => [r.id, r.name]));
+  return sessions.map((s) => ({
+    ...s,
+    registerName: s.registerId != null ? nameById.get(s.registerId) ?? null : null,
+    series: series.filter((x) => x.registerId === s.registerId).map((x) => x.series).sort(),
+  }));
+}
+
+/**
+ * Entre varios turnos del usuario, el que indica el equipo: el turno elegido en el POS
+ * (X-Cash-Session) o el de la caja vinculada al equipo (X-Cash-Terminal). null si no indica ninguno.
+ */
+async function pickSessionFromContext(sessions: CashSessionRow[]) {
+  const ctx = getCashOperationContext();
+  if (ctx.cashSessionId) {
+    const chosen = sessions.find((s) => s.id === ctx.cashSessionId);
+    if (chosen) return chosen;
+  }
+  if (ctx.terminalToken) {
+    const terminal = await getTerminalByToken(ctx.terminalToken);
+    const byTerminal = terminal ? sessions.find((s) => s.registerId === terminal.registerId) : undefined;
+    if (byTerminal) return byTerminal;
+  }
+  return null;
+}
+
+// Devuelve el turno de caja ABIERTO del usuario (cajero), o null. Si participa en varios, el que
+// indica el equipo (turno elegido o caja vinculada); si no indica ninguno, el más reciente.
+// Se usa para bloquear la creación de pedidos si el usuario no tiene caja aperturada.
+export async function getActiveSessionForUser(userId?: number): Promise<CashSessionRow | null> {
+  const sessions = await getOpenSessionsForUser(userId);
+  if (sessions.length <= 1) return sessions[0] ?? null;
+  return (await pickSessionFromContext(sessions)) ?? sessions[0];
+}
+
+/** El usuario tiene su turno abierto en otra sucursal (ya no se lanza: el turno manda; se conserva por compatibilidad). */
 export class ForeignBranchSessionError extends Error {
   constructor(code: string) {
     super(`Tu turno de caja abierto (${code}) es de otra sucursal. Vuelve a esa sucursal y ciérralo para operar aquí.`);
   }
 }
 
-// Turno abierto del usuario para operar en `branchId`. Si lo tiene abierto en OTRA sucursal lanza
-// ForeignBranchSessionError (antes se usaba igual y la venta caía en la caja de la otra sucursal).
-export async function getActiveSessionForUserInBranch(userId: number | undefined, branchId: number | null | undefined) {
-  const session = await getActiveSessionForUser(userId);
-  if (session && branchId != null && session.branchId !== branchId) {
-    throw new ForeignBranchSessionError(session.code);
+/** El usuario está en varios turnos de la sucursal y el equipo no indicó en cuál opera. */
+export class CashSessionChoiceRequiredError extends Error {
+  constructor(codes: string[]) {
+    super(`Estás en varios turnos de esta sucursal (${codes.join(', ')}). Elige en qué caja estás vendiendo.`);
   }
-  return session;
+}
+
+// Turno del usuario para operar en `branchId` (el turno manda, no el cajero): solo cuentan sus
+// turnos de ESA sucursal; si está en varios, el que indica el equipo y, si no indica ninguno,
+// se pide elegir. Un turno en otra sucursal no se usa ni bloquea (devuelve null).
+export async function getActiveSessionForUserInBranch(userId: number | undefined, branchId: number | null | undefined): Promise<CashSessionRow | null> {
+  const sessions = (await getOpenSessionsForUser(userId)).filter((s) => branchId == null || s.branchId === branchId);
+  if (sessions.length <= 1) return sessions[0] ?? null;
+  const chosen = await pickSessionFromContext(sessions);
+  if (chosen) return chosen;
+  throw new CashSessionChoiceRequiredError(sessions.map((s) => s.code));
 }
 
 // Devuelve la primera sesión/turno de caja ABIERTO de una sucursal (para comandas de mozo), o null.

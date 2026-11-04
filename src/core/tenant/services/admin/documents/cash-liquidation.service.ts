@@ -388,3 +388,84 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
     summary,
   };
 }
+
+// ─── Liquidación por cajero ─────────────────────────────────────────────────
+// Todo lo que cobró un cajero en los turnos de la sucursal que tuvieron actividad en el rango,
+// sea cual sea la caja: un cajero puede estar en varios turnos (uno por caja). Por turno se
+// reutiliza la liquidación del turno filtrada por ese usuario; el arqueo de efectivo es de cada
+// turno (su caja) y no se reparte por cajero.
+
+export async function getCashierLiquidation(params: { userId: number; branchId: number; from: Date; to: Date }) {
+  const db = getTenantDb();
+  const [user] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, params.userId)).limit(1);
+  if (!user) return null;
+
+  // Turnos de la sucursal abiertos durante el rango (los que siguen abiertos cuentan hasta hoy)
+  const sessions = await db
+    .select({ id: cashSessions.id, openedAt: cashSessions.openedAt, closedAt: cashSessions.closedAt })
+    .from(cashSessions)
+    .where(and(eq(cashSessions.branchId, params.branchId), lte(cashSessions.openedAt, params.to)))
+    .orderBy(asc(cashSessions.openedAt));
+  const inRange = sessions.filter((s) => !s.closedAt || s.closedAt >= params.from);
+
+  const turnos: NonNullable<Awaited<ReturnType<typeof getCashSessionLiquidation>>>[] = [];
+  for (const s of inRange) {
+    const liq = await getCashSessionLiquidation(s.id, user.name);
+    if (!liq) continue;
+    const hasActivity = liq.documents.length > 0 || liq.summary.collected > 0 || liq.expenses.length > 0 || liq.incomes.length > 0;
+    if (!hasActivity) continue;
+    turnos.push(liq);
+  }
+
+  // Totales por medio de pago sumando los turnos
+  const byMethod = new Map<string, { method: string; isCash: boolean; count: number; amount: number; tips: number; retention: number; net: number }>();
+  for (const t of turnos) {
+    for (const g of [...t.payments.cash, ...t.payments.other]) {
+      const key = `${g.isCash ? 1 : 0}:${g.method.toLowerCase()}`;
+      const acc = byMethod.get(key) ?? { method: g.method, isCash: g.isCash, count: 0, amount: 0, tips: 0, retention: 0, net: 0 };
+      acc.count += g.count;
+      acc.amount = round2(acc.amount + g.amount);
+      acc.tips = round2(acc.tips + g.tips);
+      acc.retention = round2(acc.retention + g.retention);
+      acc.net = round2(acc.amount - acc.retention);
+      byMethod.set(key, acc);
+    }
+  }
+  const sumT = (pick: (t: (typeof turnos)[number]) => number) => round2(turnos.reduce((a, t) => a + pick(t), 0));
+
+  return {
+    user,
+    branchId: params.branchId,
+    from: params.from,
+    to: params.to,
+    turnos: turnos.map((t) => ({
+      session: t.session,
+      isFinal: t.isFinal,
+      series: [...new Set(t.correlatives.map((c) => c.series))],
+      documents: t.documents,
+      payments: t.payments,
+      expenses: t.expenses,
+      incomes: t.incomes,
+      summary: {
+        documentsCount: t.summary.documents.count,
+        documentsTotal: t.summary.documents.total,
+        collected: t.summary.collected,
+        collectedSales: t.summary.collectedSales,
+        tips: t.summary.tips,
+        retention: t.summary.retention,
+        expenses: t.summary.expenses,
+      },
+    })),
+    byMethod: [...byMethod.values()].sort((a, b) => Number(b.isCash) - Number(a.isCash) || b.amount - a.amount),
+    totals: {
+      turnos: turnos.length,
+      documentsCount: sumT((t) => t.summary.documents.count),
+      documentsTotal: sumT((t) => t.summary.documents.total),
+      collected: sumT((t) => t.summary.collected),
+      collectedSales: sumT((t) => t.summary.collectedSales),
+      tips: sumT((t) => t.summary.tips),
+      retention: sumT((t) => t.summary.retention),
+      expenses: sumT((t) => t.summary.expenses),
+    },
+  };
+}
