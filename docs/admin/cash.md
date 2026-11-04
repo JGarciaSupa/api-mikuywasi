@@ -32,7 +32,7 @@ sucursal (como el mozo), y cobrar exige un turno propio en esa sucursal.
 
 Un usuario está como máximo en **un turno por caja**. Con el permiso `caja.turnos_multiples` ("Abrir turnos en varias cajas";
 por defecto en `rol_admin_local` y `rol_cajero`) puede estar a la vez en turnos de varias cajas (n cajas, un cajero). Sin él,
-un solo turno abierto. Se propaga a los tenants con `bun run rbac:add-missing --apply`.
+un solo turno abierto. Se propaga a los tenants solo al arrancar la API (`docker/start.sh` ejecuta `rbac:add-missing --apply`; se desactiva con `RUN_RBAC_SYNC_ON_START=false`).
 
 - `GET /api/cash/sessions/mine/open`: turnos abiertos del usuario con `registerName` y `series` de la caja (selector del POS).
 - `GET /api/cash/sessions/mine`: el turno que indica el equipo (o el más reciente).

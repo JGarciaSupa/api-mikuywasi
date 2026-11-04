@@ -7,6 +7,10 @@
 # MIGRATIONS_STRICT=true         → si algún tenant falla, la API no arranca.
 #                                   Por defecto arranca igual y lo avisa en el log,
 #                                   para no dejar sin servicio a todos los tenants.
+# RUN_RBAC_SYNC_ON_START=false   → no agrega los permisos nuevos del seed al arrancar.
+#                                   Por defecto sí (rbac-add-missing --apply): solo agrega
+#                                   sub-acciones nuevas a master, tenants y roles base;
+#                                   nunca quita permisos. Si falla, la API arranca igual.
 
 if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
   echo "[start] Aplicando migraciones de tenants..."
@@ -16,6 +20,13 @@ if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
       exit 1
     fi
     echo "[start] ⚠️ Falló la migración de algún tenant (ver resumen arriba). La API arranca igualmente."
+  fi
+fi
+
+if [ "${RUN_RBAC_SYNC_ON_START:-true}" = "true" ]; then
+  echo "[start] Agregando permisos nuevos (RBAC) a los tenants..."
+  if ! bun run src/scripts/rbac-add-missing.ts --apply; then
+    echo "[start] ⚠️ No se pudieron agregar los permisos nuevos (ver arriba). La API arranca igualmente."
   fi
 fi
 
