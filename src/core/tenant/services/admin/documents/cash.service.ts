@@ -389,8 +389,41 @@ export async function getCashSessionById(id: number) {
     }
   }
 
+  // Propinas cobradas en el turno (ya incluidas en los ingresos; las de efectivo, también en el esperado)
+  const tips = (await getSessionTips([id])).get(id) ?? { totalTips: '0.00', cashTips: '0.00' };
+
   const [withParticipants] = await attachSessionParticipants([session]);
-  return { ...withParticipants, movements, generatedMovements, totalsByMethod };
+  return { ...withParticipants, movements, generatedMovements, totalsByMethod, ...tips };
+}
+
+/**
+ * Propinas por turno: tip_amount de los ingresos, sin contar los cobros revertidos
+ * (el reverso es un egreso 'reverso' del mismo pedido/cuenta en el turno y no copia la propina).
+ */
+export async function getSessionTips(sessionIds: number[]) {
+  const result = new Map<number, { totalTips: string; cashTips: string }>();
+  if (sessionIds.length === 0) return result;
+  const db = getTenantDb();
+  const rows = await db
+    .select({
+      sessionId: cashMovements.sessionId,
+      totalTips: sql<string>`COALESCE(SUM(${cashMovements.tipAmount}), 0)`,
+      cashTips: sql<string>`COALESCE(SUM(${cashMovements.tipAmount}) FILTER (WHERE ${cashMovements.isCash} IS TRUE), 0)`,
+    })
+    .from(cashMovements)
+    .where(and(
+      inArray(cashMovements.sessionId, sessionIds),
+      eq(cashMovements.movementType, 'income'),
+      sql`NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r.session_id = ${cashMovements.sessionId}
+        AND r.movement_type = 'expense' AND r.reference = 'reverso'
+        AND r.order_id IS NOT DISTINCT FROM ${cashMovements.orderId}
+        AND r.split_id IS NOT DISTINCT FROM ${cashMovements.splitId})`,
+    ))
+    .groupBy(cashMovements.sessionId);
+  for (const r of rows) {
+    result.set(r.sessionId, { totalTips: round2(toNum(r.totalTips)), cashTips: round2(toNum(r.cashTips)) });
+  }
+  return result;
 }
 
 function round2ToNum(n: number): number {

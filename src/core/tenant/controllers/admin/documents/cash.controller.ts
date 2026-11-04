@@ -8,7 +8,7 @@ import { TerminalRequiredError } from '../../../services/admin/documents/cash-te
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
-  const { totalIncome, totalExpense, expectedBalance, openingBalance, closingBalance, difference, movements, totalsByMethod, ...safe } = session as any;
+  const { totalIncome, totalExpense, expectedBalance, openingBalance, closingBalance, difference, movements, totalsByMethod, totalTips, cashTips, ...safe } = session as any;
   return safe;
 }
 
