@@ -222,6 +222,8 @@ export const getCashReportSessions = async (filters: CashReportFilters, limit = 
       code: cashSessions.code,
       registerName: cashRegisters.name,
       cashierName: users.name,
+      // Turno compartido: quienes lo continuaron (null si nadie se unió)
+      participantNames: sql<string | null>`(SELECT string_agg(pu.name, ', ' ORDER BY csp.joined_at) FROM cash_session_participants csp JOIN users pu ON pu.id = csp.user_id WHERE csp.session_id = ${cashSessions.id})`,
       openedBy: cashSessions.openedBy,
       closedBy: cashSessions.closedBy,
       openingBalance: cashSessions.openingBalance,

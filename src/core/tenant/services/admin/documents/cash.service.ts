@@ -1,5 +1,5 @@
-import { eq, desc, and, gte, lte, sql, ilike, isNull, or, ne } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments } from '../../../../../db/tenant/schema';
+import { eq, desc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -183,7 +183,7 @@ export async function listCashRegisters(branchId?: number) {
       .orderBy(desc(cashSessions.openedAt));
     result.push({
       ...reg,
-      openSessions,
+      openSessions: await attachSessionParticipants(openSessions),
     });
   }
 
@@ -282,10 +282,46 @@ export async function listCashSessions(filters?: { registerId?: number; status?:
   if (filters?.status) conditions.push(eq(cashSessions.status, filters.status as 'open' | 'closed'));
   if (filters?.from) conditions.push(gte(cashSessions.openedAt, new Date(filters.from)));
   if (filters?.to) conditions.push(lte(cashSessions.openedAt, new Date(filters.to + 'T23:59:59')));
-  if (filters?.userId) conditions.push(eq(cashSessions.userId, filters.userId));
+  if (filters?.userId) {
+    // Sus turnos y los turnos compartidos que continuó
+    const joined = db.select({ id: cashSessionParticipants.sessionId }).from(cashSessionParticipants)
+      .where(eq(cashSessionParticipants.userId, filters.userId));
+    conditions.push(or(eq(cashSessions.userId, filters.userId), inArray(cashSessions.id, joined))!);
+  }
 
   const q = db.select().from(cashSessions).orderBy(desc(cashSessions.openedAt));
-  return conditions.length ? q.where(and(...conditions)) : q;
+  return attachSessionParticipants(await (conditions.length ? q.where(and(...conditions)) : q));
+}
+
+// Turno compartido: agrega a cada turno los usuarios que lo continuaron ([] si nadie se unió).
+async function attachSessionParticipants<T extends { id: number }>(sessions: T[]) {
+  if (sessions.length === 0) return sessions.map((s) => ({ ...s, participants: [] as SessionParticipant[] }));
+  const db = getTenantDb();
+  const rows = await db
+    .select({ sessionId: cashSessionParticipants.sessionId, userId: cashSessionParticipants.userId, name: users.name, joinedAt: cashSessionParticipants.joinedAt })
+    .from(cashSessionParticipants)
+    .leftJoin(users, eq(cashSessionParticipants.userId, users.id))
+    .where(inArray(cashSessionParticipants.sessionId, sessions.map((s) => s.id)))
+    .orderBy(cashSessionParticipants.joinedAt);
+  return sessions.map((s) => ({
+    ...s,
+    participants: rows.filter((r) => r.sessionId === s.id).map(({ userId, name, joinedAt }) => ({ userId, name, joinedAt })),
+  }));
+}
+
+type SessionParticipant = { userId: number; name: string | null; joinedAt: Date | null };
+
+/** El usuario participa en el turno: es su cajero o lo continuó (turno compartido). */
+export async function isSessionParticipant(sessionId: number, userId?: number | null) {
+  if (!userId) return false;
+  const db = getTenantDb();
+  const [row] = await db
+    .select({ id: cashSessions.id })
+    .from(cashSessions)
+    .leftJoin(cashSessionParticipants, and(eq(cashSessionParticipants.sessionId, cashSessions.id), eq(cashSessionParticipants.userId, userId)))
+    .where(and(eq(cashSessions.id, sessionId), or(eq(cashSessions.userId, userId), eq(cashSessionParticipants.userId, userId))))
+    .limit(1);
+  return !!row;
 }
 
 export async function getCurrentCashSession(registerId?: number) {
@@ -353,7 +389,8 @@ export async function getCashSessionById(id: number) {
     }
   }
 
-  return { ...session, movements, generatedMovements, totalsByMethod };
+  const [withParticipants] = await attachSessionParticipants([session]);
+  return { ...withParticipants, movements, generatedMovements, totalsByMethod };
 }
 
 function round2ToNum(n: number): number {
@@ -403,6 +440,14 @@ export async function openCashSession(
   // tener varios turnos abiertos, pero de distintos cajeros).
   const userOpen = await getActiveSessionForUser(cashierId);
   if (userOpen) throw new Error(`El cajero ya tiene un turno abierto: ${userOpen.code}. Debe cerrarlo antes de abrir otro.`);
+
+  // Turno compartido (branches.shared_cash_session): si la caja ya tiene un turno abierto, el usuario
+  // lo continúa en lugar de abrir otro (sin saldo inicial; una sola liquidación por caja).
+  const [sharedBranch] = await db.select({ sharedCashSession: branches.sharedCashSession }).from(branches).where(eq(branches.id, reg.branchId)).limit(1);
+  if (sharedBranch?.sharedCashSession) {
+    const current = await getCurrentCashSession(reg.id);
+    if (current) return joinCashSession(current, reg.name, cashierId, data.geo ?? null, actor);
+  }
 
   let openedByName = actor?.userName ?? 'sistema';
   const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, cashierId)).limit(1);
@@ -486,6 +531,34 @@ export async function openCashSession(
   });
 }
 
+// Une al usuario a un turno abierto de otro cajero (turno compartido). Devuelve el turno con `joined: true`.
+async function joinCashSession(
+  session: typeof cashSessions.$inferSelect,
+  registerName: string,
+  userId: number,
+  geo: GeoInput | null,
+  actor?: AuditActor,
+) {
+  const db = getTenantDb();
+  const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  await db.insert(cashSessionParticipants).values({ sessionId: session.id, userId }).onConflictDoNothing();
+
+  await writeAuditLog({
+    tableName: 'cash_sessions',
+    operation: 'UPDATE',
+    recordId: session.id,
+    afterData: { sessionId: session.id, joinedUserId: userId },
+    userId: actor?.userId,
+    userName: actor?.userName,
+    module: 'caja',
+    description: `${u?.name ?? `Usuario ${userId}`} continúa el turno compartido ${session.code} de "${registerName}" (abierto por ${session.openedBy})`,
+    ipAddress: actor?.ip ?? null,
+    geo: await geoAuditFields(geo, session.branchId),
+  });
+
+  return { ...session, joined: true as const };
+}
+
 // Devuelve la sesión/turno de caja ABIERTO asociado a un usuario (cajero), o null.
 // Se usa para bloquear la creación de pedidos si el usuario no tiene caja aperturada.
 export async function getActiveSessionForUser(userId?: number) {
@@ -497,7 +570,17 @@ export async function getActiveSessionForUser(userId?: number) {
     .where(and(eq(cashSessions.userId, userId), eq(cashSessions.status, 'open')))
     .orderBy(desc(cashSessions.openedAt))
     .limit(1);
-  return session ?? null;
+  if (session) return session;
+
+  // Turno compartido: el turno abierto que el usuario continuó (abierto por otro cajero)
+  const [joined] = await db
+    .select({ session: cashSessions })
+    .from(cashSessionParticipants)
+    .innerJoin(cashSessions, eq(cashSessionParticipants.sessionId, cashSessions.id))
+    .where(and(eq(cashSessionParticipants.userId, userId), eq(cashSessions.status, 'open')))
+    .orderBy(desc(cashSessionParticipants.joinedAt))
+    .limit(1);
+  return joined?.session ?? null;
 }
 
 /** El usuario tiene su turno abierto en otra sucursal: no se registra dinero de esta sucursal en él. */

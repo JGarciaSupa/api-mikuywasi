@@ -25,6 +25,22 @@ abierto en otra sucursal, la API rechaza con el mensaje "Tu turno de caja abiert
 
 Así una venta de una sucursal nunca se registra en la caja de otra. El admin muestra el aviso "Tienes un turno abierto en (sucursal)".
 
+## Turno compartido por caja (por sucursal, apagado por defecto)
+
+Interruptor `branches.shared_cash_session` (migración `0097`), editable con `PATCH /api/branches/:id` `{ sharedCashSession: boolean }`.
+
+- **Apagado (por defecto):** como siempre; cada usuario abre su propio turno y una caja puede tener varios turnos abiertos.
+- **Encendido:** `POST /cash/sessions/open` sobre una caja que ya tiene un turno abierto **no crea otro**: el usuario se une a ese
+  turno (tabla `cash_session_participants`) y responde **200** `{ success, message: "Continúas el turno compartido …", data: { …turno, joined: true } }`.
+  Se ignoran `openingBalance`, tipo de cambio y notas. Si la caja no tiene turno abierto, se abre uno nuevo (**201**) como siempre.
+  Sigue aplicando el control de equipos y la regla "un usuario, un turno abierto".
+- El turno abierto de un participante (`GET /cash/sessions/mine` y todos los cobros, pedidos, devoluciones y comprobantes que usan
+  `getActiveSessionForUser`) es el turno compartido: todo entra a la misma liquidación.
+- Cualquier usuario con `caja.cerrar_sesion` puede cerrarlo (igual que hoy, el cierre no exige ser el cajero que abrió).
+- `GET /cash/registers` (`openSessions[]`), `GET /cash/sessions` y `GET /cash/sessions/:id` incluyen `participants: [{ userId, name, joinedAt }]`;
+  un participante puede ver el detalle y los montos de su turno compartido. `GET /cash/reports/sessions` incluye `participantNames`.
+- Auditoría: "(usuario) continúa el turno compartido (código) de (caja)".
+
 ## Control de equipos de caja (por sucursal, apagado por defecto)
 
 Dos interruptores en `branches` (migración `0096`), editables con `PATCH /api/branches/:id`:

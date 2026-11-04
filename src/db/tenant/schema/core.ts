@@ -130,6 +130,9 @@ export const branches = pgTable('branches', {
 	// Quien tiene caja.gestionar_cajas opera desde cualquier equipo.
 	requireCashTerminal: boolean('require_cash_terminal').default(false).notNull(),
 	requireCashLocation: boolean('require_cash_location').default(false).notNull(),
+	// Turno compartido por caja (apagado por defecto): si la caja ya tiene un turno abierto, el siguiente
+	// usuario lo continúa (cash_session_participants) en lugar de abrir otro; una sola liquidación por caja.
+	sharedCashSession: boolean('shared_cash_session').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

@@ -27,7 +27,8 @@ export const listCashRegisters = async (c: Context) => {
       // Las sesiones abiertas permanecen visibles como metadatos seguros (status, openedBy, code)
       // para que mozos y otros cajeros sepan qué cajas están operativas en la sucursal.
       const sessions = reg.openSessions.map((s) => {
-        const canSeeThisSessionAccounting = canSeeAccounting && (canSeeAllSessions || s.userId === currentUserId);
+        const canSeeThisSessionAccounting = canSeeAccounting && (canSeeAllSessions || s.userId === currentUserId
+          || s.participants.some((p) => p.userId === currentUserId));
         return canSeeThisSessionAccounting ? s : stripAccountingFields(s);
       });
       return { ...reg, openSessions: sessions };
@@ -133,7 +134,7 @@ export const getCashSessionById = async (c: Context) => {
     if (!session) return c.json({ success: false, message: 'Sesión no encontrada' }, 404);
     const canSeeAllSessions = hasPermission(c, 'caja.ver_todos_turnos');
     const currentUserId = getCurrentUserId(c);
-    if (!canSeeAllSessions && session.userId !== currentUserId) {
+    if (!canSeeAllSessions && session.userId !== currentUserId && !(await cash.isSessionParticipant(id, currentUserId))) {
       return c.json({ success: false, message: 'No tienes acceso a esta sesión' }, 403);
     }
     const canSeeAccounting = hasPermission(c, 'caja.ver_contabilidad');
@@ -175,6 +176,9 @@ export const openCashSession = async (c: Context) => {
     );
     // El service ya escribe su propio registro (con ubicación) en audit_log
     c.set('auditLogged', true);
+    if ('joined' in data) {
+      return c.json({ success: true, message: `Continúas el turno compartido ${data.code}`, data }, 200);
+    }
     return c.json({ success: true, message: 'Sesión de caja abierta', data }, 201);
   } catch (e) {
     if (e instanceof cash.LocationRequiredError) {

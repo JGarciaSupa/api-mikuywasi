@@ -662,6 +662,18 @@ export const cashTerminals = pgTable('cash_terminals', {
 	branchIdx: index('cash_terminals_branch_idx').on(table.branchId),
 }));
 
+// Usuarios que continúan un turno abierto por otro (sucursal con turno compartido, branches.shared_cash_session).
+// El dueño del turno sigue en cash_sessions.user_id; aquí solo quienes se unieron.
+export const cashSessionParticipants = pgTable('cash_session_participants', {
+	id: serial('id').primaryKey(),
+	sessionId: integer('session_id').notNull().references(() => cashSessions.id),
+	userId: integer('user_id').notNull().references(() => users.id),
+	joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	sessionUserUnique: uniqueIndex('cash_session_participants_session_user_idx').on(table.sessionId, table.userId),
+	userIdx: index('cash_session_participants_user_idx').on(table.userId),
+}));
+
 // Código de vinculación de un equipo: PIN de 6 dígitos o enlace (token), de un solo uso y con vencimiento.
 export const cashTerminalPairingCodes = pgTable('cash_terminal_pairing_codes', {
 	id: serial('id').primaryKey(),
