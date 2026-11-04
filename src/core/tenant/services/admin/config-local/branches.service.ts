@@ -132,6 +132,7 @@ export interface CreateBranchInput {
   requireCashTerminal?: boolean;
   requireCashLocation?: boolean;
   sharedCashSession?: boolean;
+  allowCashSessionChoice?: boolean;
 }
 
 // Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
@@ -255,6 +256,7 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.requireCashTerminal !== undefined) updateData.requireCashTerminal = data.requireCashTerminal;
   if (data.requireCashLocation !== undefined) updateData.requireCashLocation = data.requireCashLocation;
   if (data.sharedCashSession !== undefined) updateData.sharedCashSession = data.sharedCashSession;
+  if (data.allowCashSessionChoice !== undefined) updateData.allowCashSessionChoice = data.allowCashSessionChoice;
 
   return await db.transaction(async (tx) => {
     // Si estamos marcando esta sucursal como principal (isMain: true)

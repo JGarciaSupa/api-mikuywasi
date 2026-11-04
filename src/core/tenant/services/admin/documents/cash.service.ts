@@ -652,15 +652,23 @@ export async function getOpenSessionsWithRegisterForUser(userId?: number) {
   }));
 }
 
+/** La sucursal permite elegir la caja en el POS (branches.allow_cash_session_choice). */
+async function branchAllowsCashChoice(branchId: number) {
+  const db = getTenantDb();
+  const [row] = await db.select({ allow: branches.allowCashSessionChoice }).from(branches).where(eq(branches.id, branchId)).limit(1);
+  return !!row?.allow;
+}
+
 /**
- * Entre varios turnos del usuario, el que indica el equipo: el turno elegido en el POS
- * (X-Cash-Session) o el de la caja vinculada al equipo (X-Cash-Terminal). null si no indica ninguno.
+ * Entre varios turnos del usuario, el que indica el equipo: la caja vinculada al equipo físico
+ * (X-Cash-Terminal) y, solo si la sucursal permite elegir la caja en el POS, el turno elegido
+ * (X-Cash-Session). null si no indica ninguno.
  */
 async function pickSessionFromContext(sessions: CashSessionRow[]) {
   const ctx = getCashOperationContext();
   if (ctx.cashSessionId) {
     const chosen = sessions.find((s) => s.id === ctx.cashSessionId);
-    if (chosen) return chosen;
+    if (chosen && (await branchAllowsCashChoice(chosen.branchId))) return chosen;
   }
   if (ctx.terminalToken) {
     const terminal = await getTerminalByToken(ctx.terminalToken);
@@ -688,20 +696,22 @@ export class ForeignBranchSessionError extends Error {
 
 /** El usuario está en varios turnos de la sucursal y el equipo no indicó en cuál opera. */
 export class CashSessionChoiceRequiredError extends Error {
-  constructor(codes: string[]) {
-    super(`Estás en varios turnos de esta sucursal (${codes.join(', ')}). Elige en qué caja estás vendiendo.`);
+  constructor(codes: string[], allowChoice: boolean) {
+    super(allowChoice
+      ? `Estás en varios turnos de esta sucursal (${codes.join(', ')}). Elige en qué caja estás vendiendo.`
+      : `Estás en varios turnos de esta sucursal (${codes.join(', ')}) y este equipo no está vinculado a una caja. Vincúlalo en Configuración de Cajas para vender aquí.`);
   }
 }
 
 // Turno del usuario para operar en `branchId` (el turno manda, no el cajero): solo cuentan sus
-// turnos de ESA sucursal; si está en varios, el que indica el equipo y, si no indica ninguno,
-// se pide elegir. Un turno en otra sucursal no se usa ni bloquea (devuelve null).
+// turnos de ESA sucursal; si está en varios, el de la caja vinculada al equipo (o el elegido en el
+// POS si la sucursal lo permite) y, si no hay ninguno, se rechaza. Un turno en otra sucursal no se usa ni bloquea (devuelve null).
 export async function getActiveSessionForUserInBranch(userId: number | undefined, branchId: number | null | undefined): Promise<CashSessionRow | null> {
   const sessions = (await getOpenSessionsForUser(userId)).filter((s) => branchId == null || s.branchId === branchId);
   if (sessions.length <= 1) return sessions[0] ?? null;
   const chosen = await pickSessionFromContext(sessions);
   if (chosen) return chosen;
-  throw new CashSessionChoiceRequiredError(sessions.map((s) => s.code));
+  throw new CashSessionChoiceRequiredError(sessions.map((s) => s.code), await branchAllowsCashChoice(sessions[0].branchId));
 }
 
 // Devuelve la primera sesión/turno de caja ABIERTO de una sucursal (para comandas de mozo), o null.

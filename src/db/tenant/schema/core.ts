@@ -133,6 +133,9 @@ export const branches = pgTable('branches', {
 	// Turno compartido por caja (apagado por defecto): si la caja ya tiene un turno abierto, el siguiente
 	// usuario lo continúa (cash_session_participants) en lugar de abrir otro; una sola liquidación por caja.
 	sharedCashSession: boolean('shared_cash_session').default(false).notNull(),
+	// Elegir la caja en el POS (apagado por defecto): el turno de cada venta sale de la caja vinculada al
+	// equipo físico (cash_terminals). Encendido, un usuario con varios turnos elige en qué caja vende.
+	allowCashSessionChoice: boolean('allow_cash_session_choice').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

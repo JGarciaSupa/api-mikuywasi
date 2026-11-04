@@ -18,13 +18,16 @@ Cuerpo: `{ closingBalance: number, notes?: string, password?: string, authCode?:
 
 Cada venta, cobro, devolución y comprobante va al **turno de la caja donde se opera**. El turno se resuelve así
 (`getActiveSessionForUserInBranch`):
-1. el turno elegido en el equipo (cabecera **`X-Cash-Session`**, "Vendiendo en: Caja 2 · Turno 27"),
-2. el turno de la caja vinculada al equipo (cabecera `X-Cash-Terminal`),
+1. el turno de la **caja vinculada al equipo físico** (cabecera `X-Cash-Terminal`; el admin la envía en cada petición),
+2. solo si la sucursal tiene **"Permitir elegir la caja en el POS"** (`branches.allow_cash_session_choice`, apagado por
+   defecto): el turno elegido en el equipo (cabecera `X-Cash-Session`, "Vendiendo en: Caja 2 · Turno 27"); con el
+   interruptor apagado esa cabecera se ignora,
 3. el único turno del usuario en esa sucursal.
 
 Solo cuentan los turnos **abiertos de esa sucursal en los que el usuario participa**; un turno indicado que no cumpla se ignora.
-Si el usuario está en varios turnos de la sucursal y el equipo no indica ninguno, la API responde
-"Estás en varios turnos de esta sucursal (…). Elige en qué caja estás vendiendo." (**409** al crear pedido).
+Si el usuario está en varios turnos de la sucursal y el equipo no indica ninguno, la API responde **409** al crear pedido:
+"… este equipo no está vinculado a una caja. Vincúlalo en Configuración de Cajas…" (o "Elige en qué caja estás vendiendo"
+si la sucursal permite elegir).
 Un turno del usuario en **otra** sucursal no se usa ni bloquea: crear pedido cae al turno elegido o al turno abierto de la
 sucursal (como el mozo), y cobrar exige un turno propio en esa sucursal.
 
