@@ -30,6 +30,35 @@ export interface UserReportFilters {
 const resolveTz = (tz?: string) => (tz && TZ_REGEX.test(tz) ? tz : DEFAULT_TZ);
 
 /**
+ * Propinas por mozo: propinas de los cobros (cash_movements.tip_amount, ya incluidas en el
+ * ingreso) de pedidos con ese mozo asignado (orders.waiter_id), sin los cobros revertidos.
+ * Rango por fecha del cobro.
+ */
+const tipsByWaiter = (f: UserReportFilters, userId?: number) => {
+  const db = getTenantDb();
+  const conditions = [
+    eq(orders.branchId, f.branchId),
+    eq(cashMovements.movementType, 'income'),
+    gte(cashMovements.createdAt, f.startDate),
+    lte(cashMovements.createdAt, f.endDate),
+    sql`CAST(${cashMovements.tipAmount} AS DECIMAL) > 0`,
+    sql`NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r.session_id = ${cashMovements.sessionId} AND r.movement_type = 'expense'
+      AND r.reference = 'reverso' AND r.order_id IS NOT DISTINCT FROM ${cashMovements.orderId} AND r.split_id IS NOT DISTINCT FROM ${cashMovements.splitId})`,
+  ];
+  if (userId) conditions.push(eq(orders.waiterId, userId));
+  return db
+    .select({
+      userId: orders.waiterId,
+      tipsCount: count(),
+      tipsTotal: sql<string>`COALESCE(SUM(CAST(${cashMovements.tipAmount} AS DECIMAL)), 0)`,
+    })
+    .from(cashMovements)
+    .innerJoin(orders, eq(cashMovements.orderId, orders.id))
+    .where(and(...conditions))
+    .groupBy(orders.waiterId);
+};
+
+/**
  * Ventas como mozo: pedidos cuyo turno generador (cash_session_id)
  * pertenece al usuario. Excluye cancelados.
  */
@@ -190,6 +219,9 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       eq(billingDocuments.createdBy, user.name),
     ));
 
+  // ── Propinas como mozo (pedidos con este mozo asignado) ─────────────
+  const [tips] = await tipsByWaiter(filters, userId);
+
   const salesTotal = toNum(sales?.total);
   const salesCount = sales?.ordersCount ?? 0;
 
@@ -205,6 +237,8 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       collectedMoves: collected?.movesCount ?? 0,
       deliveriesCount: deliveries?.ordersCount ?? 0,
       deliveriesTotal: roundMoney(toNum(deliveries?.total)),
+      tipsTotal: roundMoney(toNum(tips?.tipsTotal)),
+      tipsCount: tips?.tipsCount ?? 0,
       documentsCount: documents?.docsCount ?? 0,
       documentsTotal: roundMoney(toNum(documents?.total)),
       sessionsCount: sessions.length,
@@ -321,6 +355,9 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
     ))
     .groupBy(billingDocuments.createdBy);
 
+  // Propinas por mozo asignado
+  const tips = await tipsByWaiter(filters);
+
   const allUsers = await db
     .select({ id: users.id, name: users.name, username: users.username })
     .from(users);
@@ -336,6 +373,8 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
     difference: number;
     deliveriesCount: number;
     deliveriesTotal: number;
+    tipsTotal: number;
+    tipsCount: number;
     documentsCount: number;
     documentsTotal: number;
   }>();
@@ -356,6 +395,8 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
         difference: 0,
         deliveriesCount: 0,
         deliveriesTotal: 0,
+        tipsTotal: 0,
+        tipsCount: 0,
         documentsCount: 0,
         documentsTotal: 0,
       });
@@ -385,6 +426,12 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
     if (!entry) continue;
     entry.deliveriesCount = row.ordersCount;
     entry.deliveriesTotal = roundMoney(toNum(row.total));
+  }
+  for (const row of tips) {
+    const entry = ensure(row.userId);
+    if (!entry) continue;
+    entry.tipsTotal = roundMoney(toNum(row.tipsTotal));
+    entry.tipsCount = row.tipsCount;
   }
   // Los comprobantes se registran por nombre (createdBy); se cruza contra users.name
   for (const row of documents) {

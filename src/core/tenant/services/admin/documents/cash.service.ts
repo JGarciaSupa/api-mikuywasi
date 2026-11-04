@@ -885,13 +885,19 @@ export async function recordOrderMultiPaymentIncome(
 
   await db.transaction(async (tx) => {
     for (const [i, line] of lines.entries()) {
+      // Como en el cobro simple y en la cuenta dividida: `amount` es lo cobrado al cliente con
+      // la propina incluida (cuenta en el efectivo de la caja) y la propina va aparte en tipAmount.
+      const tipNum = toNum(line.tipAmount);
+      const totalCharged = round2(line.amount + tipNum);
+      const tipNote = tipNum > 0 ? ` (propina S/ ${round2(tipNum)})` : '';
       const [movement] = await tx
         .insert(cashMovements)
         .values({
           sessionId: session.id,
           movementType: 'income',
-          concept: `${formatOrderConcept(order, orderId)} · pago ${i + 1}/${lines.length}`,
-          amount: round2(line.amount),
+          concept: `${formatOrderConcept(order, orderId)} · pago ${i + 1}/${lines.length}${tipNote}`,
+          amount: totalCharged,
+          tipAmount: round2(tipNum),
           paymentMethod: line.paymentMethod,
           retentionPercentage: line.retentionPercentage,
           retentionAmount: line.retentionAmount,
@@ -909,7 +915,7 @@ export async function recordOrderMultiPaymentIncome(
         userId: actor?.userId,
         userName: actor?.userName,
         module: 'caja',
-        description: `Ingreso por venta ${orderId} (pago mixto ${i + 1}/${lines.length}: ${line.paymentMethod}) — S/ ${round2(line.amount)}`,
+        description: `Ingreso por venta ${orderId} (pago mixto ${i + 1}/${lines.length}: ${line.paymentMethod}) — S/ ${totalCharged}${tipNote}`,
       });
     }
     await recomputeSessionTotals(tx, session.id);

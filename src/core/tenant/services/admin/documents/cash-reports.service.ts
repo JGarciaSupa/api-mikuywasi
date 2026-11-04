@@ -56,6 +56,16 @@ const movementConditions = (f: CashReportFilters) => {
   return conditions;
 };
 
+/** Turno compartido: quienes continuaron el turno (null si nadie se unió) */
+const sessionParticipantNamesSql = () =>
+  sql<string | null>`(SELECT string_agg(pu.name, ', ' ORDER BY csp.joined_at) FROM cash_session_participants csp JOIN users pu ON pu.id = csp.user_id WHERE csp.session_id = ${cashSessions.id})`;
+
+/** Propinas del turno (ya incluidas en los ingresos), sin los cobros revertidos */
+const sessionTipsSql = () =>
+  sql<string>`(SELECT COALESCE(SUM(m.tip_amount), 0) FROM cash_movements m WHERE m.session_id = ${cashSessions.id} AND m.movement_type = 'income'
+    AND NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r.session_id = m.session_id AND r.movement_type = 'expense' AND r.reference = 'reverso'
+      AND r.order_id IS NOT DISTINCT FROM m.order_id AND r.split_id IS NOT DISTINCT FROM m.split_id))`;
+
 /**
  * Resumen de caja: KPIs de movimientos y turnos + series diarias + desgloses
  */
@@ -241,11 +251,9 @@ export const getCashReportSessions = async (filters: CashReportFilters, limit = 
       registerName: cashRegisters.name,
       cashierName: users.name,
       // Turno compartido: quienes lo continuaron (null si nadie se unió)
-      participantNames: sql<string | null>`(SELECT string_agg(pu.name, ', ' ORDER BY csp.joined_at) FROM cash_session_participants csp JOIN users pu ON pu.id = csp.user_id WHERE csp.session_id = ${cashSessions.id})`,
+      participantNames: sessionParticipantNamesSql(),
       // Propinas del turno (ya incluidas en ingresos), sin los cobros revertidos
-      totalTips: sql<string>`(SELECT COALESCE(SUM(m.tip_amount), 0) FROM cash_movements m WHERE m.session_id = ${cashSessions.id} AND m.movement_type = 'income'
-        AND NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r.session_id = m.session_id AND r.movement_type = 'expense' AND r.reference = 'reverso'
-          AND r.order_id IS NOT DISTINCT FROM m.order_id AND r.split_id IS NOT DISTINCT FROM m.split_id))`,
+      totalTips: sessionTipsSql(),
       openedBy: cashSessions.openedBy,
       closedBy: cashSessions.closedBy,
       openingBalance: cashSessions.openingBalance,
@@ -460,10 +468,12 @@ export const getCashReportExport = async (filters: CashReportFilters) => {
       code: cashSessions.code,
       registerName: cashRegisters.name,
       cashierName: users.name,
+      participantNames: sessionParticipantNamesSql(),
       openedBy: cashSessions.openedBy,
       closedBy: cashSessions.closedBy,
       openingBalance: cashSessions.openingBalance,
       totalIncome: cashSessions.totalIncome,
+      totalTips: sessionTipsSql(),
       totalExpense: cashSessions.totalExpense,
       expectedBalance: cashSessions.expectedBalance,
       closingBalance: cashSessions.closingBalance,
@@ -488,6 +498,7 @@ export const getCashReportExport = async (filters: CashReportFilters) => {
       movementType: cashMovements.movementType,
       concept: cashMovements.concept,
       amount: cashMovements.amount,
+      tipAmount: cashMovements.tipAmount,
       paymentMethod: cashMovements.paymentMethod,
       isCash: cashMovements.isCash,
       orderId: cashMovements.orderId,
