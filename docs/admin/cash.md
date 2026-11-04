@@ -14,16 +14,28 @@ Cuerpo: `{ closingBalance: number, notes?: string, password?: string, authCode?:
   - Autorizado, cierra el turno; los pedidos siguen abiertos y los cobra el turno siguiente (el ingreso va al turno de quien cobra, `collectedSessionId`).
 - `closedBy` guarda el nombre del usuario que cierra. La auditoría (`audit_log`, módulo `caja`) registra quién autorizó y qué pedidos quedaron abiertos.
 
-## Turno de caja y sucursal
+## Turno de caja y sucursal: el turno manda, no el cajero
 
-El turno abierto de un usuario solo sirve en **su sucursal** (`getActiveSessionForUserInBranch`). Si el usuario tiene el turno
-abierto en otra sucursal, la API rechaza con el mensaje "Tu turno de caja abierto (…) es de otra sucursal…":
-- crear pedido (`POST /waiter/orders`, **409**),
-- cobrar (`PATCH /orders/:id/payment-status`, pago mixto y cobro de cuenta dividida),
-- devolución (`POST /cash/refund`),
-- emitir comprobante (la serie sale de la caja del turno).
+Cada venta, cobro, devolución y comprobante va al **turno de la caja donde se opera**. El turno se resuelve así
+(`getActiveSessionForUserInBranch`):
+1. el turno elegido en el equipo (cabecera **`X-Cash-Session`**, "Vendiendo en: Caja 2 · Turno 27"),
+2. el turno de la caja vinculada al equipo (cabecera `X-Cash-Terminal`),
+3. el único turno del usuario en esa sucursal.
 
-Así una venta de una sucursal nunca se registra en la caja de otra. El admin muestra el aviso "Tienes un turno abierto en (sucursal)".
+Solo cuentan los turnos **abiertos de esa sucursal en los que el usuario participa**; un turno indicado que no cumpla se ignora.
+Si el usuario está en varios turnos de la sucursal y el equipo no indica ninguno, la API responde
+"Estás en varios turnos de esta sucursal (…). Elige en qué caja estás vendiendo." (**409** al crear pedido).
+Un turno del usuario en **otra** sucursal no se usa ni bloquea: crear pedido cae al turno elegido o al turno abierto de la
+sucursal (como el mozo), y cobrar exige un turno propio en esa sucursal.
+
+## Varios turnos por cajero (`caja.turnos_multiples`)
+
+Un usuario está como máximo en **un turno por caja**. Con el permiso `caja.turnos_multiples` ("Abrir turnos en varias cajas";
+por defecto en `rol_admin_local` y `rol_cajero`) puede estar a la vez en turnos de varias cajas (n cajas, un cajero). Sin él,
+un solo turno abierto. Se propaga a los tenants solo al arrancar la API (`docker/start.sh` ejecuta `rbac:add-missing --apply`; se desactiva con `RUN_RBAC_SYNC_ON_START=false`).
+
+- `GET /api/cash/sessions/mine/open`: turnos abiertos del usuario con `registerName` y `series` de la caja (selector del POS).
+- `GET /api/cash/sessions/mine`: el turno que indica el equipo (o el más reciente).
 
 ## Propinas por turno
 
@@ -94,3 +106,22 @@ Los secretos (token del equipo, PIN, token de enlace) solo se guardan como hash 
 La contraseña del supervisor nunca viaja al cajero ni por WhatsApp.
 
 En Auditoría, las rutas con `/orders/:id` muestran el número de pedido (`#trackingCode`) en lugar del id interno.
+
+## Liquidación de cajero — GET `/api/cash/sessions/:id/liquidation?user=`
+
+Solo lectura. Exige `caja.ver_contabilidad` y, como el detalle del turno, `caja.ver_todos_turnos` o ser el cajero/participante del turno. Sirve con el turno abierto (parcial, `isFinal: false`) o cerrado (definitiva). El admin la imprime como PDF A4 ("Liquidación" en el cierre de turno y en Reportes → Turnos).
+
+- `documents`: comprobantes del turno. Uno pertenece al turno si su pedido o cuenta dividida **se cobró** en él; si está pendiente de pago, si el pedido **se generó** en él. Las notas de crédito van al turno en que se emitieron (serie de la caja del turno y hora dentro del turno).
+- `payments.cash` / `payments.other`: cobros agrupados por medio de pago (`isCash` congelado en el movimiento) con documento, hora, venta, **cobrado (propina incluida)**, propina, retención, N.º de operación y usuario.
+- `expenses` (gastos, retiros y devoluciones), `incomes` (ingresos y depósitos manuales), `discounts`, `otherShiftOrders` (pedidos generados en otro turno y cobrados en este), `correlatives` (del/al, emitidos y anulados por serie).
+- `summary`: cobrado (efectivo / otros), de ello ventas y propinas, retención, documentos (valor venta, impuestos, total, n.º, promedio), notas de crédito, por cobrar, descuentos, egresos y el arqueo del turno (fondo, esperado, declarado, diferencia).
+- `user` (opcional) filtra por el usuario que registró cada operación; `users` lista los disponibles. El arqueo siempre es del turno completo.
+
+Usuario de cada cobro: quien registró el pago (`order_payments.created_by_id`), porque `cash_movements.created_by` suele quedar como `sistema`.
+
+## Liquidación por cajero — GET `/api/cash/liquidation/cashier?userId=&branchId=&from=&to=`
+
+Todo lo que cobró un cajero en los turnos de la sucursal con actividad en el rango (máx. 31 días), sea cual sea la caja:
+`turnos[]` (cada uno con su serie, documentos, cobros por medio de pago y resumen), `byMethod` y `totals`
+(cobrado, de ello ventas y propinas, retención, documentos). Exige `caja.ver_contabilidad`; ver a otro cajero exige
+`caja.ver_todos_turnos`. El arqueo de efectivo se cuadra por turno (su caja), no por cajero.

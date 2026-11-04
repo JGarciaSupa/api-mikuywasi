@@ -127,6 +127,20 @@ export const getMyCashSession = async (c: Context) => {
   }
 };
 
+// Turnos abiertos en los que participa el usuario (selector "Vendiendo en" del POS).
+// Solo datos del turno y su caja; los importes requieren caja.ver_contabilidad.
+export const getMyOpenCashSessions = async (c: Context) => {
+  try {
+    const { userId } = c.get('jwtPayload') ?? {};
+    const sessions = await cash.getOpenSessionsWithRegisterForUser(userId);
+    const canSeeAccounting = hasPermission(c, 'caja.ver_contabilidad');
+    const data = canSeeAccounting ? sessions : sessions.map((s) => stripAccountingFields(s));
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al obtener mis turnos abiertos');
+  }
+};
+
 export const getCashSessionById = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');

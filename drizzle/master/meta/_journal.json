@@ -148,6 +148,13 @@
       "when": 1792950000000,
       "tag": "0020_platform_users_tenant_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793836800000,
+      "tag": "0021_create_deploy_tasks",
+      "breakpoints": true
     }
   ]
 }

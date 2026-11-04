@@ -1,22 +1,21 @@
 #!/bin/sh
-# Arranque del contenedor (Dokploy): aplica las migraciones pendientes de todos los
-# tenants y después levanta la API. Así un despliegue nunca deja la API leyendo
-# columnas que aún no existen en las BDs.
+# Arranque del contenedor (Dokploy). Antes de levantar la API ejecuta, en orden y sin intervención
+# (src/scripts/deploy.ts), todo lo que un despliegue necesita:
+#   1. migraciones de la BD master        2. migraciones de todos los tenants
+#   3. permisos nuevos del seed (RBAC)    4. tareas de despliegue pendientes (src/deploy-tasks)
+# Todo es incremental (solo lo pendiente). El resultado se ve en GET /health y, si se configura
+# DEPLOY_ALERT_WEBHOOK_URL, cualquier fallo se avisa por webhook.
 #
-# RUN_MIGRATIONS_ON_START=false  → no migra al arrancar (p. ej. réplicas adicionales).
-# MIGRATIONS_STRICT=true         → si algún tenant falla, la API no arranca.
-#                                   Por defecto arranca igual y lo avisa en el log,
-#                                   para no dejar sin servicio a todos los tenants.
+# RUN_MIGRATIONS_ON_START=false    → no migra al arrancar (p. ej. réplicas adicionales).
+# RUN_RBAC_SYNC_ON_START=false     → no agrega los permisos nuevos (solo agrega; nunca quita).
+# RUN_DEPLOY_TASKS_ON_START=false  → no ejecuta las tareas de despliegue.
+# MIGRATIONS_STRICT=true           → si fallan las migraciones, la API no arranca.
+#                                     Por defecto arranca igual y lo avisa (log, /health, webhook),
+#                                     para no dejar sin servicio a todos los tenants.
 
-if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
-  echo "[start] Aplicando migraciones de tenants..."
-  if ! bun run src/scripts/migrate-tenants.ts; then
-    if [ "${MIGRATIONS_STRICT:-false}" = "true" ]; then
-      echo "[start] ❌ Falló la migración de algún tenant y MIGRATIONS_STRICT=true: la API no arranca."
-      exit 1
-    fi
-    echo "[start] ⚠️ Falló la migración de algún tenant (ver resumen arriba). La API arranca igualmente."
-  fi
+if ! bun run src/scripts/deploy.ts; then
+  echo "[start] ❌ El despliegue falló y MIGRATIONS_STRICT=true: la API no arranca."
+  exit 1
 fi
 
 exec bun run src/index.ts

@@ -100,6 +100,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'caja.ver_contabilidad', name: 'Ver datos contables', description: 'Ver totales, saldos, movimientos y arqueo de caja.', order: 6 },
       { code: 'caja.configurar_tipo_cambio', name: 'Configurar tipo de cambio', description: 'Administrar el tipo de cambio de las divisas.', order: 7 },
       { code: 'caja.ver_todos_turnos', name: 'Ver todos los turnos', description: 'Ver los turnos generados', order: 8 },
+      { code: 'caja.turnos_multiples', name: 'Abrir turnos en varias cajas', description: 'Estar a la vez en el turno de varias cajas (uno por caja).', order: 9 },
     ],
   },
   {
@@ -226,6 +227,7 @@ export const RBAC_ROLES: SeedRole[] = [
       'caja.cerrar_sesion',
       'caja.registrar_movimiento',
       'caja.ver_contabilidad',
+      'caja.turnos_multiples',
       'facturacion.ver_documentos',
       'facturacion.emitir',
       'facturacion.ver_pdf',

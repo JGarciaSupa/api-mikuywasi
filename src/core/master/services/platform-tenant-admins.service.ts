@@ -9,6 +9,9 @@
  * - Cada cuenta creada se registra en `platform_user_tenant_links`. Solo esas
  *   cuentas reciben cambios de contraseña y bajas; si el tenant ya tiene un
  *   usuario propio con el mismo username, se omite (conflicto) y no se toca.
+ * - El vínculo guarda el id del usuario en el tenant. Si ese id pasó a ser de otra
+ *   persona (p. ej. tras copiar los datos de PRD a QAS), el username ya no coincide
+ *   y no se toca esa cuenta.
  */
 import { masterDb } from '../../../db';
 import { users, tenants, platformUserTenantLinks } from '../../../db/master/schema';
@@ -21,6 +24,8 @@ const TENANT_USERNAME_MAX = 50;
 const ADMIN_ROLE_CODE = 'rol_admin';
 
 type PlatformUser = typeof users.$inferSelect;
+
+const STALE_LINK_MESSAGE = 'La cuenta vinculada en el tenant ya no corresponde a este usuario: vuelve a aplicarlo a los tenants';
 
 export type ProvisionStatus = 'created' | 'existing' | 'conflict' | 'failed';
 
@@ -76,7 +81,7 @@ export const provisionUserToTenant = async (
       const [linkedUser] = await db
         .update(tenantSchema.users)
         .set({ password: user.password, deletedAt: null, updatedAt: new Date() })
-        .where(eq(tenantSchema.users.id, link.tenantUserId))
+        .where(and(eq(tenantSchema.users.id, link.tenantUserId), eq(tenantSchema.users.username, user.userName)))
         .returning({ id: tenantSchema.users.id });
 
       if (linkedUser) {
@@ -87,7 +92,7 @@ export const provisionUserToTenant = async (
         return { ...base, status: 'existing' };
       }
 
-      // La cuenta vinculada ya no existe en el tenant: se descarta el vínculo y se crea de nuevo
+      // La cuenta vinculada ya no existe en el tenant (o ese id es de otra persona): se descarta el vínculo y se crea de nuevo
       await masterDb.delete(platformUserTenantLinks).where(eq(platformUserTenantLinks.id, link.id));
     }
 
@@ -197,15 +202,22 @@ export const propagatePasswordToTenants = async (userId: number, passwordHash: s
   const links = await masterDb.query.platformUserTenantLinks.findMany({
     where: eq(platformUserTenantLinks.userId, userId),
   });
+  const user = await masterDb.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) return [];
 
   const results: PropagationResult[] = [];
   for (const link of links) {
     try {
       const db = await getTenantDatabaseInstance(link.tenantId);
-      await db
+      const [linked] = await db
         .update(tenantSchema.users)
         .set({ password: passwordHash, updatedAt: new Date() })
-        .where(eq(tenantSchema.users.id, link.tenantUserId));
+        .where(and(eq(tenantSchema.users.id, link.tenantUserId), eq(tenantSchema.users.username, user.userName)))
+        .returning({ id: tenantSchema.users.id });
+      if (!linked) {
+        results.push({ tenantId: link.tenantId, status: 'failed', message: STALE_LINK_MESSAGE });
+        continue;
+      }
       await db
         .update(tenantSchema.refreshTokens)
         .set({ isRevoked: true })
@@ -225,15 +237,22 @@ export const deactivateLinkedTenantUsers = async (userId: number) => {
   const links = await masterDb.query.platformUserTenantLinks.findMany({
     where: eq(platformUserTenantLinks.userId, userId),
   });
+  const user = await masterDb.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) return [];
 
   const results: PropagationResult[] = [];
   for (const link of links) {
     try {
       const db = await getTenantDatabaseInstance(link.tenantId);
-      await db
+      const [linked] = await db
         .update(tenantSchema.users)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
-        .where(eq(tenantSchema.users.id, link.tenantUserId));
+        .where(and(eq(tenantSchema.users.id, link.tenantUserId), eq(tenantSchema.users.username, user.userName)))
+        .returning({ id: tenantSchema.users.id });
+      if (!linked) {
+        results.push({ tenantId: link.tenantId, status: 'failed', message: STALE_LINK_MESSAGE });
+        continue;
+      }
       await db
         .update(tenantSchema.refreshTokens)
         .set({ isRevoked: true })

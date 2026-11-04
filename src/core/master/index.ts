@@ -15,6 +15,7 @@ import salesChannelClassificationsRoutes from './routes/sales-channel-classifica
 import activationsRoutes from './routes/activations.routes';
 import tableStatusesRoutes from './routes/table-statuses.routes';
 import prdSyncRoutes from './routes/prd-sync.routes';
+import deployRoutes from './routes/deploy.routes';
 
 const master = new Hono();
 
@@ -34,6 +35,7 @@ master.route('/sales-channel-classifications', salesChannelClassificationsRoutes
 master.route('/activations', activationsRoutes); // Catálogo global de activaciones (interruptores)
 master.route('/table-statuses', tableStatusesRoutes); // Catálogo global de estados de mesas
 master.route('/prd-sync', prdSyncRoutes);       // Solo QAS: actualizar/clonar tenants desde PRD
+master.route('/deploy', deployRoutes);          // Estado del despliegue y reintento de sus pasos
 
 
 
