@@ -3,7 +3,7 @@ import { orders, orderItems, orderSplits, tables, orderPayments, paymentMethods 
 
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { type TaxSnapshotEntry, prorateTaxSnapshot } from '../../shared/taxes.service';
-import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUser } from './cash.service';
+import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUserInBranch } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
 
@@ -500,7 +500,8 @@ export async function updateSplitPayment(splitId: number, orderId: string, input
   // El ingreso va al turno del cajero que cobra (actor), no al del mozo que creó el pedido.
   try {
     if (input.paymentStatus === 'paid') {
-      const cajeraSession = await getActiveSessionForUser(actor?.userId);
+      const [splitOrder] = await db.select({ branchId: orders.branchId }).from(orders).where(eq(orders.id, orderId)).limit(1);
+      const cajeraSession = await getActiveSessionForUserInBranch(actor?.userId, splitOrder?.branchId);
       if (!cajeraSession) throw new Error('Necesitas un turno de caja abierto para cobrar esta cuenta');
       await recordSplitSaleIncome(splitId, actor, cajeraSession.id);
     } else {

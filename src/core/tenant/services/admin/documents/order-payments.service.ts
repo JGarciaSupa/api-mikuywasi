@@ -2,7 +2,7 @@ import { orders, orderPayments, paymentMethods, tables } from '@/db/tenant/schem
 import { eq, inArray } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
-import { recordOrderMultiPaymentIncome, getActiveSessionForUser } from './cash.service';
+import { recordOrderMultiPaymentIncome, getActiveSessionForUserInBranch } from './cash.service';
 import type { AuditActor } from '../warehouse/types';
 
 export interface OrderPaymentLineInput {
@@ -52,7 +52,7 @@ export async function payOrderWithMultiplePayments(
     throw new Error(`La suma de los pagos (S/ ${paidSum.toFixed(2)}) debe ser igual al total a cobrar (S/ ${baseAmount.toFixed(2)})`);
   }
 
-  const cajeraSession = await getActiveSessionForUser(actor?.userId);
+  const cajeraSession = await getActiveSessionForUserInBranch(actor?.userId, order.branchId);
   if (!cajeraSession) throw new Error('Necesitas un turno de caja abierto para cobrar este pedido');
 
   const rows = lines.map((l) => {

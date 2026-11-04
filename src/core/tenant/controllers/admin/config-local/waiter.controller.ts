@@ -42,7 +42,8 @@ export const createWaiterOrderController = async (c: Context) => {
     const body = await c.req.json();
 
     // 1. Si el usuario actual tiene su propio turno abierto (ej. cajero creando pedido), usarlo.
-    let activeSession = await cashService.getActiveSessionForUser(userId);
+    //    Si ese turno es de otra sucursal se rechaza (el pedido caería en la caja de la otra sucursal).
+    let activeSession = await cashService.getActiveSessionForUserInBranch(userId, body.branchId != null ? Number(body.branchId) : null);
 
     // 2. Si no tiene turno propio (ej. es un mozo), verificar si envió cashSessionId de una caja abierta de la sede.
     if (!activeSession && body.cashSessionId) {
@@ -89,7 +90,9 @@ export const createWaiterOrderController = async (c: Context) => {
     );
   } catch (error: any) {
     const msg = error?.message || 'Error al procesar el pedido';
-    const status = msg.includes('Stock insuficiente') || msg.includes('no tiene receta activa') ? 422 : 500;
+    const status = error instanceof cashService.ForeignBranchSessionError
+      ? 409
+      : msg.includes('Stock insuficiente') || msg.includes('no tiene receta activa') ? 422 : 500;
     return c.json(
       {
         success: false,

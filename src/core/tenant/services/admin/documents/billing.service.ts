@@ -19,7 +19,7 @@ import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
-import { getActiveSessionForUser, reverseOrderSaleMovement, reverseSplitSaleIncome } from './cash.service';
+import { getActiveSessionForUser, getActiveSessionForUserInBranch, reverseOrderSaleMovement, reverseSplitSaleIncome } from './cash.service';
 import { authorizeByPassword } from './security-auth.service';
 import { syncOrderPaymentStatus } from './order-splits.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
@@ -85,7 +85,8 @@ async function resolveActiveSeriesOrThrow(
   documentType: SeriesDocumentType,
   userId: number | undefined,
 ) {
-  const activeSession = await getActiveSessionForUser(userId);
+  // La serie sale de la caja del turno: debe ser un turno de ESTA sucursal
+  const activeSession = await getActiveSessionForUserInBranch(userId, branchId);
   if (!activeSession || activeSession.registerId == null) {
     throw new Error('Debes tener un turno de caja abierto para facturar');
   }

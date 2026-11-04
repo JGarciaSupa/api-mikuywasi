@@ -500,6 +500,23 @@ export async function getActiveSessionForUser(userId?: number) {
   return session ?? null;
 }
 
+/** El usuario tiene su turno abierto en otra sucursal: no se registra dinero de esta sucursal en él. */
+export class ForeignBranchSessionError extends Error {
+  constructor(code: string) {
+    super(`Tu turno de caja abierto (${code}) es de otra sucursal. Vuelve a esa sucursal y ciérralo para operar aquí.`);
+  }
+}
+
+// Turno abierto del usuario para operar en `branchId`. Si lo tiene abierto en OTRA sucursal lanza
+// ForeignBranchSessionError (antes se usaba igual y la venta caía en la caja de la otra sucursal).
+export async function getActiveSessionForUserInBranch(userId: number | undefined, branchId: number | null | undefined) {
+  const session = await getActiveSessionForUser(userId);
+  if (session && branchId != null && session.branchId !== branchId) {
+    throw new ForeignBranchSessionError(session.code);
+  }
+  return session;
+}
+
 // Devuelve la primera sesión/turno de caja ABIERTO de una sucursal (para comandas de mozo), o null.
 export async function getActiveSessionForBranch(branchId?: number) {
   const db = getTenantDb();
@@ -964,7 +981,7 @@ export async function refundOrder(
 ) {
   const db = getTenantDb();
   const [order] = await db
-    .select({ paymentMethodId: orders.paymentMethodId, paymentMethod: orders.paymentMethod, total: orders.total, trackingCode: orders.trackingCode })
+    .select({ paymentMethodId: orders.paymentMethodId, paymentMethod: orders.paymentMethod, total: orders.total, trackingCode: orders.trackingCode, branchId: orders.branchId })
     .from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) throw new Error('Pedido no encontrado');
 
@@ -972,7 +989,7 @@ export async function refundOrder(
   if (amount <= 0) throw new Error('Monto de devolución inválido');
   if (amount > toNum(order.total)) throw new Error('La devolución no puede superar el total del pedido');
 
-  const session = await getActiveSessionForUser(actor?.userId);
+  const session = await getActiveSessionForUserInBranch(actor?.userId, order.branchId);
   if (!session) throw new Error('Necesitas un turno de caja abierto para registrar la devolución');
 
   const isCash = await resolveIsCashByMethod(order.paymentMethodId, order.paymentMethod);

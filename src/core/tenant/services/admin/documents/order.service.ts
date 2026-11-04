@@ -7,7 +7,7 @@ import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-conte
 const waiters = alias(users, 'waiters');
 const deletedByUsers = alias(users, 'deleted_by_users');
 const authorizedByUsers = alias(users, 'authorized_by_users');
-import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser, updateOrderPaymentCashMovements } from './cash.service';
+import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser, getActiveSessionForUserInBranch, updateOrderPaymentCashMovements } from './cash.service';
 import { authorizeByPassword } from './security-auth.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
@@ -517,7 +517,7 @@ export const updateOrderPaymentStatus = async (
   // El ingreso irá a ese turno (collectedSessionId), no al del mozo (cashSessionId).
   let collectedSessionId: number | undefined;
   if (!wasPaid && paymentStatus === 'paid') {
-    const cajeraSession = await getActiveSessionForUser(actor?.userId);
+    const cajeraSession = await getActiveSessionForUserInBranch(actor?.userId, order.branchId);
     if (!cajeraSession) {
       throw new Error('Necesitas un turno de caja abierto para cobrar este pedido');
     }

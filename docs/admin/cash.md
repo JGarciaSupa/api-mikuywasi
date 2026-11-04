@@ -14,6 +14,17 @@ Cuerpo: `{ closingBalance: number, notes?: string, password?: string, authCode?:
   - Autorizado, cierra el turno; los pedidos siguen abiertos y los cobra el turno siguiente (el ingreso va al turno de quien cobra, `collectedSessionId`).
 - `closedBy` guarda el nombre del usuario que cierra. La auditoría (`audit_log`, módulo `caja`) registra quién autorizó y qué pedidos quedaron abiertos.
 
+## Turno de caja y sucursal
+
+El turno abierto de un usuario solo sirve en **su sucursal** (`getActiveSessionForUserInBranch`). Si el usuario tiene el turno
+abierto en otra sucursal, la API rechaza con el mensaje "Tu turno de caja abierto (…) es de otra sucursal…":
+- crear pedido (`POST /waiter/orders`, **409**),
+- cobrar (`PATCH /orders/:id/payment-status`, pago mixto y cobro de cuenta dividida),
+- devolución (`POST /cash/refund`),
+- emitir comprobante (la serie sale de la caja del turno).
+
+Así una venta de una sucursal nunca se registra en la caja de otra. El admin muestra el aviso "Tienes un turno abierto en (sucursal)".
+
 ## Control de equipos de caja (por sucursal, apagado por defecto)
 
 Dos interruptores en `branches` (migración `0096`), editables con `PATCH /api/branches/:id`:
