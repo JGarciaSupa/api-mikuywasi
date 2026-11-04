@@ -18,7 +18,8 @@ const withTimeout = <T>(promise: Promise<T>, ms: number) =>
 export async function getHealthReport() {
   const [masterOk, redisOk, deploy] = await Promise.all([
     withTimeout(masterDb.execute(sql`select 1`), 3000).then(() => true).catch(() => false),
-    withTimeout(redis.send('PING', []), 2000).then(() => true).catch(() => false),
+    // `get` (lo usa la caché de tenants) funciona en la versión de Bun del contenedor; null = conectado sin la clave
+    withTimeout(redis.get('health:check'), 2000).then(() => true).catch(() => false),
     readDeployStatus(),
   ]);
 
