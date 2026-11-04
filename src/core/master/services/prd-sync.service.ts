@@ -2,8 +2,9 @@ import { Client } from 'pg';
 import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { masterDb } from '../../../db';
-import { tenants, subscriptions, plans, dbServers, subActions, baseRoles, tenantFeatureGrants, tenantRoleGrants, auditLogs } from '../../../db/master/schema';
+import { tenants, subscriptions, plans, dbServers, subActions, baseRoles, tenantFeatureGrants, tenantRoleGrants, auditLogs, platformUserTenantLinks } from '../../../db/master/schema';
 import { syncPermissionsCatalog } from './rbac-sync.service';
+import { provisionFlaggedUsersToTenant } from './platform-tenant-admins.service';
 import { createTenantDatabase, runTenantMigrations, dropTenantDatabase } from './tenants.service';
 import type { RefreshFromPrdInput, CloneFromPrdInput } from '../validations/prd-sync.validation';
 import { getS3Client } from '../../../utils/s3';
@@ -475,6 +476,26 @@ async function mirrorGrantsAndSync(rbac: PrdRbac, qasTenantId: number, job: PrdS
   }
 }
 
+/**
+ * Cuentas Admin de plataforma ("Admin en tenants"): la copia trae los usuarios de PRD, así que los
+ * vínculos master → usuario del tenant de QAS quedan apuntando a ids que ahora son de otras personas.
+ * Se descartan (re-provisionar con un vínculo viejo cambiaría la contraseña de un usuario de PRD)
+ * y se vuelven a crear las cuentas de los usuarios marcados.
+ */
+async function reprovisionPlatformAdmins(qasTenantId: number, job: PrdSyncJob) {
+  await masterDb.delete(platformUserTenantLinks).where(eq(platformUserTenantLinks.tenantId, qasTenantId));
+  try {
+    const results = await provisionFlaggedUsersToTenant(qasTenantId);
+    const notReady = results.filter((r) => r.status !== 'created' && r.status !== 'existing');
+    if (notReady.length > 0) {
+      job.warnings.push(`Cuentas Admin de plataforma no creadas: ${notReady.map((r) => r.message ?? r.status).join('; ')}`);
+    }
+  } catch (error) {
+    console.warn('[PRD Sync] Provisión de cuentas Admin de plataforma falló (no crítico):', error);
+    job.warnings.push('No se pudieron recrear las cuentas Admin de plataforma: aplícalas desde Usuarios de Staff');
+  }
+}
+
 // ─── Trabajos en segundo plano ──────────────────────────────────────────────
 // La copia puede tardar más que el timeout de una petición HTTP: se lanza y el panel consulta el estado.
 
@@ -619,6 +640,7 @@ export async function startRefreshFromPrd(slug: string, input: RefreshFromPrdInp
 
     job.step = 'Sincronizando permisos';
     await mirrorGrantsAndSync(rbac, qas.id, job);
+    await reprovisionPlatformAdmins(qas.id, job);
     for (const userId of userIds) invalidateUserPermissions(qas.id, userId);
 
     return stats;
@@ -727,6 +749,7 @@ export async function startCloneFromPrd(prdSlug: string, input: CloneFromPrdInpu
 
       job.step = 'Sincronizando permisos';
       await mirrorGrantsAndSync(rbac, newTenant.id, job);
+      await reprovisionPlatformAdmins(newTenant.id, job);
 
       return stats;
     } catch (error) {
