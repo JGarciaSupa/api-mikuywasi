@@ -3,7 +3,7 @@ import type { DeployTaskContext } from '../deploy/types';
 import { forEachTenant } from '../deploy/tenants';
 import { paymentMethods, branches } from '../db/tenant/schema';
 
-// QAS · Wine Spirit - Golf Asia (05/11/2026): corrige los métodos de pago que distorsionan el arqueo.
+// QAS · Wine Spirit - Golf Asia (04/11/2026): corrige los métodos de pago que distorsionan el arqueo.
 //   - "Efectivo" de Sede Principal estaba como NO efectivo → efectivo (sus cobros no sumaban en caja).
 //   - "Yape" estaba como efectivo → no efectivo (llega al celular/banco, no al cajón).
 //   - "Mastecard" → "Mastercard".

@@ -45,7 +45,7 @@ La propina se guarda en cada cobro (`cash_movements.tip_amount`) y ya está incl
   Los cobros revertidos (egreso `reference = 'reverso'` del mismo pedido/cuenta en el turno) no cuentan. Se ocultan sin `caja.ver_contabilidad`.
 - `GET /cash/reports/summary` incluye `kpis.totalTips` y `kpis.cashTips`; `GET /cash/reports/sessions` incluye `totalTips` por turno.
 - `GET /cash/reports/export`: `totalTips` y `participantNames` por turno y `tipAmount` por movimiento.
-- **Pago mixto** (`recordOrderMultiPaymentIncome`): desde 05/11/2026 guarda la propina como el cobro simple y la cuenta
+- **Pago mixto** (`recordOrderMultiPaymentIncome`): desde 04/11/2026 guarda la propina como el cobro simple y la cuenta
   dividida (`amount` = pago + propina, `tipAmount` aparte). Los pagos mixtos anteriores no tienen la propina en caja.
 - **Propinas por mozo** (`/staff/reports/summary` → `kpis.tipsTotal`/`tipsCount`; `/staff/reports/ranking` → `tipsTotal`):
   propinas de los cobros de pedidos con ese mozo asignado (`orders.waiter_id`), sin revertidos, por la sucursal del pedido.
