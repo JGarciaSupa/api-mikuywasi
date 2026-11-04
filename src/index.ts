@@ -5,6 +5,7 @@ import masterRoutes from '@/core/master';
 import tenantRoutes from '@/core/tenant';
 
 import { getClientIp } from './utils/ip';
+import { healthHandler } from './deploy/health';
 // import { initJobs } from './jobs';
 
 // Initialize background jobs
@@ -17,6 +18,9 @@ app.use('*', cors({
   origin: (origin) => origin,
   credentials: true,
 }));
+
+// Estado de la API y del último despliegue (Dokploy / healthcheck del contenedor)
+app.get('/health', healthHandler);
 
 // Routes
 app.route('/api/master', masterRoutes);

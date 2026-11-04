@@ -530,3 +530,18 @@ export const tableStatuses = pgTable('table_statuses', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+
+// ==========================================
+// 🚀 TAREAS DE DESPLIEGUE
+// ==========================================
+// Registro de las tareas de src/deploy-tasks que ya corrieron en este entorno (una vez cada una,
+// al arrancar la API). status: 'done' | 'failed' (las fallidas se reintentan en el siguiente arranque).
+export const deployTasks = pgTable('deploy_tasks', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 150 }).notNull().unique(),
+  status: varchar('status', { length: 20 }).notNull(),
+  attempts: integer('attempts').default(1).notNull(),
+  output: text('output'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+});
