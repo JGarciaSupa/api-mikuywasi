@@ -9,6 +9,7 @@ import {
   getCashReportProductionController,
   getCashReportExportController,
 } from '../../../../controllers/admin/documents/cash-reports.controller';
+import { getCashSessionLiquidationController } from '../../../../controllers/admin/documents/cash-liquidation.controller';
 
 const routes = new Hono();
 
@@ -32,6 +33,7 @@ routes.get('/sessions/current', cash.getCurrentSession);
 routes.get('/sessions/mine', cash.getMyCashSession);
 routes.post('/sessions/open', cash.openCashSession);
 routes.get('/sessions/:id', cash.getCashSessionById);
+routes.get('/sessions/:id/liquidation', getCashSessionLiquidationController);
 routes.post('/sessions/:id/close', cash.closeCashSession);
 routes.post('/sessions/:id/movements', cash.addCashMovement);
 routes.post('/refund', cash.refundOrder);

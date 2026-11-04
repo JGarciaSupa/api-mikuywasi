@@ -84,3 +84,15 @@ Los secretos (token del equipo, PIN, token de enlace) solo se guardan como hash 
 La contraseña del supervisor nunca viaja al cajero ni por WhatsApp.
 
 En Auditoría, las rutas con `/orders/:id` muestran el número de pedido (`#trackingCode`) en lugar del id interno.
+
+## Liquidación de cajero — GET `/api/cash/sessions/:id/liquidation?user=`
+
+Solo lectura. Exige `caja.ver_contabilidad` y, como el detalle del turno, `caja.ver_todos_turnos` o ser el cajero/participante del turno. Sirve con el turno abierto (parcial, `isFinal: false`) o cerrado (definitiva). El admin la imprime como PDF A4 ("Liquidación" en el cierre de turno y en Reportes → Turnos).
+
+- `documents`: comprobantes del turno. Uno pertenece al turno si su pedido o cuenta dividida **se cobró** en él; si está pendiente de pago, si el pedido **se generó** en él. Las notas de crédito van al turno en que se emitieron (serie de la caja del turno y hora dentro del turno).
+- `payments.cash` / `payments.other`: cobros agrupados por medio de pago (`isCash` congelado en el movimiento) con documento, hora, venta, **cobrado (propina incluida)**, propina, retención, N.º de operación y usuario.
+- `expenses` (gastos, retiros y devoluciones), `incomes` (ingresos y depósitos manuales), `discounts`, `otherShiftOrders` (pedidos generados en otro turno y cobrados en este), `correlatives` (del/al, emitidos y anulados por serie).
+- `summary`: cobrado (efectivo / otros), de ello ventas y propinas, retención, documentos (valor venta, impuestos, total, n.º, promedio), notas de crédito, por cobrar, descuentos, egresos y el arqueo del turno (fondo, esperado, declarado, diferencia).
+- `user` (opcional) filtra por el usuario que registró cada operación; `users` lista los disponibles. El arqueo siempre es del turno completo.
+
+Usuario de cada cobro: quien registró el pago (`order_payments.created_by_id`), porque `cash_movements.created_by` suele quedar como `sistema`.
