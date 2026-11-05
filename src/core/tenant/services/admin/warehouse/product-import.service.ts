@@ -12,6 +12,7 @@ import {
 } from '@/core/tenant/validations/admin/warehouse/product-import.validation';
 import { getMaxProductsForTenant } from './product-limit.service';
 import { applyCategoryExtraGroups } from './extras.service';
+import { assertProductPrintArea } from './product-print-area.service';
 
 // Mismo tope que createCategory (categories.service.ts) para categorías principales.
 const MAX_ROOT_CATEGORIES = 50;
@@ -233,7 +234,10 @@ export async function importProducts(input: ProductImportInput): Promise<Product
           }
         }
 
-        // 2. Crear el producto
+        // 2. Subcategoría con área de impresión (o columna Área): si no, la comanda no llega a cocina
+        await assertProductPrintArea(tx, subcategory?.id ?? input.defaultCategoryId, splitAreaNames(row.areaName).length > 0);
+
+        // Crear el producto
         const [product] = await tx.insert(products).values({
           categoryId: subcategory?.id ?? input.defaultCategoryId ?? null,
           name: row.name,

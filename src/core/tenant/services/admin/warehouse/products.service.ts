@@ -7,6 +7,7 @@ import { masterDb } from '@/db';
 import { tenants } from '@/db/master/schema';
 import { getMaxProductsForTenant } from './product-limit.service';
 import { applyCategoryExtraGroups } from './extras.service';
+import { assertProductPrintArea, productHasOwnArea } from './product-print-area.service';
 
 const MAX_SIZE = 500;
 
@@ -176,6 +177,8 @@ export const getProductById = async (id: number) => {
 export const createProduct = async (data: any, imageFile?: File) => {
   const db = getTenantDb();
   const tenantId = getTenantId();
+  // Sin subcategoría con área de impresión la comanda no llega a cocina
+  await assertProductPrintArea(db, data.categoryId);
   // Verificar límite de productos del plan (null = sin límite)
   const maxProducts = await getMaxProductsForTenant();
   const [totalResult] = await db.select({ count: count() })
@@ -215,6 +218,11 @@ export const updateProduct = async (id: number, data: any, imageFile?: File) => 
   const tenantId = getTenantId();
   const [existingProduct] = await db.select().from(products).where(eq(products.id, id));
   if (!existingProduct) throw new Error('Producto no encontrado');
+
+  // Cambiar (o quitar) la subcategoría: debe seguir teniendo área de impresión
+  if (data.categoryId !== undefined) {
+    await assertProductPrintArea(db, data.categoryId, await productHasOwnArea(db, id));
+  }
 
   // Obtener el slug del tenant desde la base de datos master
   const tenantMaster = await masterDb.query.tenants.findFirst({

@@ -73,7 +73,7 @@ Crea un nuevo producto. Soporta carga de imágenes mediante `multipart/form-data
 
 **Body:**
 - `tenantId` (Required, Number)
-- `categoryId` (Optional, Number)
+- `categoryId` (Required, Number): **subcategoría** con área de impresión (ver "Área de impresión obligatoria")
 - `name` (Required, String)
 - `description` (Optional, String)
 - `price` (Required, Decimal string)
@@ -225,3 +225,12 @@ Asigna la imagen a un producto (paso final del asistente de importación). **Sol
 ```json
 { "success": true, "message": "Imagen asignada con éxito", "data": { "productId": 12, "image": "https://.../productos/uuid.webp" } }
 ```
+
+## Área de impresión obligatoria
+
+Todo producto debe quedar en una **subcategoría** que tenga área de impresión (`categories.kitchen_station_code`), propia o heredada de su categoría principal. Sin ella la comanda cae en "Cocina General" y sale por la primera impresora activa de la sucursal (a veces la de comprobantes), no en cocina.
+
+- `POST /api/products`: 400 si falta `categoryId`, si es una categoría principal o si la subcategoría (ni su categoría) no tiene área.
+- `PATCH /api/products/:id`: la misma regla cuando el body trae `categoryId`; si el producto tiene áreas propias (`product_kitchen_stations`), basta con que sea una subcategoría.
+- `POST /api/products/import`: cada fila necesita subcategoría (la suya o la subcategoría por defecto) con área, o la columna **Área**; si no, la fila falla con el motivo y el resto del lote sigue.
+- Los productos antiguos sin subcategoría no se modifican: al editarlos el admin exige elegirla.
