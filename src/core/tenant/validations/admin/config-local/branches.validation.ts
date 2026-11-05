@@ -38,6 +38,7 @@ export const createBranchSchema = z.object({
   requireCashLocation: z.boolean().optional(),
   sharedCashSession: z.boolean().optional(),
   allowCashSessionChoice: z.boolean().optional(),
+  waitersOwnTablesOnly: z.boolean().optional(),
   address: addressSchema,
   phone: z.string().max(30).nullable().optional(),
   whatsapp: z.string().max(30).nullable().optional(),

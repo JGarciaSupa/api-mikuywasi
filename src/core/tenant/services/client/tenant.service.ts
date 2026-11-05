@@ -1,4 +1,4 @@
-import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels } from '../../../../db/tenant/schema';
+import { brands, banners, socialLinks, categories, products, tables, paymentMethods, orders, orderItems, orderItemExtras, productExtras, recipes, recipeLines, items, branches, branchRecipeAreas, stockSnapshot, storageAreas, productSalesChannelPrices, salesChannels, users } from '../../../../db/tenant/schema';
 import { eq, and, or, isNull, inArray, isNotNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getImageUrl } from '../../../../utils/r2';
@@ -306,8 +306,11 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
       orderFor: orders.orderFor,
       total: orders.total,
       createdAt: orders.createdAt,
+      waiterId: orders.waiterId,
+      waiterName: users.name,
     })
     .from(orders)
+    .leftJoin(users, eq(users.id, orders.waiterId))
     .where(and(...activeDineInConditions));
 
   const activeByTableId = new Map<number, any>();
@@ -352,6 +355,8 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
           status: activeOrder.status,
           total: activeOrder.total,
           createdAt: activeOrder.createdAt,
+          waiterId: activeOrder.waiterId,
+          waiterName: activeOrder.waiterName,
         }
         : null,
     };

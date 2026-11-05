@@ -2,6 +2,7 @@ import { Hono, type Context, type Next } from 'hono';
 import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
 import { hasPermission } from '@/utils/permissions';
 import { auditForeignOrder, orderIdFromParam } from '../../../../middleware/foreign-order-audit.middleware';
+import { requireOwnTableOrder } from '../../../../middleware/waiter-scope.middleware';
 import {
   createWaiterOrderController,
   getWaiterMenuController,
@@ -29,6 +30,9 @@ const canCancelOrder = async (c: Context, next: Next) => {
 };
 
 routes.use('*', authMiddleware);
+// "Meseros solo ven sus mesas": un pedido de mesa ajeno no se abre ni se opera
+routes.use('/orders/:id', requireOwnTableOrder);
+routes.use('/orders/:id/*', requireOwnTableOrder);
 
 routes.get('/menu', getWaiterMenuController);
 routes.get('/tables/status', getWaiterTablesStatusController);

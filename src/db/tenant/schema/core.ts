@@ -136,6 +136,9 @@ export const branches = pgTable('branches', {
 	// Elegir la caja en el POS (apagado por defecto): el turno de cada venta sale de la caja vinculada al
 	// equipo físico (cash_terminals). Encendido, un usuario con varios turnos elige en qué caja vende.
 	allowCashSessionChoice: boolean('allow_cash_session_choice').default(false).notNull(),
+	// Meseros solo ven sus mesas (apagado por defecto): quien no tiene mozo.ver_todas_mesas ve las mesas
+	// de otros mozos como ocupadas, sin detalle, y no puede abrir, editar, cobrar ni mover sus pedidos.
+	waitersOwnTablesOnly: boolean('waiters_own_tables_only').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

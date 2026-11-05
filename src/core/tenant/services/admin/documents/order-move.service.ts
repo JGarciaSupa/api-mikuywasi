@@ -30,6 +30,7 @@ export interface MoveOrderInput {
   targetTableId: number;
   items?: MoveItemInput[]; // ausente/vacío = mover TODO el pedido
   userId: number;
+  ownWaiterId?: number | null; // restringido a sus mesas ("Meseros solo ven sus mesas")
   ip?: string | null;
 }
 
@@ -215,7 +216,7 @@ async function resolveMoveSession(
 
 export async function moveOrderToTable(input: MoveOrderInput) {
   const db = getTenantDb();
-  const { orderId, targetTableId, items, userId, ip } = input;
+  const { orderId, targetTableId, items, userId, ownWaiterId, ip } = input;
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
@@ -243,6 +244,9 @@ export async function moveOrderToTable(input: MoveOrderInput) {
   const destActive = await getActiveOrderForTable(db, targetTableId, order.branchId);
   if (destActive && destActive.transferredSessionId != null) {
     throw new Error('El pedido de la mesa destino está transferido a caja');
+  }
+  if (ownWaiterId != null && destActive && destActive.waiterId !== ownWaiterId) {
+    throw new Error('La mesa destino la atiende otro mozo');
   }
 
   const isTotal = !items || items.length === 0;
