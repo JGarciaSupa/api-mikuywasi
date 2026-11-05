@@ -177,3 +177,10 @@ Conciliación: `paid` ⇒ hay ingreso en caja (`collectedSessionId`) y desglose 
 - **Bloqueos:** pedido pagado, anulado/cerrado, transferido o con cuentas divididas (aplicar antes de dividir).
 - **Edición posterior:** editar o anular un producto **retira el descuento** automáticamente (hay que volver a aplicarlo).
 - **SUNAT:** las líneas viajan netas con su IGV, sin cambios en el facturador. El receipt incluye `meta.discountAmount` y `meta.discountMotivo` (informativo).
+
+## Mover pedido a otra mesa
+
+`PATCH /api/admin/orders/:id/move-to-table` — permiso `pedidos.mover_mesa`.
+
+- **Body:** `{ targetTableId, items?: [{ orderItemId, quantity }] }` (sin `items` se mueve todo el pedido).
+- **Activación:** `ENABLE_TABLE_MOVE` de la caja del turno del pedido; si ese turno ya cerró, la del turno del usuario en la sucursal o la de cualquier turno abierto de la sucursal. El mozo no necesita turno propio. Sin ningún turno abierto en la sucursal: `No hay un turno de caja abierto en la sucursal`.
