@@ -6,6 +6,7 @@ import * as waiterOrderService from '../../../services/admin/config-local/waiter
 import * as orderService from '../../../services/admin/documents/order.service';
 import * as cashService from '../../../services/admin/documents/cash.service';
 import { getAuditActor } from '@/utils/helpers';
+import { ownTablesScope } from '../../../middleware/waiter-scope.middleware';
 
 /**
  * GET /api/admin/waiter/menu
@@ -113,7 +114,30 @@ export const getWaiterTablesStatusController = async (c: Context) => {
     const branchIdQuery = c.req.query('branchId');
     const branchId = branchIdQuery ? parseInt(branchIdQuery, 10) : undefined;
     const data = await tenantService.getWaiterTablesStatus(branchId);
-    return c.json({ success: true, data });
+
+    // "Meseros solo ven sus mesas": de las mesas de otros mozos solo se sabe que están ocupadas y quién las atiende
+    const ownUserId = await ownTablesScope(c, branchId);
+    if (ownUserId == null) return c.json({ success: true, data });
+    const scoped = data.map((table) => {
+      const order = table.activeOrder;
+      if (!order || order.waiterId === ownUserId) return table;
+      return {
+        ...table,
+        activeOrder: {
+          id: order.id,
+          status: order.status,
+          createdAt: order.createdAt,
+          waiterId: order.waiterId,
+          waiterName: order.waiterName,
+          trackingCode: null,
+          customerName: null,
+          orderFor: null,
+          total: null,
+          isForeign: true,
+        },
+      };
+    });
+    return c.json({ success: true, data: scoped });
   } catch (error: any) {
     return c.json(
       {

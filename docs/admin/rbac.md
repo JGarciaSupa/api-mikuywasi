@@ -63,6 +63,16 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
   - El pedido queda `cancelled` (revierte descarga y stock) con `motivo` (máx. 200), `deletedDate`, `deletedById` y `authorizedById`, igual que la anulación desde el POS.
 - Modo auditoría de `pedidos.operar_otros` (no bloquea): si un usuario **sin** ese permiso cobra (`POST /api/waiter/orders/:id/payments`), cobra una cuenta dividida (`PATCH .../:orderId/splits/:splitId/payment`) o emite comprobante (`POST /api/billing/documents`) sobre un pedido que no es suyo (no es el mozo, ni el dueño de la caja de origen, ni su caja abierta es la de origen o la de transferencia), y la operación responde OK, se registra en `audit_log` (módulo `pedidos`, `orderId` en `afterData`). Sirve para medir el uso real antes de decidir si se bloquea.
 
+## Mozo y jefe de mozos: "Meseros solo ven sus mesas"
+
+- Interruptor por sucursal `branches.waiters_own_tables_only` (migración `0099`, apagado por defecto; `PATCH /api/branches/:id` con `waitersOwnTablesOnly`). Apagado, nada cambia.
+- Encendido, quien **no** tiene `mozo.ver_todas_mesas` (los admins pasan siempre) solo opera los pedidos de mesa (`dine_in`) en los que es el mozo asignado (`orders.waiter_id`):
+  - `GET /api/waiter/tables/status`: las mesas de otros mozos llegan con `activeOrder.isForeign = true`, `waiterName` y sin `trackingCode`, `customerName`, `orderFor` ni `total`. Todas las mesas traen ahora `activeOrder.waiterId` y `waiterName`.
+  - `/api/waiter/orders/:id` y todas sus acciones (estado, ítems, anular, cobro, descuento, cambio de mozo): 403 "Esta mesa la atiende otro mozo".
+  - `PATCH /api/orders/:id/move-to-table`: 403 si el pedido es ajeno o si la mesa destino tiene un pedido de otro mozo ("La mesa destino la atiende otro mozo").
+- `mozo.ver_todas_mesas` ("Ver y atender todas las mesas") lo tienen `rol_jefe_mozo`, `rol_cajero`, `rol_admin` y `rol_admin_local`.
+- Rol base nuevo `rol_jefe_mozo` ("Jefe de mozos"): los permisos de `rol_mozo` más `mozo.ver_todas_mesas` y `pedidos.operar_otros`. El despliegue lo crea en todos los tenants (`rbac-add-missing --apply`); los usuarios deben volver a iniciar sesión para recibir el permiso.
+
 ## Exportar catálogos (acta de validación)
 
 - `menu.exportar_productos` y `almacen.exportar_insumos`: muestran el botón "Exportar" (Excel / PDF) en Productos e Insumos. No tienen endpoint propio: el panel genera el archivo con los listados existentes (`GET /api/products`, `GET` de insumos), que siguen protegidos por sus permisos de lectura. Por defecto solo los tienen `rol_admin` y `rol_admin_local` (no son reservados); se pueden dar a otros roles desde RBAC.

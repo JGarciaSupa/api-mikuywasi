@@ -694,6 +694,13 @@
       "when": 1793910000000,
       "tag": "0098_add_allow_cash_session_choice",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794000000000,
+      "tag": "0099_add_waiters_own_tables_only",
+      "breakpoints": true
     }
   ]
 }
