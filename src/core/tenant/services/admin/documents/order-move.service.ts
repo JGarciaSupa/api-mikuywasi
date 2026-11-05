@@ -7,9 +7,10 @@ import {
   orderSplits,
   tables,
   billingDocuments,
+  cashSessions,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
-import { getActiveSessionForUser } from './cash.service';
+import { getActiveSessionForBranch, getActiveSessionForUserInBranch } from './cash.service';
 import { resolveForRegister } from '../config-local/activation.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { reverseDischargeForOrder, autoDischargeOnOrderCreated } from '../warehouse/sales-discharge.service';
@@ -195,6 +196,21 @@ async function rebuildDischarge(orderId: string, actor: { userId?: number }) {
   }
 }
 
+// Turno abierto cuya caja decide si se puede mover (ver moveOrderToTable).
+async function resolveMoveSession(
+  db: ReturnType<typeof getTenantDb>,
+  orderSessionId: number | null,
+  userId: number,
+  branchId: number,
+) {
+  if (orderSessionId != null) {
+    const [own] = await db.select().from(cashSessions).where(eq(cashSessions.id, orderSessionId));
+    if (own?.status === 'open') return own;
+  }
+  const mine = await getActiveSessionForUserInBranch(userId, branchId).catch(() => null);
+  return mine ?? (await getActiveSessionForBranch(branchId));
+}
+
 // ── Servicio principal ───────────────────────────────────────────────────────
 
 export async function moveOrderToTable(input: MoveOrderInput) {
@@ -208,9 +224,10 @@ export async function moveOrderToTable(input: MoveOrderInput) {
   if (order.paymentStatus === 'paid') throw new Error('El pedido ya está cobrado');
   await assertNoBilling(db, orderId);
 
-  // Activación por caja del turno abierto del usuario.
-  const session = await getActiveSessionForUser(userId);
-  if (!session) throw new Error('Necesitas un turno de caja abierto');
+  // Activación por caja: la del turno del pedido; si ya cerró, la del turno del usuario en la
+  // sucursal o la de cualquier turno abierto de la sucursal (el mozo no tiene turno propio).
+  const session = await resolveMoveSession(db, order.cashSessionId, userId, order.branchId);
+  if (!session) throw new Error('No hay un turno de caja abierto en la sucursal');
   if (session.registerId != null) {
     const effective = await resolveForRegister(session.registerId);
     if (!effective[ENABLE_TABLE_MOVE]) throw new Error('Mover pedidos entre mesas no está habilitado para esta caja');
