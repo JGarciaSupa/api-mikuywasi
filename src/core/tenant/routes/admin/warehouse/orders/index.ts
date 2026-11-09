@@ -71,7 +71,8 @@ routes.get('/:id/void-ticket', getOrderVoidTicketController);
 routes.get('/:id', getOrderByIdController);
 routes.patch('/:id/status', updateOrderStatusController);
 routes.patch('/:id/payment-status', updateOrderPaymentStatusController);
-routes.patch('/:id/payment-method', updateOrderPaymentMethodController);
+// Cambiar la forma de pago de una venta cobrada (cajero, admin; no el mozo)
+routes.patch('/:id/payment-method', requirePermission('pedidos', 'pedidos.cambiar_forma_pago'), updateOrderPaymentMethodController);
 routes.patch('/:id/customer', updateOrderCustomerController);
 routes.patch('/:id/notes', updateOrderNotesController);
 routes.patch('/:id/order-for', updateOrderForController);
