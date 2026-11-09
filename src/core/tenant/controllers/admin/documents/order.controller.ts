@@ -274,7 +274,7 @@ export const updateOrderPaymentMethodController = async (c: Context) => {
     const status =
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('Contraseña') || error.message?.includes('autorizado') ? 403 :
-          error.message?.includes('cerrado') || error.message?.includes('Solo se puede') ? 422 :
+          error.message?.includes('cerrado') || error.message?.includes('ya cerró') || error.message?.includes('Solo se puede') ? 422 :
             error.message?.includes('motivo') ? 400 :
               500;
     return c.json({

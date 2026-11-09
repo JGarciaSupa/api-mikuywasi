@@ -7,7 +7,7 @@ import { getTenantDb, getTenantContext } from '../../../../../utils/tenant-conte
 const waiters = alias(users, 'waiters');
 const deletedByUsers = alias(users, 'deleted_by_users');
 const authorizedByUsers = alias(users, 'authorized_by_users');
-import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser, getActiveSessionForUserInBranch, updateOrderPaymentCashMovements } from './cash.service';
+import { recordOrderSaleIncome, recordOrderMultiPaymentIncome, getActiveSessionForUser, getActiveSessionForUserInBranch, updateOrderPaymentCashMovements, getOrderPaymentSession } from './cash.service';
 import { authorizeByPassword } from './security-auth.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
@@ -842,7 +842,13 @@ export async function updateOrderPaymentMethod(
   if (session?.registerId != null) {
     effective = await resolveForRegister(session.registerId);
   }
-  if (effective['PASSWORD_CHANGE_PAYMENT_METHOD']) {
+  // Venta de un turno ya cerrado: siempre con contraseña (la corrección va al turno abierto de quien cambia)
+  const { session: paidSession } = await getOrderPaymentSession(orderId, input.splitId ?? null, actor);
+  const paidSessionClosed = paidSession.status !== 'open';
+  if (paidSessionClosed && !input.password?.trim()) {
+    throw new Error('El turno donde se cobró ya cerró: el cambio requiere la contraseña de un supervisor (permiso "Autorizar cambio de forma de pago")');
+  }
+  if (effective['PASSWORD_CHANGE_PAYMENT_METHOD'] || paidSessionClosed) {
     const auth = await authorizeByPassword('seguridad.autorizar_cambiar_forma_pago', input.password ?? '');
     if (!auth) throw new Error('Contraseña de autorización inválida');
     authorizedById = auth.userId;
@@ -873,6 +879,7 @@ export async function updateOrderPaymentMethod(
       retentionAmount: (p.retentionAmount ?? 0).toFixed(2),
     })),
     actor,
+    paidSessionClosed ? authorizedById : null,
   );
 
   // 2. Actualizar order_payments

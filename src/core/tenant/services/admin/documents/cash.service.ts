@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
+import { eq, desc, asc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
 import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
@@ -1381,31 +1381,30 @@ export async function closeCashSession(
   return closed;
 }
 
-// Actualiza los movimientos de ingreso de caja por un cambio de forma de pago en un pedido cobrado.
-// Valida estrictamente que el turno de caja donde se cobró siga ABIERTO.
-export async function updateOrderPaymentCashMovements(
-  orderId: string,
-  splitId: number | null,
-  payments: Array<{
-    amount: number;
-    tipAmount?: number;
-    paymentMethod: string;
-    paymentMethodId?: number | null;
-    isCash?: boolean;
-    retentionPercentage?: string;
-    retentionAmount?: string;
-  }>,
-  actor?: AuditActor,
-): Promise<{ updated: boolean; reason?: string }> {
+type PaymentChangeLine = {
+  amount: number;
+  tipAmount?: number;
+  paymentMethod: string;
+  paymentMethodId?: number | null;
+  isCash?: boolean;
+  retentionPercentage?: string;
+  retentionAmount?: string;
+};
+
+// Turno donde se cobró la venta (o la cuenta) y sus ingresos en él. Las correcciones de cambios de
+// forma de pago anteriores (reference 'cambio_forma_pago', en otro turno) no cuentan como el cobro.
+export async function getOrderPaymentSession(orderId: string, splitId: number | null, actor?: AuditActor) {
   const db = getTenantDb();
-  const movements = await db
+  const movements = (await db
     .select()
     .from(cashMovements)
     .where(and(
       eq(cashMovements.orderId, orderId),
       splitId != null ? eq(cashMovements.splitId, splitId) : isNull(cashMovements.splitId),
       eq(cashMovements.movementType, 'income'),
-    ));
+    ))
+    .orderBy(asc(cashMovements.id)))
+    .filter((m) => m.reference !== 'cambio_forma_pago');
 
   let sessionId: number;
   if (movements.length > 0) {
@@ -1423,7 +1422,26 @@ export async function updateOrderPaymentCashMovements(
 
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
   if (!session) throw new Error('Sesión de caja no encontrada.');
-  if (session.status !== 'open') throw new Error('No se puede cambiar la forma de pago porque el turno de caja donde se cobró ya fue cerrado.');
+  return { session, movements: movements.filter((m) => m.sessionId === sessionId) };
+}
+
+// Actualiza los movimientos de ingreso de caja por un cambio de forma de pago en un pedido cobrado.
+// Turno abierto: se reemplazan sus ingresos. Turno cerrado (solo con `closedSessionAuthorizedById`,
+// la contraseña ya validada): su cuadre no se toca y la corrección va al turno abierto de quien cambia.
+export async function updateOrderPaymentCashMovements(
+  orderId: string,
+  splitId: number | null,
+  payments: PaymentChangeLine[],
+  actor?: AuditActor,
+  closedSessionAuthorizedById?: number | null,
+): Promise<{ updated: boolean; reason?: string; correctionSessionId?: number }> {
+  const db = getTenantDb();
+  const { session, movements } = await getOrderPaymentSession(orderId, splitId, actor);
+  const sessionId = session.id;
+  if (session.status !== 'open') {
+    if (!closedSessionAuthorizedById) throw new Error('No se puede cambiar la forma de pago porque el turno de caja donde se cobró ya fue cerrado.');
+    return recordClosedSessionPaymentCorrection(orderId, splitId, session, movements, payments, actor, closedSessionAuthorizedById);
+  }
 
   const [order] = await db
     .select({
@@ -1490,4 +1508,101 @@ export async function updateOrderPaymentCashMovements(
   });
 
   return { updated: true };
+}
+
+// Cambio de forma de pago de una venta cuyo turno ya cerró (autorizado por contraseña). El turno
+// cerrado conserva su cuadre y su liquidación; en el turno abierto de quien hace el cambio, en la
+// misma sucursal, sale lo cobrado con los métodos anteriores (egreso) y entra con los nuevos
+// (ingreso), como una devolución seguida de un cobro: el total no cambia, solo el reparto por método.
+async function recordClosedSessionPaymentCorrection(
+  orderId: string,
+  splitId: number | null,
+  closedSession: CashSessionRow,
+  previous: Array<typeof cashMovements.$inferSelect>,
+  payments: PaymentChangeLine[],
+  actor: AuditActor | undefined,
+  authorizedById: number,
+): Promise<{ updated: boolean; correctionSessionId: number }> {
+  const db = getTenantDb();
+  // Lo que sale es la forma de pago VIGENTE (order_payments, que refleja cambios anteriores);
+  // sin registros (ventas antiguas), los ingresos del turno cerrado.
+  const currentPayments = await db
+    .select()
+    .from(orderPayments)
+    .where(and(
+      eq(orderPayments.orderId, orderId),
+      splitId != null ? eq(orderPayments.splitId, splitId) : isNull(orderPayments.splitId),
+    ));
+  const outgoing = currentPayments.length > 0
+    ? currentPayments.map((p) => ({ amount: toNum(p.amount) + toNum(p.tipAmount), paymentMethod: p.paymentMethod, isCash: p.isCash }))
+    : previous.map((m) => ({ amount: toNum(m.amount), paymentMethod: m.paymentMethod, isCash: m.isCash ?? isCashMethod(m.paymentMethod) }));
+  if (outgoing.length === 0) {
+    throw new Error('No se encontraron los cobros de esta venta en el turno cerrado: no se puede corregir la forma de pago.');
+  }
+
+  const current = await getActiveSessionForUserInBranch(actor?.userId, closedSession.branchId);
+  if (!current) {
+    throw new Error('El turno donde se cobró ya cerró: abre tu turno de caja en esta sucursal para registrar la corrección de la forma de pago.');
+  }
+
+  const previousTotal = outgoing.reduce((acc, m) => acc + m.amount, 0);
+  const newTotal = payments.reduce((acc, p) => acc + toNum(p.amount) + toNum(p.tipAmount), 0);
+  if (Math.abs(previousTotal - newTotal) > 0.009) {
+    throw new Error(`El turno donde se cobró ya cerró: el nuevo reparto debe sumar lo mismo que se cobró (S/ ${previousTotal.toFixed(2)}).`);
+  }
+
+  const [order] = await db
+    .select({ trackingCode: orders.trackingCode, tableName: orders.tableName, deliveryType: orders.deliveryType })
+    .from(orders).where(eq(orders.id, orderId)).limit(1);
+  const base = `Cambio de forma de pago · ${formatOrderConcept(order, orderId)} (turno ${closedSession.code})`;
+
+  await db.transaction(async (tx) => {
+    const rows = [
+      ...outgoing.map((m) => ({
+        movementType: 'expense' as const,
+        concept: `${base} — sale ${m.paymentMethod ?? 'sin método'}`,
+        amount: round2(m.amount),
+        paymentMethod: m.paymentMethod,
+        isCash: m.isCash,
+      })),
+      ...await Promise.all(payments.map(async (p) => ({
+        movementType: 'income' as const,
+        concept: `${base} — entra ${p.paymentMethod}`,
+        amount: round2(toNum(p.amount) + toNum(p.tipAmount)),
+        paymentMethod: p.paymentMethod,
+        isCash: p.isCash ?? await resolveIsCashByMethod(p.paymentMethodId, p.paymentMethod),
+      }))),
+    ];
+
+    // Las propinas siguen en el turno original: aquí solo se corrige el medio de pago
+    const inserted = await tx.insert(cashMovements).values(rows.map((r) => ({
+      sessionId: current.id,
+      movementType: r.movementType,
+      concept: r.concept,
+      amount: r.amount,
+      tipAmount: round2(0),
+      paymentMethod: r.paymentMethod,
+      isCash: r.isCash,
+      orderId,
+      splitId,
+      reference: 'cambio_forma_pago',
+      createdBy: actor?.userName ?? 'sistema',
+    }))).returning();
+
+    await recomputeSessionTotals(tx, current.id);
+
+    await writeAuditLog({
+      tableName: 'cash_movements',
+      operation: 'INSERT',
+      recordId: inserted[0]?.id ?? null,
+      afterData: { orderId, splitId, closedSessionId: closedSession.id, correctionSessionId: current.id, authorizedById, movements: inserted },
+      userId: actor?.userId,
+      userName: actor?.userName,
+      module: 'caja',
+      description: `Cambio de forma de pago de la venta ${orderId} cobrada en el turno cerrado ${closedSession.code}: `
+        + `corrección en el turno ${current.code} (S/ ${previousTotal.toFixed(2)}), autorizada por el usuario ${authorizedById}`,
+    });
+  });
+
+  return { updated: true, correctionSessionId: current.id };
 }
