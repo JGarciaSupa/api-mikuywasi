@@ -136,7 +136,7 @@ Todo lo que cobró un cajero en los turnos de la sucursal con actividad en el ra
 
 ## Cambiar la forma de pago de una venta cobrada
 
-`PATCH /api/orders/:id/payment-method` — body `{ payments: [{ paymentMethodId, paymentMethod, amount, tipAmount? }], reason, password?, splitId? }`.
+`PATCH /api/orders/:id/payment-method` — permiso `pedidos.cambiar_forma_pago` (403 sin él; por defecto Cajero y administradores) — body `{ payments: [{ paymentMethodId, paymentMethod, amount, tipAmount? }], reason, password?, splitId? }`.
 
 - **Turno de cobro abierto:** se reemplazan sus ingresos de la venta y se recalcula el turno. Contraseña solo si la caja tiene la activación `PASSWORD_CHANGE_PAYMENT_METHOD`.
 - **Turno de cobro cerrado:** contraseña **siempre** obligatoria (de un usuario con `seguridad.autorizar_cambiar_forma_pago` o un `rol_admin`). El turno cerrado no se toca (su cuadre y su liquidación quedan como se cerraron). En el turno abierto de quien hace el cambio, en la misma sucursal, se registran movimientos con `reference = 'cambio_forma_pago'`: un **egreso** por cada pago vigente (`order_payments`) y un **ingreso** por cada pago nuevo, sin propina (la propina queda en el turno original). El nuevo reparto debe sumar lo mismo que lo cobrado (422 si no). Sin turno abierto propio en la sucursal: 422.

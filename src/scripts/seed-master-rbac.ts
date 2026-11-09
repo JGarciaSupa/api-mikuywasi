@@ -53,6 +53,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.mover_mesa', name: 'Mover pedidos entre mesas', description: 'Mover un pedido completo o productos seleccionados de una mesa a otra (fusiona si la destino tiene pedido).', order: 7 },
       { code: 'pedidos.operar_otros', name: 'Operar pedidos de otros usuarios o cajas', description: 'Retomar en el POS, cobrar y refacturar pedidos creados por otro usuario o en otra caja/turno (por ejemplo, si el cajero no está).', order: 8 },
       { code: 'pedidos.anular', name: 'Anular pedidos', description: 'Anular un pedido completo sin comprobante emitido (con comprobante se anula desde Documentos).', order: 9 },
+      { code: 'pedidos.cambiar_forma_pago', name: 'Cambiar forma de pago de ventas cobradas', description: 'Cambiar el medio de pago de una venta ya cobrada (desde Facturación). Si el turno donde se cobró ya cerró, además pide la contraseña de un supervisor.', order: 10 },
     ],
   },
   {
@@ -224,6 +225,7 @@ export const RBAC_ROLES: SeedRole[] = [
       'pedidos.cambiar_estado_pago',
       'pedidos.transferir',
       'pedidos.mover_mesa',
+      'pedidos.cambiar_forma_pago',
       'caja.ver_sesiones',
       'caja.abrir_sesion',
       'caja.cerrar_sesion',

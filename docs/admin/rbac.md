@@ -73,6 +73,7 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 - `mozo.ver_todas_mesas` ("Ver y atender todas las mesas") lo tienen `rol_jefe_mozo`, `rol_cajero`, `rol_admin` y `rol_admin_local`.
 - Rol base nuevo `rol_jefe_mozo` ("Jefe de mozos"): los permisos de `rol_mozo` más `mozo.ver_todas_mesas` y `pedidos.operar_otros`. El despliegue lo crea en todos los tenants (`rbac-add-missing --apply`); los usuarios deben volver a iniciar sesión para recibir el permiso.
 
+- `pedidos.cambiar_forma_pago` ("Cambiar forma de pago de ventas cobradas"): exigido por `PATCH /api/orders/:id/payment-method` (403 sin él). Por defecto `rol_cajero` y los administradores; el mozo no.
 - `seguridad.autorizar_cambiar_forma_pago` ("Autorizar cambio de forma de pago"): su contraseña autoriza cambiar la forma de pago de una venta; obligatoria si el turno donde se cobró ya cerró (ver `docs/admin/cash.md`). Por defecto solo los administradores.
 
 ## Exportar catálogos (acta de validación)
