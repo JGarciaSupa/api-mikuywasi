@@ -14,6 +14,7 @@ import {
   customerContacts,
   paymentMethods,
   users,
+  cashSessions,
 } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
@@ -1064,18 +1065,45 @@ export async function listDocuments(filters: ListDocumentsFilters) {
 
   const where = conditions.length ? and(...conditions) : undefined;
 
+  // Turno donde se cobró (misma regla que getOrderPaymentSession): el del primer ingreso en caja del
+  // pedido/cuenta, sin contar las correcciones por cambio de forma de pago; si no hay, orders.collected_session_id.
+  const paidSessionIdSql = sql<number | null>`coalesce((
+    select cm.session_id from cash_movements cm
+    where cm.order_id = ${billingDocuments.orderId}
+      and cm.split_id is not distinct from ${billingDocuments.splitId}
+      and cm.movement_type = 'income'
+      and cm.reference is distinct from 'cambio_forma_pago'
+    order by cm.id asc limit 1
+  ), ${orders.collectedSessionId})`;
+
   const baseQuery = db
     .select({
       ...getTableColumns(billingDocuments),
       orderTrackingCode: orders.trackingCode,
+      paidSessionId: paidSessionIdSql,
     })
     .from(billingDocuments)
     .leftJoin(orders, eq(billingDocuments.orderId, orders.id));
 
-  const data = await (where ? baseQuery.where(where) : baseQuery)
+  const rows = await (where ? baseQuery.where(where) : baseQuery)
     .limit(limit)
     .offset(offset)
     .orderBy(desc(billingDocuments.issuedAt));
+
+  const sessionIds = [...new Set(rows.map((r) => r.paidSessionId).filter((id) => id != null).map(Number))];
+  const sessionsById = new Map(
+    (sessionIds.length
+      ? await db
+          .select({ id: cashSessions.id, code: cashSessions.code, status: cashSessions.status })
+          .from(cashSessions)
+          .where(inArray(cashSessions.id, sessionIds))
+      : []
+    ).map((s) => [s.id, s]),
+  );
+  const data = rows.map(({ paidSessionId, ...doc }) => {
+    const session = paidSessionId != null ? sessionsById.get(Number(paidSessionId)) : undefined;
+    return { ...doc, sessionCode: session?.code ?? null, sessionStatus: session?.status ?? null };
+  });
 
   const countQuery = db
     .select({ total: count() })
