@@ -13,7 +13,9 @@ type TenantDb = Pick<ReturnType<typeof getTenantDb>, 'select' | 'insert' | 'upda
 
 export const DEFAULT_PAYMENT_METHOD = { name: 'Efectivo', isCash: true } as const;
 
-export const DEFAULT_REASONS: { type: 'order_cancel' | 'document_void'; description: string }[] = [
+type DefaultReasonType = 'order_cancel' | 'document_void' | 'payment_change';
+
+export const DEFAULT_REASONS: { type: DefaultReasonType; description: string }[] = [
   // Eliminación de productos de un pedido
   { type: 'order_cancel', description: 'Error al tomar el pedido' },
   { type: 'order_cancel', description: 'El cliente desistió' },
@@ -25,6 +27,11 @@ export const DEFAULT_REASONS: { type: 'order_cancel' | 'document_void'; descript
   { type: 'document_void', description: 'Error en el monto o los productos' },
   { type: 'document_void', description: 'Cambio de tipo de comprobante' },
   { type: 'document_void', description: 'Devolución al cliente' },
+  // Cambio de forma de pago de una venta cobrada
+  { type: 'payment_change', description: 'Error al registrar el medio de pago' },
+  { type: 'payment_change', description: 'El cliente cambió de medio de pago' },
+  { type: 'payment_change', description: 'Pago mixto mal registrado' },
+  { type: 'payment_change', description: 'Error en el monto por medio de pago' },
 ];
 
 // Comprobantes de cada caja nueva. La nota de crédito no se incluye: su serie se crea
@@ -44,16 +51,19 @@ export async function ensureDefaultPaymentMethods(db: TenantDb) {
   return 1;
 }
 
-/** Crea los motivos estándar de un tipo solo si la sucursal no tiene ninguno de ese tipo. */
-export async function ensureDefaultReasons(db: TenantDb, branchId: number) {
-  const types = [...new Set(DEFAULT_REASONS.map((r) => r.type))];
+/**
+ * Crea los motivos estándar de un tipo solo si la sucursal no tiene ninguno de ese tipo.
+ * `onlyTypes` limita los tipos a revisar (por defecto, todos los de DEFAULT_REASONS).
+ */
+export async function ensureDefaultReasons(db: TenantDb, branchId: number, onlyTypes?: DefaultReasonType[]) {
+  const types = [...new Set(DEFAULT_REASONS.map((r) => r.type))].filter((t) => !onlyTypes || onlyTypes.includes(t));
   const existing = await db
     .select({ type: reasons.type })
     .from(reasons)
     .where(and(eq(reasons.branchId, branchId), inArray(reasons.type, types)));
   const configured = new Set(existing.map((r) => r.type));
 
-  const toInsert = DEFAULT_REASONS.filter((r) => !configured.has(r.type)).map((r) => ({ ...r, branchId }));
+  const toInsert = DEFAULT_REASONS.filter((r) => types.includes(r.type) && !configured.has(r.type)).map((r) => ({ ...r, branchId }));
   if (toInsert.length > 0) await db.insert(reasons).values(toInsert);
   return toInsert.length;
 }
