@@ -33,6 +33,7 @@ import {
   getBillingReportSummaryController,
   getBillingReportBreakdownController,
   getBillingReportExportController,
+  getSalesRegisterController,
 } from '../../../../controllers/admin/documents/billing-reports.controller';
 
 const routes = new Hono();
@@ -43,6 +44,7 @@ routes.use('*', authMiddleware);
 routes.get('/reports/summary', getBillingReportSummaryController);
 routes.get('/reports/breakdown', getBillingReportBreakdownController);
 routes.get('/reports/export', getBillingReportExportController);
+routes.get('/reports/sales-register', getSalesRegisterController);
 
 // Series
 routes.get('/series', listSeriesController);

@@ -58,16 +58,20 @@ const tipsByWaiter = (f: UserReportFilters, userId?: number) => {
     .groupBy(orders.waiterId);
 };
 
+// El pedido entra a la caja que está abierta, así que cash_session_id es del cajero.
+// La venta del mozo es orders.waiter_id. Si el pedido no tiene mozo (kiosko, web),
+// se queda en el dueño del turno para no perderla.
+const waiterOwnerExpr = sql<number>`COALESCE(${orders.waiterId}, ${cashSessions.userId})`;
+
 /**
- * Ventas como mozo: pedidos cuyo turno generador (cash_session_id)
- * pertenece al usuario. Excluye cancelados.
+ * Ventas como mozo: pedidos asignados a este usuario. Excluye cancelados.
  */
 const waiterOrderConditions = (userId: number, f: UserReportFilters) => [
   eq(orders.branchId, f.branchId),
   gte(orders.createdAt, f.startDate),
   lte(orders.createdAt, f.endDate),
   ne(orders.status, 'cancelled'),
-  eq(cashSessions.userId, userId),
+  sql`${waiterOwnerExpr} = ${userId}`,
 ];
 
 /**
@@ -103,7 +107,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       gte(orders.createdAt, filters.startDate),
       lte(orders.createdAt, filters.endDate),
       eq(orders.status, 'cancelled'),
-      eq(cashSessions.userId, userId),
+      sql`${waiterOwnerExpr} = ${userId}`,
     ));
 
   // Serie diaria de mis ventas.
@@ -281,9 +285,9 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
   const db = getTenantDb();
   const totalExpr = sql<string>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`;
 
-  // Ventas como mozo por usuario
+  // Ventas como mozo por usuario (quien tomó el pedido, no quien tiene la caja)
   const sales = await db
-    .select({ userId: cashSessions.userId, ordersCount: count(), total: totalExpr })
+    .select({ userId: waiterOwnerExpr, ordersCount: count(), total: totalExpr })
     .from(orders)
     .innerJoin(cashSessions, eq(orders.cashSessionId, cashSessions.id))
     .where(and(
@@ -292,7 +296,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       lte(orders.createdAt, filters.endDate),
       ne(orders.status, 'cancelled'),
     ))
-    .groupBy(cashSessions.userId);
+    .groupBy(sql`1`);
 
   // Cobros (ingresos de caja) y diferencias por cajero
   const cash = await db
@@ -405,7 +409,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
   };
 
   for (const row of sales) {
-    const entry = ensure(row.userId);
+    const entry = ensure(Number(row.userId));
     if (!entry) continue;
     entry.salesCount = row.ordersCount;
     entry.salesTotal = roundMoney(toNum(row.total));

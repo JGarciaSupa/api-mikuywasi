@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
+import { hasPermissionLive } from '@/utils/permissions';
 import * as reportsService from '../../../services/admin/documents/billing-reports.service';
 import type { BillingReportFilters } from '../../../services/admin/documents/billing-reports.service';
 
@@ -97,3 +98,13 @@ export const getBillingReportExportController = handle(
   (filters) => reportsService.getBillingReportExport(filters),
   'Error al obtener los datos de exportación',
 );
+
+export const getSalesRegisterController = async (c: Context) => {
+  if (!(await hasPermissionLive(c, 'facturacion.ver_registro_ventas'))) {
+    return c.json({ success: false, message: 'No tienes permiso para el registro de ventas' }, 403);
+  }
+  return handle(
+    (filters) => reportsService.getSalesRegister(filters),
+    'Error al obtener el registro de ventas',
+  )(c);
+};
