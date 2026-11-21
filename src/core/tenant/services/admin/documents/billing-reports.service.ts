@@ -3,6 +3,7 @@ import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull, inArray } from 'd
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { resolveRecipeUnitCosts } from '../../client/tenant.service';
 import { resolveTipoAfectacion, splitSunatLineTaxes, type SnapshotLike } from '../../shared/taxes.service';
+import { receiptCodeFromDocumentType } from './billing-series.service';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -365,12 +366,6 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
   };
 };
 
-const SUNAT_DOC_TYPE: Record<string, string> = {
-  factura: '01',
-  boleta: '03',
-  nota_de_credito: '07',
-};
-
 const WEEKDAY_ES: Record<string, string> = {
   Sun: 'dom.', Mon: 'lun.', Tue: 'mar.', Wed: 'mié.', Thu: 'jue.', Fri: 'vie.', Sat: 'sáb.',
 };
@@ -466,8 +461,9 @@ const addAmounts = (target: SalesRegisterAmounts, row: SalesRegisterAmounts) => 
 };
 
 /**
- * Registro de ventas e ingresos. Factura, boleta y nota de crédito emitidas.
- * La nota de venta y los anulados no entran. La nota de crédito va en negativo.
+ * Registro de ventas. Entran todos los comprobantes emitidos de una venta:
+ * factura, boleta, nota de venta y nota de crédito. Los anulados no entran.
+ * La nota de crédito va en negativo.
  * El desglose sale del tax snapshot de cada ítem, el mismo que usa el comprobante SUNAT.
  */
 export const getSalesRegister = async (filters: BillingReportFilters): Promise<SalesRegisterReport> => {
@@ -499,7 +495,7 @@ export const getSalesRegister = async (filters: BillingReportFilters): Promise<S
       gte(billingDocuments.issuedAt, filters.startDate),
       lte(billingDocuments.issuedAt, filters.endDate),
       eq(billingDocuments.status, 'issued'),
-      inArray(billingDocuments.documentType, ['factura', 'boleta', 'nota_de_credito']),
+      inArray(billingDocuments.documentType, ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito']),
     ))
     .orderBy(asc(billingDocuments.issuedAt), asc(billingDocuments.series), asc(billingDocuments.sequential))
     .limit(EXPORT_MAX_ROWS + 1);
@@ -596,7 +592,7 @@ export const getSalesRegister = async (filters: BillingReportFilters): Promise<S
       issuedDate: issuedParts.date,
       weekday: issuedParts.weekday,
       paymentDate: limaParts(paymentSource).date,
-      sunatType: SUNAT_DOC_TYPE[doc.documentType] ?? doc.documentType,
+      sunatType: receiptCodeFromDocumentType(doc.documentType),
       series: doc.series,
       number: doc.sequential,
       buyerDocType: sunatIdentityType(doc.buyerDocType),
@@ -605,7 +601,7 @@ export const getSalesRegister = async (filters: BillingReportFilters): Promise<S
       currency: doc.currency,
       exchangeRate: rateByDate.get(issuedParts.date) ?? null,
       refDate: refParts?.date ?? null,
-      refType: ref ? (SUNAT_DOC_TYPE[ref.documentType] ?? null) : null,
+      refType: ref ? receiptCodeFromDocumentType(ref.documentType) : null,
       refSeries: ref?.series ?? null,
       refNumber: ref?.sequential ?? null,
       ...signed,
