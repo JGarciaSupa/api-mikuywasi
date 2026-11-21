@@ -1,7 +1,9 @@
-import { billingDocuments, billingDocumentLines, orderItems, orders, users } from '../../../../../db/tenant/schema';
-import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull } from 'drizzle-orm';
+import { billingDocuments, billingDocumentLines, orderItems, orders, users, branches, exchangeRate } from '../../../../../db/tenant/schema';
+import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull, inArray } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { resolveRecipeUnitCosts } from '../../client/tenant.service';
+import { resolveTipoAfectacion, splitSunatLineTaxes, type SnapshotLike } from '../../shared/taxes.service';
+import { receiptCodeFromDocumentType } from './billing-series.service';
 
 const toNum = (value: unknown) => {
   const num = Number(value ?? 0);
@@ -362,4 +364,305 @@ export const getBillingReportExport = async (filters: BillingReportFilters) => {
     lines,
     truncated: documents.length === EXPORT_MAX_ROWS || lines.length === EXPORT_MAX_ROWS,
   };
+};
+
+const WEEKDAY_ES: Record<string, string> = {
+  Sun: 'dom.', Mon: 'lun.', Tue: 'mar.', Wed: 'mié.', Thu: 'jue.', Fri: 'vie.', Sat: 'sáb.',
+};
+
+const limaParts = (value: Date) => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+    }).formatToParts(value).map((part) => [part.type, part.value]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday: WEEKDAY_ES[parts.weekday] ?? parts.weekday,
+  };
+};
+
+const sunatIdentityType = (code: string | null) => {
+  const value = (code ?? '').trim().toUpperCase();
+  if (value === 'RUC' || value === '6' || value === '06') return '6';
+  if (value === 'DNI' || value === '1' || value === '01') return '1';
+  if (value === 'CE' || value === '4' || value === '04') return '4';
+  if (value === 'PASAPORTE' || value === '7' || value === '07') return '7';
+  if (/^\d$/.test(value)) return value;
+  return '0';
+};
+
+export interface SalesRegisterAmounts {
+  exportValue: number;
+  taxableBase: number;
+  exempt: number;
+  unaffected: number;
+  isc: number;
+  igv: number;
+  icbper: number;
+  otherCharges: number;
+  total: number;
+}
+
+export interface SalesRegisterRow extends SalesRegisterAmounts {
+  correlativo: number;
+  issuedDate: string;
+  weekday: string;
+  paymentDate: string;
+  sunatType: string;
+  series: string;
+  number: number;
+  buyerDocType: string;
+  buyerDocNumber: string;
+  buyerName: string;
+  currency: string;
+  exchangeRate: number | null;
+  refDate: string | null;
+  refType: string | null;
+  refSeries: string | null;
+  refNumber: number | null;
+}
+
+export interface SalesRegisterReport {
+  ruc: string | null;
+  legalName: string | null;
+  tradeName: string | null;
+  truncated: boolean;
+  rows: SalesRegisterRow[];
+  totals: SalesRegisterAmounts;
+}
+
+const emptyAmounts = (): SalesRegisterAmounts => ({
+  exportValue: 0,
+  taxableBase: 0,
+  exempt: 0,
+  unaffected: 0,
+  isc: 0,
+  igv: 0,
+  icbper: 0,
+  otherCharges: 0,
+  total: 0,
+});
+
+const addAmounts = (target: SalesRegisterAmounts, row: SalesRegisterAmounts) => {
+  target.exportValue = roundMoney(target.exportValue + row.exportValue);
+  target.taxableBase = roundMoney(target.taxableBase + row.taxableBase);
+  target.exempt = roundMoney(target.exempt + row.exempt);
+  target.unaffected = roundMoney(target.unaffected + row.unaffected);
+  target.isc = roundMoney(target.isc + row.isc);
+  target.igv = roundMoney(target.igv + row.igv);
+  target.icbper = roundMoney(target.icbper + row.icbper);
+  target.otherCharges = roundMoney(target.otherCharges + row.otherCharges);
+  target.total = roundMoney(target.total + row.total);
+};
+
+/**
+ * Registro de ventas. Entran todos los comprobantes emitidos de una venta:
+ * factura, boleta, nota de venta y nota de crédito. Los anulados no entran.
+ * La nota de crédito va en negativo.
+ * El desglose sale del tax snapshot de cada ítem, el mismo que usa el comprobante SUNAT.
+ */
+export const getSalesRegister = async (filters: BillingReportFilters): Promise<SalesRegisterReport> => {
+  const db = getTenantDb();
+
+  const documents = await db
+    .select({
+      id: billingDocuments.id,
+      documentType: billingDocuments.documentType,
+      series: billingDocuments.series,
+      sequential: billingDocuments.sequential,
+      issuedAt: billingDocuments.issuedAt,
+      paymentCollectedAt: billingDocuments.paymentCollectedAt,
+      buyerDocType: billingDocuments.buyerDocType,
+      buyerDocNumber: billingDocuments.buyerDocNumber,
+      buyerName: billingDocuments.buyerName,
+      subtotal: billingDocuments.subtotal,
+      taxRate: billingDocuments.taxRate,
+      taxAmount: billingDocuments.taxAmount,
+      total: billingDocuments.total,
+      currency: billingDocuments.currency,
+      referencedDocumentId: billingDocuments.referencedDocumentId,
+      emisorRuc: billingDocuments.emisorRuc,
+      emisorName: billingDocuments.emisorName,
+    })
+    .from(billingDocuments)
+    .where(and(
+      eq(billingDocuments.branchId, filters.branchId),
+      gte(billingDocuments.issuedAt, filters.startDate),
+      lte(billingDocuments.issuedAt, filters.endDate),
+      eq(billingDocuments.status, 'issued'),
+      inArray(billingDocuments.documentType, ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito']),
+    ))
+    .orderBy(asc(billingDocuments.issuedAt), asc(billingDocuments.series), asc(billingDocuments.sequential))
+    .limit(EXPORT_MAX_ROWS + 1);
+
+  const truncated = documents.length > EXPORT_MAX_ROWS;
+  const page = truncated ? documents.slice(0, EXPORT_MAX_ROWS) : documents;
+
+  const [branch] = await db
+    .select({
+      name: branches.name,
+      fiscalId: branches.fiscalId,
+      fiscalName: branches.fiscalName,
+    })
+    .from(branches)
+    .where(eq(branches.id, filters.branchId));
+
+  const docIds = page.map((doc) => doc.id);
+  const lineRows = docIds.length === 0 ? [] : await db
+    .select({
+      documentId: billingDocumentLines.documentId,
+      subtotal: billingDocumentLines.subtotal,
+      taxAmount: billingDocumentLines.taxAmount,
+      taxSnapshot: orderItems.taxSnapshot,
+    })
+    .from(billingDocumentLines)
+    .leftJoin(orderItems, eq(billingDocumentLines.orderItemId, orderItems.id))
+    .where(inArray(billingDocumentLines.documentId, docIds));
+
+  const linesByDoc = new Map<number, typeof lineRows>();
+  for (const line of lineRows) {
+    const list = linesByDoc.get(line.documentId) ?? [];
+    list.push(line);
+    linesByDoc.set(line.documentId, list);
+  }
+
+  const refIds = Array.from(new Set(
+    page.map((doc) => doc.referencedDocumentId).filter((id): id is number => id != null),
+  ));
+  const refRows = refIds.length === 0 ? [] : await db
+    .select({
+      id: billingDocuments.id,
+      documentType: billingDocuments.documentType,
+      series: billingDocuments.series,
+      sequential: billingDocuments.sequential,
+      issuedAt: billingDocuments.issuedAt,
+    })
+    .from(billingDocuments)
+    .where(inArray(billingDocuments.id, refIds));
+  const refById = new Map(refRows.map((row) => [row.id, row]));
+
+  const rateRows = await db
+    .select({
+      date: exchangeRate.dateExchangeRate,
+      sell: exchangeRate.sellExchangeRate,
+      official: exchangeRate.officialExchangeRate,
+    })
+    .from(exchangeRate)
+    .where(and(
+      eq(exchangeRate.branchId, filters.branchId),
+      eq(exchangeRate.currencyFrom, 'USD'),
+      eq(exchangeRate.currencyTo, 'PEN'),
+    ));
+  const rateByDate = new Map<string, number>();
+  for (const rate of rateRows) {
+    const value = toNum(rate.sell) || toNum(rate.official);
+    if (value > 0) rateByDate.set(String(rate.date).slice(0, 10), value);
+  }
+
+  const totals = emptyAmounts();
+  const rows: SalesRegisterRow[] = page.map((doc, index) => {
+    const issued = doc.issuedAt ? new Date(doc.issuedAt) : new Date();
+    const issuedParts = limaParts(issued);
+    const paymentSource = doc.paymentCollectedAt ? new Date(doc.paymentCollectedAt) : issued;
+    const sign = doc.documentType === 'nota_de_credito' ? -1 : 1;
+    const amounts = documentAmounts(doc, linesByDoc.get(doc.id) ?? []);
+    const signed: SalesRegisterAmounts = {
+      exportValue: roundMoney(amounts.exportValue * sign),
+      taxableBase: roundMoney(amounts.taxableBase * sign),
+      exempt: roundMoney(amounts.exempt * sign),
+      unaffected: roundMoney(amounts.unaffected * sign),
+      isc: roundMoney(amounts.isc * sign),
+      igv: roundMoney(amounts.igv * sign),
+      icbper: roundMoney(amounts.icbper * sign),
+      otherCharges: roundMoney(amounts.otherCharges * sign),
+      total: roundMoney(amounts.total * sign),
+    };
+    addAmounts(totals, signed);
+
+    const ref = doc.referencedDocumentId != null ? refById.get(doc.referencedDocumentId) : undefined;
+    const refParts = ref?.issuedAt ? limaParts(new Date(ref.issuedAt)) : null;
+
+    return {
+      correlativo: index + 1,
+      issuedDate: issuedParts.date,
+      weekday: issuedParts.weekday,
+      paymentDate: limaParts(paymentSource).date,
+      sunatType: receiptCodeFromDocumentType(doc.documentType),
+      series: doc.series,
+      number: doc.sequential,
+      buyerDocType: sunatIdentityType(doc.buyerDocType),
+      buyerDocNumber: doc.buyerDocNumber ?? '',
+      buyerName: doc.buyerName ?? '',
+      currency: doc.currency,
+      exchangeRate: rateByDate.get(issuedParts.date) ?? null,
+      refDate: refParts?.date ?? null,
+      refType: ref ? receiptCodeFromDocumentType(ref.documentType) : null,
+      refSeries: ref?.series ?? null,
+      refNumber: ref?.sequential ?? null,
+      ...signed,
+    };
+  });
+
+  const emisor = page.find((doc) => doc.emisorRuc || doc.emisorName);
+
+  return {
+    ruc: branch?.fiscalId ?? emisor?.emisorRuc ?? null,
+    legalName: branch?.fiscalName ?? emisor?.emisorName ?? null,
+    tradeName: branch?.name ?? null,
+    truncated,
+    rows,
+    totals,
+  };
+};
+
+const documentAmounts = (
+  doc: { subtotal: string; taxRate: string; taxAmount: string; total: string },
+  lines: { subtotal: string; taxAmount: string; taxSnapshot: SnapshotLike[] | null }[],
+): SalesRegisterAmounts => {
+  const amounts = emptyAmounts();
+  const withSnapshot = lines.filter((line) => line.taxSnapshot && line.taxSnapshot.length > 0);
+
+  if (withSnapshot.length === 0) {
+    const subtotal = toNum(doc.subtotal);
+    const tax = toNum(doc.taxAmount);
+    if (toNum(doc.taxRate) > 0 || tax > 0) {
+      amounts.taxableBase = subtotal;
+      amounts.igv = tax;
+    } else {
+      amounts.exempt = subtotal;
+    }
+    amounts.total = toNum(doc.total);
+    return amounts;
+  }
+
+  for (const line of lines) {
+    const snapshot = line.taxSnapshot;
+    const subtotal = toNum(line.subtotal);
+    if (!snapshot?.length) {
+      const tax = toNum(line.taxAmount);
+      if (tax > 0) {
+        amounts.taxableBase = roundMoney(amounts.taxableBase + subtotal);
+        amounts.igv = roundMoney(amounts.igv + tax);
+      } else {
+        amounts.exempt = roundMoney(amounts.exempt + subtotal);
+      }
+      continue;
+    }
+    const split = splitSunatLineTaxes(snapshot);
+    if (resolveTipoAfectacion(snapshot) === '20') {
+      amounts.exempt = roundMoney(amounts.exempt + subtotal);
+    } else {
+      amounts.taxableBase = roundMoney(amounts.taxableBase + subtotal);
+    }
+    amounts.igv = roundMoney(amounts.igv + split.igv);
+    amounts.icbper = roundMoney(amounts.icbper + split.icbper);
+    amounts.otherCharges = roundMoney(amounts.otherCharges + split.serviceCharge);
+  }
+  amounts.total = toNum(doc.total);
+  return amounts;
 };

@@ -106,3 +106,64 @@ Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal s
 ## Motivos de cambio de forma de pago
 
 El catálogo `reasons` admite el tipo `payment_change` («Cambio de forma de pago»). El admin lo usa en «Cambiar forma de pago»; a la API sigue llegando `reason` como texto.
+
+## GET `/api/billing/reports/sales-register`
+
+Registro de ventas e ingresos de una sucursal. El admin lo descarga en Excel desde Reportes de facturación.
+
+- **Auth:** `authMiddleware` + `facturacion.ver_registro_ventas` (`hasPermissionLive`). `rol_admin` pasa, como en el resto de la API. Sin el permiso: `403` `{ success: false, message: "No tienes permiso para el registro de ventas" }`.
+- **Tenant:** cabecera `X-Tenant-Slug`.
+- **Query obligatoria:** `branchId` (numérico), `startDate`, `endDate` (fechas válidas; `startDate` no puede ser mayor que `endDate`). Si faltan o son inválidas: `400`.
+- Si se envían, también se validan `documentType`, `sunatStatus`, `seriesId` y `granularity`, pero este reporte no filtra por ellos.
+
+Entran comprobantes con `status = issued` de tipo factura (`01`), boleta (`03`), nota de venta (`00`) y nota de crédito (`07`). Los anulados y los borradores no entran. La nota de crédito va en negativo. Tope de 20 000 filas; si hay más, `truncated` es `true` y se devuelven las primeras 20 000, ordenadas por fecha, serie y número.
+
+El desglose sale del `taxSnapshot` de cada ítem, el mismo criterio que el comprobante SUNAT. Base gravada e IGV cuando la afectación no es `20`; exonerada cuando es `20`. ICBPER y el recargo al consumo van en `icbper` y `otherCharges`. Inafecta, ISC y valor de exportación quedan en `0`. Si la línea no tiene snapshot, el impuesto del documento se trata como IGV cuando hay tasa o monto, y si no, la base va a exonerada.
+
+Fechas en `America/Lima`, formato `YYYY-MM-DD`. `paymentDate` es la fecha de cobro y, si no hay, la de emisión. `exchangeRate` es la venta o el oficial USD→PEN de esa fecha en la sucursal; si no existe, `null`. El emisor sale de `fiscalId` / `fiscalName` de la sucursal y, si faltan, del snapshot del comprobante. `tradeName` es el nombre de la sucursal. El documento del cliente se traduce a código SUNAT: RUC `6`, DNI `1`, CE `4`, pasaporte `7`, otro `0`.
+
+### Respuesta `200`
+
+```jsonc
+{
+  "success": true,
+  "data": {
+    "ruc": "20123456789",
+    "legalName": "RAZÓN SOCIAL",
+    "tradeName": "Sucursal",
+    "truncated": false,
+    "rows": [
+      {
+        "correlativo": 1,
+        "issuedDate": "2026-11-01",
+        "weekday": "dom.",
+        "paymentDate": "2026-11-01",
+        "sunatType": "03",
+        "series": "B001",
+        "number": 12,
+        "buyerDocType": "1",
+        "buyerDocNumber": "12345678",
+        "buyerName": "CLIENTE",
+        "currency": "PEN",
+        "exchangeRate": null,
+        "exportValue": 0,
+        "taxableBase": 100,
+        "exempt": 0,
+        "unaffected": 0,
+        "isc": 0,
+        "igv": 18,
+        "icbper": 0,
+        "otherCharges": 0,
+        "total": 118,
+        "refDate": null,
+        "refType": null,
+        "refSeries": null,
+        "refNumber": null
+      }
+    ],
+    "totals": { /* misma forma que una fila, sin datos del comprobante; suma de rows */ }
+  }
+}
+```
+
+Los importes van como número con dos decimales. En una nota de crédito, `refDate`, `refType`, `refSeries` y `refNumber` apuntan al comprobante referenciado. El permiso no se asigna a ningún rol base: gerencia lo marca en Roles y permisos.

@@ -38,5 +38,6 @@ routes.delete('/tenants/:tenantId/feature-grants', validateRevokeFeatures, rbac.
 routes.post('/tenants/:tenantId/role-grants', validateGrantRoles, rbac.grantRoles);
 routes.delete('/tenants/:tenantId/role-grants', validateRevokeRoles, rbac.revokeRoles);
 routes.post('/tenants/:tenantId/sync', rbac.triggerFullSync);
+routes.post('/sync-missing', rbac.syncMissingPermissions);
 
 export default routes;

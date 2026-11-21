@@ -5,6 +5,7 @@ import {
   syncPermissionsCatalog, syncBaseRolesToTenant, fullSyncTenant,
   grantAndSyncToAllTenants, syncToAllGrantedTenants,
 } from '../services/rbac-sync.service';
+import { syncMissingRbac } from '../services/rbac-add-missing.service';
 
 function jsonError(c: Context, e: unknown, msg: string) {
   console.error(msg, e);
@@ -195,4 +196,18 @@ export const triggerFullSync = async (c: Context) => {
     await fullSyncTenant(tenantId);
     return c.json({ success: true, message: `Sync completo ejecutado para tenant ${tenantId}` });
   } catch (e) { return jsonError(c, e, 'Error en sync'); }
+};
+
+export const syncMissingPermissions = async (c: Context) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as { apply?: boolean }));
+    const data = await syncMissingRbac({ apply: body?.apply === true });
+    return c.json({
+      success: true,
+      message: data.applied
+        ? 'Permisos nuevos cargados. Los usuarios deben volver a iniciar sesión.'
+        : 'Revisión lista. Todavía no se escribió nada.',
+      data,
+    });
+  } catch (e) { return jsonError(c, e, 'Error al cargar permisos nuevos'); }
 };
