@@ -118,6 +118,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'facturacion.gestionar_series', name: 'Gestionar series', description: 'Administrar series de numeración.', order: 5 },
       { code: 'facturacion.gestionar_certificado', name: 'Gestionar certificado', description: 'Subir y gestionar el certificado digital.', order: 6 },
       { code: 'facturacion.pago_pendiente', name: 'Ventas con pago pendiente', description: 'Marcar una venta como "cliente no pagó" y luego como cobrada (requiere activarlo en la sucursal).', order: 7 },
+      { code: 'facturacion.ver_registro_ventas', name: 'Registro de ventas e ingresos', description: 'Descargar el registro de ventas e ingresos (facturas, boletas y notas de crédito). Lo asigna gerencia a su rol.', order: 8 },
     ],
   },
   {
@@ -201,18 +202,26 @@ export const RBAC_ACTIONS: SeedAction[] = [
   },
 ];
 
+// Entra al catálogo, pero ningún rol base lo trae. Gerencia lo marca en su rol.
+const UNASSIGNED_PERMISSION_CODES = ['facturacion.ver_registro_ventas'];
+
+const assignableCodes = (codes: string[]) =>
+  codes.filter((code) => !UNASSIGNED_PERMISSION_CODES.includes(code));
+
 export const RBAC_ROLES: SeedRole[] = [
   {
     code: 'rol_admin',
     name: 'Administrador',
     description: 'Acceso completo a todos los módulos del tenant.',
-    subActionCodes: RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code)),
+    subActionCodes: assignableCodes(RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code))),
   },
   {
     code: 'rol_admin_local',
     name: 'Administrador del local',
     description: 'Administra el restaurante sin las opciones reservadas al implementador.',
-    subActionCodes: RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code)).filter((code) => !isReservedPermission(code)),
+    subActionCodes: assignableCodes(
+      RBAC_ACTIONS.flatMap((a) => a.subActions.map((s) => s.code)).filter((code) => !isReservedPermission(code)),
+    ),
   },
   {
     code: 'rol_cajero',
