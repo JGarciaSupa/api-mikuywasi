@@ -134,6 +134,12 @@ export interface CreateBranchInput {
   sharedCashSession?: boolean;
   allowCashSessionChoice?: boolean;
   waitersOwnTablesOnly?: boolean;
+  qrOrderingEnabled?: boolean;
+  qrPinRequired?: boolean;
+  qrEscalationSeconds?: number;
+  qrSessionExpireHours?: number;
+  qrCallCooldownSeconds?: number;
+  qrSalesChannelId?: number | null;
 }
 
 // Helper: convierte strings vacíos a null (PostgreSQL no acepta '' en columnas decimal/varchar nullable)
@@ -259,6 +265,12 @@ export async function updateBranch(id: number, data: Partial<CreateBranchInput>)
   if (data.sharedCashSession !== undefined) updateData.sharedCashSession = data.sharedCashSession;
   if (data.allowCashSessionChoice !== undefined) updateData.allowCashSessionChoice = data.allowCashSessionChoice;
   if (data.waitersOwnTablesOnly !== undefined) updateData.waitersOwnTablesOnly = data.waitersOwnTablesOnly;
+  if (data.qrOrderingEnabled !== undefined) updateData.qrOrderingEnabled = data.qrOrderingEnabled;
+  if (data.qrPinRequired !== undefined) updateData.qrPinRequired = data.qrPinRequired;
+  if (data.qrEscalationSeconds !== undefined) updateData.qrEscalationSeconds = data.qrEscalationSeconds;
+  if (data.qrSessionExpireHours !== undefined) updateData.qrSessionExpireHours = data.qrSessionExpireHours;
+  if (data.qrCallCooldownSeconds !== undefined) updateData.qrCallCooldownSeconds = data.qrCallCooldownSeconds;
+  if (data.qrSalesChannelId !== undefined) updateData.qrSalesChannelId = data.qrSalesChannelId;
 
   return await db.transaction(async (tx) => {
     // Si estamos marcando esta sucursal como principal (isMain: true)

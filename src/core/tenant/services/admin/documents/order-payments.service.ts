@@ -4,6 +4,7 @@ import { getTenantDb } from '@/utils/tenant-context';
 import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { recordOrderMultiPaymentIncome, getActiveSessionForUserInBranch } from './cash.service';
 import type { AuditActor } from '../warehouse/types';
+import { closeOpenTableSession } from '../../client/table-session-lifecycle';
 
 export interface OrderPaymentLineInput {
   paymentMethodId: number;
@@ -122,6 +123,7 @@ export async function payOrderWithMultiplePayments(
       statusUpdatedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(tables.id, order.tableId));
+    await closeOpenTableSession({ tableId: order.tableId, orderId, reason: 'paid', userId: actor?.userId });
   }
 
   return { order: updated, payments: rows };

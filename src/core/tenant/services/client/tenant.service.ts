@@ -11,7 +11,7 @@ import {
   resolveEffectiveTaxes,
   resolveLineTaxes,
 } from '../shared/taxes.service';
-import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
+import { getCachedTableStatusesMap, presentTableStatus } from '@/core/master/services/table-statuses.service';
 
 
 function toNum(v: unknown) {
@@ -325,17 +325,13 @@ export const getWaiterTablesStatus = async (branchId?: number) => {
   }
 
   const statusesMap = await getCachedTableStatusesMap();
-  const defaultStatus = statusesMap.get('available') || {
-    code: 'available',
-    name: 'Disponible',
-    colorHex: '#10B981',
-    bgColorClass: 'bg-emerald-500',
-    isOperational: true
-  };
 
   return allTables.map((table) => {
     const activeOrder = activeByTableId.get(table.id) ?? null;
-    const s = statusesMap.get(table.statusCode) || defaultStatus;
+    const code = activeOrder && (!table.statusCode || table.statusCode === 'available' || table.statusCode === 'dirty')
+      ? 'in_kitchen'
+      : table.statusCode;
+    const s = presentTableStatus(statusesMap, code);
     return {
       ...table,
       status: {

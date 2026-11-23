@@ -13,6 +13,7 @@ import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
 import { restoreProductStockForOrder } from '../../shared/product-stock.service';
+import { closeOpenTableSession } from '../../client/table-session-lifecycle';
 import { resolveForRegister } from '../config-local/activation.service';
 
 const ENABLE_ORDER_TRANSFER = 'ENABLE_ORDER_TRANSFER';
@@ -437,6 +438,7 @@ export const updateOrderStatus = async (id: string, status: string) => {
         statusUpdatedAt: new Date(),
         updatedAt: new Date()
       }).where(eq(tables.id, currentOrder.tableId));
+      await closeOpenTableSession({ tableId: currentOrder.tableId, orderId: id, reason: 'cancelled' });
     }
   }
 
@@ -634,6 +636,7 @@ export const updateOrderPaymentStatus = async (
         statusUpdatedAt: new Date(),
         updatedAt: new Date()
       }).where(eq(tables.id, order.tableId));
+      await closeOpenTableSession({ tableId: order.tableId, orderId: id, reason: 'paid', userId: actor?.userId });
     } else if (paymentStatus === 'review_pending') {
       await db.update(tables).set({
         statusCode: 'payment_pending',

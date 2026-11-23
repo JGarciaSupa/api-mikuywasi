@@ -14,6 +14,7 @@ import { getActiveSessionForBranch, getActiveSessionForUserInBranch } from './ca
 import { resolveForRegister } from '../config-local/activation.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import { reverseDischargeForOrder, autoDischargeOnOrderCreated } from '../warehouse/sales-discharge.service';
+import { moveOpenTableSession } from '../../client/table-session-lifecycle';
 
 const ENABLE_TABLE_MOVE = 'ENABLE_TABLE_MOVE';
 const ACTIVE_STATUSES = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched'] as const;
@@ -321,6 +322,9 @@ export async function moveOrderToTable(input: MoveOrderInput) {
 
   // Sincronizar estado de mesas.
   await db.update(tables).set({ statusCode: 'in_kitchen', statusUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(tables.id, targetTableId));
+  if (isTotal && !destActive && order.tableId != null) {
+    await moveOpenTableSession(order.tableId, targetTableId, orderId);
+  }
   if (order.tableId != null && order.tableId !== targetTableId) {
     const sourceStillActive = await getActiveOrderForTable(db, order.tableId, order.branchId);
     if (!sourceStillActive) {

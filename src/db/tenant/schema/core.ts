@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, real, timestamp, index, varchar, boolean, time, jsonb, uniqueIndex, uuid, AnyPgColumn } from 'drizzle-orm/pg-core';
 import { customers } from './customers';
 
@@ -139,6 +139,15 @@ export const branches = pgTable('branches', {
 	// Meseros solo ven sus mesas (apagado por defecto): quien no tiene mozo.ver_todas_mesas ve las mesas
 	// de otros mozos como ocupadas, sin detalle, y no puede abrir, editar, cobrar ni mover sus pedidos.
 	waitersOwnTablesOnly: boolean('waiters_own_tables_only').default(false).notNull(),
+	// Pedido por QR en la mesa. Apagado por defecto: la sucursal sigue igual que hoy.
+	qrOrderingEnabled: boolean('qr_ordering_enabled').default(false).notNull(),
+	qrPinRequired: boolean('qr_pin_required').default(true).notNull(),
+	qrEscalationSeconds: integer('qr_escalation_seconds').default(90).notNull(),
+	// Red de seguridad al cierre del día. La sesión se cierra al cobrar, anular o marcar la mesa sucia.
+	qrSessionExpireHours: integer('qr_session_expire_hours').default(14).notNull(),
+	qrCallCooldownSeconds: integer('qr_call_cooldown_seconds').default(45).notNull(),
+	// Canal dine_in cuyos precios usa la carta QR. FK lógica a sales_channels (definida después).
+	qrSalesChannelId: integer('qr_sales_channel_id'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -695,6 +704,93 @@ export const socialLinks = pgTable('social_links', {
 }));
 
 // ==========================================
+// 📱 PEDIDO POR QR EN LA MESA
+// ==========================================
+
+// Una ocupación de la mesa. Solo puede haber una sesión abierta por mesa.
+export const tableSessions = pgTable('table_sessions', {
+	id: serial('id').primaryKey(),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	tableId: integer('table_id').notNull().references(() => tables.id),
+	// Pedido del POS. Vacío hasta aceptar la primera ronda; si el mozo ya abrió un pedido, se engancha a ese.
+	orderId: varchar('order_id', { length: 12 }).references(() => orders.id, { onDelete: 'set null' }),
+	status: varchar('status', { length: 20, enum: ['open', 'closed', 'expired'] as const }).notNull().default('open'),
+	pinHash: varchar('pin_hash', { length: 255 }),
+	pinRequired: boolean('pin_required').default(true).notNull(),
+	openedById: integer('opened_by_id').references(() => users.id, { onDelete: 'set null' }),
+	closedById: integer('closed_by_id').references(() => users.id, { onDelete: 'set null' }),
+	closeReason: varchar('close_reason', { length: 40 }),
+	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow().notNull(),
+	closedAt: timestamp('closed_at', { withTimezone: true }),
+	expiresAt: timestamp('expires_at', { withTimezone: true }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	branchIdx: index('table_sessions_branch_idx').on(table.branchId),
+	tableIdx: index('table_sessions_table_idx').on(table.tableId),
+	orderIdx: index('table_sessions_order_idx').on(table.orderId),
+	oneOpenPerTable: uniqueIndex('table_sessions_one_open_per_table_idx').on(table.tableId).where(sql`${table.status} = 'open'`),
+}));
+
+// Quién está en la mesa. El identificador de dispositivo no autoriza: autoriza el token de la sesión.
+export const tableSessionParticipants = pgTable('table_session_participants', {
+	id: serial('id').primaryKey(),
+	sessionId: integer('session_id').notNull().references(() => tableSessions.id, { onDelete: 'cascade' }),
+	alias: varchar('alias', { length: 40 }),
+	deviceId: varchar('device_id', { length: 64 }).notNull(),
+	joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+	leftAt: timestamp('left_at', { withTimezone: true }),
+}, (table) => ({
+	sessionIdx: index('table_session_participants_session_idx').on(table.sessionId),
+	sessionDeviceUnique: uniqueIndex('table_session_participants_session_device_idx').on(table.sessionId, table.deviceId),
+}));
+
+// Ítems que pide un comensal antes de que el mozo los acepte. No mueven stock ni caja.
+export type TableSessionRoundItem = {
+	productId: number;
+	quantity: number;
+	alternatives: string[];
+	extraIds: number[];
+	notes?: string;
+	orderItemId?: number;
+};
+
+export const tableSessionRounds = pgTable('table_session_rounds', {
+	id: serial('id').primaryKey(),
+	sessionId: integer('session_id').notNull().references(() => tableSessions.id, { onDelete: 'cascade' }),
+	participantId: integer('participant_id').notNull().references(() => tableSessionParticipants.id),
+	items: jsonb('items').$type<TableSessionRoundItem[]>().notNull(),
+	status: varchar('status', { length: 20, enum: ['pending', 'accepted', 'rejected'] as const }).notNull().default('pending'),
+	rejectReason: varchar('reject_reason', { length: 200 }),
+	decidedById: integer('decided_by_id').references(() => users.id, { onDelete: 'set null' }),
+	decidedAt: timestamp('decided_at', { withTimezone: true }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+	sessionIdx: index('table_session_rounds_session_idx').on(table.sessionId),
+	statusIdx: index('table_session_rounds_status_idx').on(table.sessionId, table.status),
+}));
+
+export const waiterCalls = pgTable('waiter_calls', {
+	id: serial('id').primaryKey(),
+	sessionId: integer('session_id').notNull().references(() => tableSessions.id, { onDelete: 'cascade' }),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	tableId: integer('table_id').notNull().references(() => tables.id),
+	participantId: integer('participant_id').references(() => tableSessionParticipants.id, { onDelete: 'set null' }),
+	reason: varchar('reason', { length: 30, enum: ['attention', 'bill', 'utensils', 'other'] as const }).notNull(),
+	note: varchar('note', { length: 120 }),
+	status: varchar('status', { length: 20, enum: ['open', 'taken', 'resolved', 'escalated'] as const }).notNull().default('open'),
+	assignedWaiterId: integer('assigned_waiter_id').references(() => users.id, { onDelete: 'set null' }),
+	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow().notNull(),
+	takenAt: timestamp('taken_at', { withTimezone: true }),
+	resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+	escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+}, (table) => ({
+	branchStatusIdx: index('waiter_calls_branch_status_idx').on(table.branchId, table.status),
+	sessionIdx: index('waiter_calls_session_idx').on(table.sessionId),
+	oneOpenReason: uniqueIndex('waiter_calls_one_open_reason_idx').on(table.sessionId, table.reason).where(sql`${table.status} in ('open', 'taken', 'escalated')`),
+}));
+
+// ==========================================
 // 🔗 RELATIONS — CORE
 // ==========================================
 
@@ -742,6 +838,7 @@ export const tablesRelations = relations(tables, ({ one, many }) => ({
 	branch: one(branches, { fields: [tables.branchId], references: [branches.id] }),
 	salon: one(salons, { fields: [tables.salonId], references: [salons.id] }),
 	orders: many(orders),
+	tableSessions: many(tableSessions),
 }));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
@@ -763,4 +860,34 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 	order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
 	split: one(orderSplits, { fields: [orderItems.splitId], references: [orderSplits.id] }),
 	product: one(products, { fields: [orderItems.productId], references: [products.id] }),
+}));
+
+export const tableSessionsRelations = relations(tableSessions, ({ one, many }) => ({
+	branch: one(branches, { fields: [tableSessions.branchId], references: [branches.id] }),
+	table: one(tables, { fields: [tableSessions.tableId], references: [tables.id] }),
+	order: one(orders, { fields: [tableSessions.orderId], references: [orders.id] }),
+	openedBy: one(users, { fields: [tableSessions.openedById], references: [users.id] }),
+	participants: many(tableSessionParticipants),
+	rounds: many(tableSessionRounds),
+	calls: many(waiterCalls),
+}));
+
+export const tableSessionParticipantsRelations = relations(tableSessionParticipants, ({ one, many }) => ({
+	session: one(tableSessions, { fields: [tableSessionParticipants.sessionId], references: [tableSessions.id] }),
+	rounds: many(tableSessionRounds),
+	calls: many(waiterCalls),
+}));
+
+export const tableSessionRoundsRelations = relations(tableSessionRounds, ({ one }) => ({
+	session: one(tableSessions, { fields: [tableSessionRounds.sessionId], references: [tableSessions.id] }),
+	participant: one(tableSessionParticipants, { fields: [tableSessionRounds.participantId], references: [tableSessionParticipants.id] }),
+	decidedBy: one(users, { fields: [tableSessionRounds.decidedById], references: [users.id] }),
+}));
+
+export const waiterCallsRelations = relations(waiterCalls, ({ one }) => ({
+	session: one(tableSessions, { fields: [waiterCalls.sessionId], references: [tableSessions.id] }),
+	branch: one(branches, { fields: [waiterCalls.branchId], references: [branches.id] }),
+	table: one(tables, { fields: [waiterCalls.tableId], references: [tables.id] }),
+	participant: one(tableSessionParticipants, { fields: [waiterCalls.participantId], references: [tableSessionParticipants.id] }),
+	assignedWaiter: one(users, { fields: [waiterCalls.assignedWaiterId], references: [users.id] }),
 }));

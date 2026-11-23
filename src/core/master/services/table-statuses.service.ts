@@ -30,6 +30,38 @@ export async function getCachedTableStatusesMap(): Promise<Map<string, any>> {
   return cachedStatusesMap;
 }
 
+/** Sucia se muestra como disponible. Si el catálogo no tiene el código, no se cambia por Disponible. */
+export function presentTableStatus(map: Map<string, any>, code: string | null | undefined) {
+  const safe = code && code.length > 0 ? code : 'available';
+  if (safe === 'dirty') {
+    const available = map.get('available');
+    return {
+      code: 'dirty',
+      name: 'Disponible',
+      colorHex: available?.colorHex || '#10B981',
+      bgColorClass: available?.bgColorClass || 'bg-emerald-500',
+      isOperational: true,
+    };
+  }
+  const found = map.get(safe);
+  if (found) {
+    return {
+      code: found.code as string,
+      name: found.name as string,
+      colorHex: found.colorHex as string,
+      bgColorClass: found.bgColorClass as string,
+      isOperational: Boolean(found.isOperational),
+    };
+  }
+  return {
+    code: safe,
+    name: '',
+    colorHex: '',
+    bgColorClass: '',
+    isOperational: safe !== 'reserved' && safe !== 'disabled',
+  };
+}
+
 export async function getAllTableStatuses(fromCache = false) {
   if (fromCache && cachedStatusesList) {
     return cachedStatusesList;

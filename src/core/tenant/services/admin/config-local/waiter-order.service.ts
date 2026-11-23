@@ -32,6 +32,7 @@ import { authorizeByPassword } from './../documents/security-auth.service';
 import type { AuditActor } from './../warehouse/types';
 import { clearOrderDiscount } from './../documents/order-discount-clear';
 import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
+import { closeOpenTableSession } from '../../client/table-session-lifecycle';
 import {
   type TaxConfig,
   type TaxSnapshotEntry,
@@ -651,6 +652,7 @@ export async function cancelOrder(orderId: string, actor?: AuditActor, opts: Del
       statusUpdatedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(tables.id, updated.tableId));
+    await closeOpenTableSession({ tableId: updated.tableId, orderId, reason: 'cancelled', userId: actor?.userId });
   }
 
   return updated;

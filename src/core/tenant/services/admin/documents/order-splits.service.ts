@@ -6,6 +6,7 @@ import { type TaxSnapshotEntry, prorateTaxSnapshot } from '../../shared/taxes.se
 import { recordSplitSaleIncome, reverseSplitSaleIncome, getActiveSessionForUserInBranch } from './cash.service';
 import { findPaymentMethodByName } from '../config-local/payment-method.service';
 import type { AuditActor } from '../warehouse/types';
+import { closeOpenTableSession } from '../../client/table-session-lifecycle';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -417,6 +418,7 @@ export async function syncOrderPaymentStatus(db: ReturnType<typeof getTenantDb>,
       statusUpdatedAt: new Date(),
       updatedAt: new Date()
     }).where(eq(tables.id, order.tableId));
+    await closeOpenTableSession({ tableId: order.tableId, orderId, reason: 'paid' });
   }
 
   // El ingreso a caja se registra POR CADA cuenta/split al marcarse pagada

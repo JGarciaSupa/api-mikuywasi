@@ -2,7 +2,7 @@ import { salons, tables, orders } from '@/db/tenant/schema';
 import { eq, sql, count } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getTenantDb } from '@/utils/tenant-context';
-import { getCachedTableStatusesMap } from '@/core/master/services/table-statuses.service';
+import { getCachedTableStatusesMap, presentTableStatus } from '@/core/master/services/table-statuses.service';
 import { InUseError } from '@/utils/errors';
 
 /**
@@ -31,16 +31,9 @@ export async function getAllTables(branchId: number) {
     .orderBy(tables.createdAt);
 
   const statusesMap = await getCachedTableStatusesMap();
-  const defaultStatus = statusesMap.get('available') || {
-    code: 'available',
-    name: 'Disponible',
-    colorHex: '#10B981',
-    bgColorClass: 'bg-emerald-500',
-    isOperational: true
-  };
 
   return rawTables.map(t => {
-    const s = statusesMap.get(t.statusCode) || defaultStatus;
+    const s = presentTableStatus(statusesMap, t.statusCode);
     return {
       ...t,
       status: {

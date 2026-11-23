@@ -6,6 +6,7 @@ import tenantRoutes from '@/core/tenant';
 
 import { getClientIp } from './utils/ip';
 import { healthHandler } from './deploy/health';
+import { handleQrEngineRequest, qrEngineHandler } from './realtime/qr-socket';
 // import { initJobs } from './jobs';
 
 // Initialize background jobs
@@ -21,6 +22,11 @@ app.use('*', cors({
 
 // Estado de la API y del último despliegue (Dokploy / healthcheck del contenedor)
 app.get('/health', healthHandler);
+
+const socketHandler = (c: { req: { raw: Request }; env: unknown }) => handleQrEngineRequest(c.req.raw, c.env);
+app.all('/socket.io', socketHandler);
+app.all('/socket.io/', socketHandler);
+app.all('/socket.io/*', socketHandler);
 
 // Routes
 app.route('/api/master', masterRoutes);
@@ -41,5 +47,6 @@ const port = process.env.PORT || 3000;
 
 export default {
   port,
+  ...qrEngineHandler(),
   fetch: app.fetch,
 };

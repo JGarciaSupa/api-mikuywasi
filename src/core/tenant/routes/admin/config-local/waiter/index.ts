@@ -20,6 +20,14 @@ import { payOrderWithMultiplePaymentsController, listOrderPaymentsController } f
 import { validateMultiPayment } from '../../../../validations/admin/config-local/order-payments.validation';
 import { applyOrderDiscountController, removeOrderDiscountController } from '../../../../controllers/admin/documents/order-discount.controller';
 import { validateApplyDiscount } from '../../../../validations/admin/config-local/order-discount.validation';
+import {
+  acceptRoundController,
+  activateTableController,
+  listPendingController,
+  rejectRoundController,
+  resolveCallController,
+  takeCallController,
+} from '../../../../controllers/admin/config-local/qr-session.controller';
 
 const routes = new Hono();
 
@@ -48,5 +56,12 @@ routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
 routes.patch('/orders/:id/items', editOrderItemController);
 routes.post('/orders/:id/items/:itemId/annul', annulOrderItemController);
 routes.post('/orders/:id/cancel', canCancelOrder, cancelOrderController);
+
+routes.post('/qr/tables/:tableId/activate', activateTableController);
+routes.get('/qr/pending', listPendingController);
+routes.post('/qr/rounds/:id/accept', acceptRoundController);
+routes.post('/qr/rounds/:id/reject', rejectRoundController);
+routes.post('/qr/calls/:id/take', takeCallController);
+routes.post('/qr/calls/:id/resolve', resolveCallController);
 
 export default routes;

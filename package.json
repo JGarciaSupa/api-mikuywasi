@@ -14,6 +14,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1063.0",
     "@cf-wasm/photon": "^0.3.6",
     "@hono/zod-validator": "^0.8.0",
+    "@socket.io/bun-engine": "^0.1.2",
     "@types/jsonwebtoken": "^9.0.10",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
@@ -22,6 +23,7 @@
     "jsonwebtoken": "^9.0.3",
     "nanoid": "^5.1.7",
     "pg": "^8.20.0",
+    "socket.io": "^4.8.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
