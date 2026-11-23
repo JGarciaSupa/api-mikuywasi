@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { cashSessions, cashRegisters, branches, users } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { sendMail, type MailAttachment } from '../../../../../utils/mailer';
+import { getSmtpConfig } from '../config-local/mail-settings.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 
@@ -72,7 +73,7 @@ ${lines.map(([k, v]) => `<tr><td style="color:#5b6670">${escapeHtml(k)}</td><td>
 </table>
 <p style="font-family:Arial,sans-serif;font-size:13px;color:#5b6670">Se adjuntan la liquidación del cajero, el paloteo de producción y las anulaciones del turno.</p>`;
 
-  await sendMail({ to, subject, text, html, attachments });
+  await sendMail(await getSmtpConfig(), { to, subject, text, html, attachments });
 
   await writeAuditLog({
     tableName: 'cash_sessions',

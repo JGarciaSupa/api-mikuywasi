@@ -6,6 +6,7 @@ import { PlanLimitError } from '../../../services/shared/plan-limits.service';
 import { parseGeo } from '@/utils/geo';
 import { TerminalRequiredError } from '../../../services/admin/documents/cash-terminals.service';
 import { sendCloseReportEmail } from '../../../services/admin/documents/cash-report-email.service';
+import { MailError } from '@/utils/mailer';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
@@ -305,7 +306,7 @@ export const emailCloseReport = async (c: Context) => {
     return c.json({ success: true, message: `Reportes enviados a ${data.sentTo.join(', ')}`, data });
   } catch (e) {
     const msg = e instanceof Error ? e.message : '';
-    if (/no está configurado|no tiene correos|aún no está cerrado|no es un PDF|supera|Máximo|No se recibieron/.test(msg)) {
+    if (e instanceof MailError || /correo de envío|no tiene correos|aún no está cerrado|no es un PDF|supera|Máximo|No se recibieron/.test(msg)) {
       return c.json({ success: false, message: msg }, 422);
     }
     return jsonError(c, e, 'Error al enviar los reportes por correo');

@@ -158,8 +158,8 @@ el paloteo de producción y las anulaciones del turno. Si la impresora o el agen
 
 ### POST `/api/cash/sessions/:id/email-report` (permiso `caja.cerrar_sesion`)
 
-`multipart/form-data` con uno o más `files` (PDF, máx. 5 archivos de 5 MB). Envía por SMTP a los `reportEmails` de la
+`multipart/form-data` con uno o más `files` (PDF, máx. 5 archivos de 5 MB). Envía a los `reportEmails` de la
 caja del turno (los destinatarios nunca vienen del request) un resumen del turno y los PDF adjuntos. El admin lo llama
 al cerrar el turno con la liquidación del cajero y el PDF de paloteo y anulaciones. Solo turnos cerrados y con acceso
 al turno (dueño, participante o `caja.ver_todos_turnos`). 422 si falta SMTP, la caja no tiene correos o los archivos
-no son válidos. Variables: `SMTP_HOST`, `SMTP_PORT` (465 SSL / 587 STARTTLS), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`.
+no son válidos. Se envía desde el **correo de envío del restaurante** (ver `docs/admin/mail-settings.md`); si no está configurado o está desactivado, 422.

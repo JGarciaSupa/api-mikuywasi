@@ -170,6 +170,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'administracion.auditoria', name: 'Ver auditoría', description: 'Consultar el registro de auditoría (uso del implementador).', order: 14 },
       { code: 'administracion.parametros', name: 'Parámetros de sucursal', description: 'Ver y editar los parámetros operativos de la sucursal (uso del implementador).', order: 15 },
       { code: 'administracion.ajustes_sistema', name: 'Configuración del sistema', description: 'Acceder a la pantalla de configuración del sistema (uso del implementador).', order: 16 },
+      { code: 'administracion.correo_envio', name: 'Correo de envío', description: 'Configurar la cuenta de correo (p. ej. Gmail con contraseña de aplicación) desde la que el sistema envía los reportes del cierre de caja.', order: 17 },
     ],
   },
   {
