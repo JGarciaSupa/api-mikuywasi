@@ -512,7 +512,8 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 
 // ── Anulación: motivo (catálogo/libre) + contraseña de autorización ──────────────
 
-export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; }
+// skipPassword: el usuario tiene seguridad.anular_sin_contrasena (lo resuelve el controller).
+export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; skipPassword?: boolean; }
 
 // Caja cuyas activaciones rigen la anulación. Mismo criterio que el POS (MenuPage →
 // effectiveRegisterId): la del turno propio del actor; si no tiene (mozo, o sin turno), la
@@ -576,9 +577,9 @@ async function resolveDeleteAuthorization(
     throw new Error('Debes indicar un motivo');
   }
 
-  // Contraseña de autorización (si la activación está ON).
+  // Contraseña de autorización (si la activación está ON), salvo quien puede anular sin ella.
   let authorizedById: number | null = null;
-  if (effective[codes.password]) {
+  if (effective[codes.password] && !opts.skipPassword) {
     const auth = await authorizeByPassword(codes.authSubAction, opts.password ?? '');
     if (!auth) throw new Error('Contraseña de autorización inválida');
     authorizedById = auth.userId;

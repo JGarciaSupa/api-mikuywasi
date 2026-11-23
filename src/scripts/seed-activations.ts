@@ -190,6 +190,17 @@ const activationsData = [
 		order: 5,
 		isActive: true,
 		module: "caja_chica"
+	},
+	{
+		id: 16,
+		code: "CLOSE_AUTO_PRINT_REPORTS",
+		name: "Impresión automática al cerrar el turno",
+		description: "Al imprimir el cierre, saca el arqueo, el paloteo de producción y las anulaciones en la impresora de reportes de la caja, sin preguntar.",
+		category: "Cierre de turno",
+		defaultEnabled: false,
+		order: 1,
+		isActive: true,
+		module: "impresion"
 	}
 ];
 

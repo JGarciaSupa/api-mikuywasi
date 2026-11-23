@@ -6,6 +6,7 @@ import * as waiterOrderService from '../../../services/admin/config-local/waiter
 import * as orderService from '../../../services/admin/documents/order.service';
 import * as cashService from '../../../services/admin/documents/cash.service';
 import { getAuditActor } from '@/utils/helpers';
+import { hasPermission } from '@/utils/permissions';
 import { ownTablesScope } from '../../../middleware/waiter-scope.middleware';
 
 /**
@@ -186,6 +187,7 @@ export const cancelOrderController = async (c: Context) => {
       reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
       motivo: body?.motivo,
       password: body?.password,
+      skipPassword: hasPermission(c, 'seguridad.anular_sin_contrasena'),
     });
     return c.json({ success: true, data: result });
   } catch (error: any) {
@@ -214,6 +216,7 @@ export const annulOrderItemController = async (c: Context) => {
       reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
       motivo: body?.motivo,
       password: body?.password,
+      skipPassword: hasPermission(c, 'seguridad.anular_sin_contrasena'),
     }, body?.quantity != null ? Number(body.quantity) : undefined);
     return c.json({ success: true, data: result });
   } catch (error: any) {

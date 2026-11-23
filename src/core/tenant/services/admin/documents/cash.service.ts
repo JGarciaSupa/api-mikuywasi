@@ -1,5 +1,5 @@
 import { eq, desc, asc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries, printers } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -218,9 +218,25 @@ export async function createCashRegister(data: {
   return reg;
 }
 
+const MAX_REPORT_EMAILS = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Correos de los reportes del cierre: sin vacíos ni repetidos, todos válidos.
+function normalizeReportEmails(emails: unknown): string[] {
+  if (!Array.isArray(emails)) throw new Error('Los correos de reportes deben ser una lista');
+  const list = [...new Set(emails.map((e) => String(e ?? '').trim().toLowerCase()).filter(Boolean))];
+  const invalid = list.find((e) => e.length > 254 || !EMAIL_RE.test(e));
+  if (invalid) throw new Error(`Correo inválido: ${invalid}`);
+  if (list.length > MAX_REPORT_EMAILS) throw new Error(`Máximo ${MAX_REPORT_EMAILS} correos por caja`);
+  return list;
+}
+
 export async function updateCashRegister(
   id: number,
-  data: { name?: string; isActive?: boolean; userId?: number | null; exchangeRate?: number }
+  data: {
+    name?: string; isActive?: boolean; userId?: number | null; exchangeRate?: number;
+    reportPrinterId?: number | null; reportEmails?: unknown;
+  }
 ) {
   const db = getTenantDb();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -228,6 +244,19 @@ export async function updateCashRegister(
   if (data.isActive !== undefined) patch.isActive = data.isActive;
   if (data.userId !== undefined) patch.userId = data.userId;
   if (data.exchangeRate !== undefined && data.exchangeRate > 0) patch.exchangeRate = data.exchangeRate.toFixed(4);
+  if (data.reportPrinterId !== undefined) {
+    if (data.reportPrinterId !== null) {
+      // La impresora debe ser de la misma sucursal que la caja
+      const [reg] = await db.select({ branchId: cashRegisters.branchId }).from(cashRegisters).where(eq(cashRegisters.id, id)).limit(1);
+      if (!reg) throw new Error('Caja no encontrada');
+      const [printer] = await db.select({ id: printers.id }).from(printers)
+        .where(and(eq(printers.id, data.reportPrinterId), eq(printers.branchId, reg.branchId)))
+        .limit(1);
+      if (!printer) throw new Error('La impresora no existe en la sucursal de la caja');
+    }
+    patch.reportPrinterId = data.reportPrinterId;
+  }
+  if (data.reportEmails !== undefined) patch.reportEmails = normalizeReportEmails(data.reportEmails);
 
   const [reg] = await db
     .update(cashRegisters)
