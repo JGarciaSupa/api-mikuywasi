@@ -96,12 +96,12 @@ export async function sendTestMail(to: string) {
   const cfg = await getSmtpConfig();
   await sendMail(cfg, {
     to: [to],
-    subject: 'Hola mundo — correo de prueba de GastroPro 360',
-    text: `¡Hola mundo!\n\nEste correo de prueba salió desde ${cfg.user}. Si lo estás leyendo, el correo de envío del restaurante está bien configurado y los reportes del cierre de caja llegarán sin problemas.\n\nGastroPro 360`,
-    html: `<h2 style="font-family:Arial,sans-serif;color:#1C4A3D">¡Hola mundo!</h2>
-<p style="font-family:Arial,sans-serif;font-size:14px">Este correo de prueba salió desde <b>${cfg.user}</b>.</p>
-<p style="font-family:Arial,sans-serif;font-size:14px">Si lo estás leyendo, el correo de envío del restaurante está bien configurado y los reportes del cierre de caja llegarán sin problemas.</p>
-<p style="font-family:Arial,sans-serif;font-size:12px;color:#5b6670">GastroPro 360</p>`,
+    subject: 'Tu correo de envío está funcionando — GastroPro 360',
+    text: `¡Listo! El correo de envío de tu restaurante funciona correctamente.\n\nEste es un mensaje de prueba enviado desde ${cfg.user}. A partir de ahora recibirás aquí los reportes del cierre de caja.\n\nGracias por usar GastroPro 360.`,
+    html: `<h2 style="font-family:Arial,sans-serif;color:#1C4A3D">¡Listo! Tu correo de envío está funcionando</h2>
+<p style="font-family:Arial,sans-serif;font-size:14px">Este es un mensaje de prueba enviado desde <b>${cfg.user}</b>.</p>
+<p style="font-family:Arial,sans-serif;font-size:14px">A partir de ahora recibirás aquí los reportes del cierre de caja.</p>
+<p style="font-family:Arial,sans-serif;font-size:14px">Gracias por usar <b>GastroPro 360</b>.</p>`,
   });
   return { from: cfg.user, to };
 }
