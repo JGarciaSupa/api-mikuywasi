@@ -75,6 +75,8 @@ Error: `400 { success: false, message: "Solo el implementador puede …" }`.
 
 - `pedidos.cambiar_forma_pago` ("Cambiar forma de pago de ventas cobradas"): exigido por `PATCH /api/orders/:id/payment-method` (403 sin él). Por defecto `rol_cajero` y los administradores; el mozo no.
 - `seguridad.autorizar_cambiar_forma_pago` ("Autorizar cambio de forma de pago"): su contraseña autoriza cambiar la forma de pago de una venta; obligatoria si el turno donde se cobró ya cerró (ver `docs/admin/cash.md`). Por defecto solo los administradores.
+- `seguridad.autorizar_anular_documento` ("Autorizar anular comprobantes"): su contraseña autoriza anular un comprobante cuando la caja tiene "Solicitar contraseña para anular comprobantes". Antes no estaba en el catálogo y solo autorizaba el Administrador.
+- `seguridad.anular_sin_contrasena` ("Anular sin contraseña de supervisor"): anula comprobantes, pedidos y productos sin escribir contraseña aunque la caja la exija (`PASSWORD_VOID_DOCUMENT`, `PASSWORD_DELETE_ORDER`, `PASSWORD_DELETE_PRODUCT`). Lo traen Administrador y Administrador del local; se asigna a cajeros u otros roles desde Roles. El admin oculta el campo de contraseña a quien lo tiene.
 
 ## Exportar catálogos (acta de validación)
 

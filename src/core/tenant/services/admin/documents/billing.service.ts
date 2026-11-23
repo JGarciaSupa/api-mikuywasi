@@ -1642,6 +1642,8 @@ export async function voidDocument(
   cancelOrder = false,
   password?: string,
   actor?: AuditActor,
+  // El usuario tiene seguridad.anular_sin_contrasena: no se le pide la contraseña de supervisor
+  skipPassword = false,
 ) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
@@ -1675,7 +1677,7 @@ export async function voidDocument(
   if (session?.registerId != null) {
     effective = await resolveForRegister(session.registerId);
   }
-  if (effective['PASSWORD_VOID_DOCUMENT']) {
+  if (effective['PASSWORD_VOID_DOCUMENT'] && !skipPassword) {
     const auth = await authorizeByPassword('seguridad.autorizar_anular_documento', password ?? '');
     if (!auth) throw new Error('Contraseña de autorización inválida');
     authorizedById = auth.userId;

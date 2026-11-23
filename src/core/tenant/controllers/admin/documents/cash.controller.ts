@@ -5,6 +5,7 @@ import { hasPermission, getCurrentUserId } from '@/utils/permissions';
 import { PlanLimitError } from '../../../services/shared/plan-limits.service';
 import { parseGeo } from '@/utils/geo';
 import { TerminalRequiredError } from '../../../services/admin/documents/cash-terminals.service';
+import { sendCloseReportEmail } from '../../../services/admin/documents/cash-report-email.service';
 
 // Retira los campos contables sensibles de una sesión para usuarios sin caja.ver_contabilidad.
 function stripAccountingFields<T extends Record<string, unknown>>(session: T) {
@@ -68,6 +69,9 @@ export const updateCashRegister = async (c: Context) => {
       name: body.name?.trim(),
       isActive: body.isActive !== undefined ? !!body.isActive : undefined,
       exchangeRate: body.exchangeRate !== undefined ? parseFloat(body.exchangeRate) : undefined,
+      reportPrinterId: body.reportPrinterId === undefined ? undefined
+        : body.reportPrinterId === null || body.reportPrinterId === '' ? null : Number(body.reportPrinterId),
+      reportEmails: body.reportEmails,
     });
     return c.json({ success: true, message: 'Caja actualizada', data });
   } catch (e) {
@@ -276,3 +280,34 @@ export const addCashMovement = async (c: Context) => {
   }
 };
 
+
+// POST /cash/sessions/:id/email-report — multipart con los PDF del cierre (campo "files").
+// Los destinatarios son los correos configurados en la caja del turno.
+export const emailCloseReport = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const session = await cash.getCashSessionById(id);
+    if (!session) return c.json({ success: false, message: 'Sesión no encontrada' }, 404);
+    const currentUserId = getCurrentUserId(c);
+    if (!hasPermission(c, 'caja.ver_todos_turnos') && session.userId !== currentUserId && !(await cash.isSessionParticipant(id, currentUserId))) {
+      return c.json({ success: false, message: 'No tienes acceso a esta sesión' }, 403);
+    }
+    const body = await c.req.parseBody({ all: true });
+    const raw = body['files'];
+    const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File);
+    const attachments = await Promise.all(files.map(async (f) => ({
+      filename: f.name || 'reporte.pdf',
+      content: Buffer.from(await f.arrayBuffer()),
+      contentType: 'application/pdf',
+    })));
+    const data = await sendCloseReportEmail(id, attachments, getAuditActor(c));
+    c.set('auditLogged', true);
+    return c.json({ success: true, message: `Reportes enviados a ${data.sentTo.join(', ')}`, data });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    if (/no está configurado|no tiene correos|aún no está cerrado|no es un PDF|supera|Máximo|No se recibieron/.test(msg)) {
+      return c.json({ success: false, message: msg }, 422);
+    }
+    return jsonError(c, e, 'Error al enviar los reportes por correo');
+  }
+};

@@ -198,6 +198,8 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'seguridad.autorizar_eliminar_producto', name: 'Autorizar eliminar productos', description: 'Su contraseña autoriza la anulación de un producto ya enviado.', order: 2 },
       { code: 'seguridad.autorizar_cierre_turno', name: 'Autorizar cierre de turno con pedidos abiertos', description: 'Su contraseña autoriza cerrar un turno que aún tiene pedidos abiertos (pasan al siguiente turno).', order: 3 },
       { code: 'seguridad.autorizar_cambiar_forma_pago', name: 'Autorizar cambio de forma de pago', description: 'Su contraseña autoriza cambiar la forma de pago de una venta cobrada (obligatoria si el turno donde se cobró ya cerró; la corrección se registra en el turno abierto de quien la cambia).', order: 4 },
+      { code: 'seguridad.autorizar_anular_documento', name: 'Autorizar anular comprobantes', description: 'Su contraseña autoriza anular un comprobante cuando la caja exige contraseña ("Solicitar contraseña para anular comprobantes").', order: 5 },
+      { code: 'seguridad.anular_sin_contrasena', name: 'Anular sin contraseña de supervisor', description: 'Anula comprobantes, pedidos y productos sin escribir contraseña aunque la caja la exija (gerente o cajero de confianza).', order: 6 },
     ],
   },
 ];

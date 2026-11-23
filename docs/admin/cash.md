@@ -142,3 +142,24 @@ Todo lo que cobró un cajero en los turnos de la sucursal con actividad en el ra
 - **Turno de cobro cerrado:** contraseña **siempre** obligatoria (de un usuario con `seguridad.autorizar_cambiar_forma_pago` o un `rol_admin`). El turno cerrado no se toca (su cuadre y su liquidación quedan como se cerraron). En el turno abierto de quien hace el cambio, en la misma sucursal, se registran movimientos con `reference = 'cambio_forma_pago'`: un **egreso** por cada pago vigente (`order_payments`) y un **ingreso** por cada pago nuevo, sin propina (la propina queda en el turno original). El nuevo reparto debe sumar lo mismo que lo cobrado (422 si no). Sin turno abierto propio en la sucursal: 422.
 - No afecta a SUNAT: el comprobante solo informa Contado/Crédito, no el medio de pago; no se anula ni se reemite.
 - Errores: 422 (turno cerrado sin contraseña, sin turno abierto o total distinto), 403 (contraseña inválida).
+
+## Reportes del cierre de turno: impresora y correos por caja
+
+`PATCH /api/cash/registers/:id` acepta dos campos opcionales (migración `0100_add_cash_register_report_settings`):
+
+| Campo | Tipo | Qué hace |
+|---|---|---|
+| `reportPrinterId` | `number \| null` | Impresora de reportes de la caja (de la misma sucursal; si no, 400). `null` la quita. |
+| `reportEmails` | `string[]` | Correos que reciben los PDF del cierre: sin vacíos ni repetidos, máximo 10, todos válidos. |
+
+Activación por caja **`CLOSE_AUTO_PRINT_REPORTS`** ("Impresión automática al cerrar el turno", módulo `impresion`,
+tarea de despliegue `0003`): con ella y `reportPrinterId`, el admin imprime en esa impresora, sin preguntar, el arqueo,
+el paloteo de producción y las anulaciones del turno. Si la impresora o el agente fallan, se elige a mano como siempre.
+
+### POST `/api/cash/sessions/:id/email-report` (permiso `caja.cerrar_sesion`)
+
+`multipart/form-data` con uno o más `files` (PDF, máx. 5 archivos de 5 MB). Envía por SMTP a los `reportEmails` de la
+caja del turno (los destinatarios nunca vienen del request) un resumen del turno y los PDF adjuntos. El admin lo llama
+al cerrar el turno con la liquidación del cajero y el PDF de paloteo y anulaciones. Solo turnos cerrados y con acceso
+al turno (dueño, participante o `caja.ver_todos_turnos`). 422 si falta SMTP, la caja no tiene correos o los archivos
+no son válidos. Variables: `SMTP_HOST`, `SMTP_PORT` (465 SSL / 587 STARTTLS), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`.

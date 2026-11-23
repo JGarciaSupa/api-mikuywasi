@@ -1,6 +1,6 @@
 import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, jsonb, uniqueIndex, date, bigserial } from 'drizzle-orm/pg-core';
-import { users, products, orders, branches, orderSplits } from './core';
+import { users, products, orders, branches, orderSplits, printers } from './core';
 
 // ==========================================
 // 🏬 WAREHOUSE — CATALOGUE
@@ -598,6 +598,11 @@ export const cashRegisters = pgTable('cash_registers', {
 	name: varchar('name', { length: 100 }).notNull(),
 	// Tipo de cambio de la caja, registrado por quien la crea (editable).
 	exchangeRate: decimal('exchange_rate', { precision: 8, scale: 4 }).notNull().default('1'),
+	// Impresora de los reportes del cierre (arqueo, paloteo, anulaciones): con la activación
+	// CLOSE_AUTO_PRINT_REPORTS se imprimen ahí sin preguntar.
+	reportPrinterId: integer('report_printer_id').references(() => printers.id, { onDelete: 'set null' }),
+	// Correos que reciben los reportes del cierre (liquidación, paloteo y anulaciones en PDF).
+	reportEmails: jsonb('report_emails').$type<string[]>().default([]).notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }),
