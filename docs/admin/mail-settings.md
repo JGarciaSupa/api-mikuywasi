@@ -13,7 +13,7 @@ derivada de `JWT_SECRET`) y **nunca** se devuelve.
 |---|---|---|
 | GET | `/api/mail-settings` | `{ host, port, username, fromName, isActive, hasPassword, updatedAt }` o `null` si no hay configuración |
 | PUT | `/api/mail-settings` | Guarda `{ host, port (25/465/587/2525), username (correo), password?, fromName?, isActive? }`. `password` vacío = mantener la guardada (obligatoria la primera vez; se quitan los espacios que Gmail muestra) |
-| POST | `/api/mail-settings/test` | `{ to }`: envía un correo de prueba con la cuenta guardada. 422 con mensaje claro si falla el usuario/contraseña, la conexión o si no hay configuración |
+| POST | `/api/mail-settings/test` | `{ to }`: envía un correo de prueba ("Hola mundo") con la cuenta guardada. 422 con mensaje claro si falla el usuario/contraseña, la conexión o si no hay configuración |
 
 Gmail: servidor `smtp.gmail.com`, puerto `465`, usuario = la dirección de Gmail, contraseña = la de
 aplicación de 16 caracteres (requiere verificación en dos pasos; myaccount.google.com/apppasswords).
