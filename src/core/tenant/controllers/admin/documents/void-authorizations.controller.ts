@@ -36,6 +36,29 @@ export const createVoidRequest = async (c: Context) => {
   }
 };
 
+// POST /void-authorizations/verify — valida contraseña o código sin consumirlo y devuelve quién autoriza
+export const verifyVoidAuthorization = async (c: Context) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const type = body?.type as voids.VoidType;
+    if (!VOID_TYPES.includes(type)) return c.json({ success: false, message: 'Tipo de anulación inválido' }, 400);
+    const value = typeof body.password === 'string' ? body.password : '';
+    const data = await voids.verifyVoidAuthorization(
+      {
+        type,
+        orderId: typeof body.orderId === 'string' ? body.orderId : undefined,
+        orderItemId: body.orderItemId != null ? Number(body.orderItemId) : undefined,
+        documentId: body.documentId != null ? Number(body.documentId) : undefined,
+      },
+      { password: value, authCode: typeof body.authCode === 'string' ? body.authCode : undefined },
+      getAuditActor(c).userId,
+    );
+    return c.json({ success: true, data });
+  } catch (e) {
+    return voidAuthError(c, e, 'Error al validar la autorización');
+  }
+};
+
 // Públicos (sin sesión): el supervisor abre el enlace en su celular. El token del enlace identifica la solicitud.
 export const getVoidRequest = async (c: Context) => {
   try {

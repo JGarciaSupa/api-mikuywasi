@@ -200,7 +200,8 @@ export async function approveVoidRequest(requestToken: string, password: string,
  * Canjea el código para esa anulación y ese solicitante. Devuelve el id del supervisor que lo
  * aprobó, o null si no corresponde (suma un intento fallido y bloquea al llegar al tope).
  */
-async function consumeVoidCode(target: VoidTarget, code: string, requesterId: number | undefined): Promise<number | null> {
+// consume=false solo verifica (la anulación lo consume después); los intentos fallidos cuentan igual.
+async function consumeVoidCode(target: VoidTarget, code: string, requesterId: number | undefined, consume = true): Promise<number | null> {
   const db = getTenantDb();
   const clean = code.replace(/\D/g, '');
   const targetCond = target.type === 'document'
@@ -230,6 +231,7 @@ async function consumeVoidCode(target: VoidTarget, code: string, requesterId: nu
       .where(eq(voidAuthorizations.id, req.id));
     return null;
   }
+  if (!consume) return req.approvedById;
 
   const [used] = await db
     .update(voidAuthorizations)
@@ -247,14 +249,30 @@ export async function authorizeVoid(
   target: VoidTarget,
   input: { password?: string; authCode?: string },
   requesterId: number | undefined,
+  consume = true,
 ): Promise<number | null> {
   const authCode = input.authCode?.trim();
   if (authCode && /^\d{6}$/.test(authCode)) {
-    const approvedById = await consumeVoidCode(target, authCode, requesterId);
+    const approvedById = await consumeVoidCode(target, authCode, requesterId, consume);
     if (approvedById) return approvedById;
   }
   const password = input.password?.trim();
   if (!password) return null;
   const auth = await authorizeByPassword(VOID_APPROVER_PERMISSION[target.type], password);
   return auth?.userId ?? null;
+}
+
+/** Valida la contraseña o el código sin consumirlo y devuelve quién autoriza (para mostrarlo antes de anular). */
+export async function verifyVoidAuthorization(
+  target: VoidTarget,
+  input: { password?: string; authCode?: string },
+  requesterId: number | undefined,
+) {
+  const authorizedById = await authorizeVoid(target, input, requesterId, false);
+  if (!authorizedById) {
+    throw new VoidAuthorizationError('Contraseña de autorización inválida o código vencido o ya usado. Si el código venció, solicita uno nuevo.', 403);
+  }
+  const db = getTenantDb();
+  const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, authorizedById)).limit(1);
+  return { authorizedById, authorizedByName: u?.name ?? null };
 }
