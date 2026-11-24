@@ -225,6 +225,9 @@ export const verifyCloseAuthorization = async (c: Context) => {
     if (e instanceof cash.OpenOrdersOnCloseError) {
       return c.json({ success: false, message: e.message, requiresAuthorization: true }, 403);
     }
+    const msg = e instanceof Error ? e.message : '';
+    if (msg === 'Sesión no encontrada') return c.json({ success: false, message: msg }, 404);
+    if (msg === 'La sesión ya está cerrada') return c.json({ success: false, message: msg }, 409);
     return jsonError(c, e, 'Error al validar la autorización');
   }
 };
