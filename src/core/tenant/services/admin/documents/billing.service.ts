@@ -27,6 +27,7 @@ import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 import { resolveForRegister } from '../config-local/activation.service';
 import { resolveSeriesForRegister, listAvailableDocumentTypesForRegister, type DocumentType as SeriesDocumentType, documentTypeFromReceiptCode } from './billing-series.service';
+import { createCourtesyDocument, revertOrderCourtesy, issuedCourtesyDocumentIds } from './courtesy.service';
 import { type TaxConfig, type TaxSnapshotEntry, DEFAULT_BRANCH_TAXES, aggregateTaxBreakdown, isFixedTax, isServiceChargeTax, resolveLineTaxes, resolveTipoAfectacion } from '../../shared/taxes.service';
 import { buildSunatCargos, buildSunatDetalle, buildSunatTotales } from './sunat-payload';
 import { masterDb } from '../../../../../db';
@@ -412,7 +413,8 @@ async function resolveAmountSplitLineCalcs(
   if (amount <= 0) return [];
 
   const [order] = await db.select().from(orders).where(eq(orders.id, split.orderId));
-  const items = await db.select().from(orderItems).where(and(eq(orderItems.orderId, split.orderId), isNull(orderItems.deletedAt)));
+  const items = (await db.select().from(orderItems).where(and(eq(orderItems.orderId, split.orderId), isNull(orderItems.deletedAt))))
+    .filter((i) => !i.isCourtesy);
 
   // Grupos por combinación de impuestos activos; las bolsas aparte, por producto
   const groups = new Map<string, { gross: number; config: TaxConfig[] }>();
@@ -509,7 +511,7 @@ interface EmisorSnapshot {
   logoUrl: string | null;
 }
 
-async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: number): Promise<EmisorSnapshot> {
+export async function resolveEmisor(db: ReturnType<typeof getTenantDb>, branchId: number): Promise<EmisorSnapshot> {
   const [brand] = await db.select({ logo: brands.logo, name: brands.name }).from(brands).limit(1);
 
   // 1. Intentar resolver desde el facturador si la sucursal tiene facturador configurado
@@ -638,7 +640,8 @@ export async function previewDocument(
   const priceInclTax = docType === 'boleta' || docType === 'nota_de_venta';
   const taxRate = toNum(resolvedSeries.taxRate);
 
-  let lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  // Las cortesías no van al comprobante: se documentan aparte (documento interno CT)
+  let lineCalcs = ois.filter((oi) => !oi.isCourtesy).map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
   if (lineCalcs.length === 0 && splitId != null) {
     const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId));
     if (split && toNum(split.total) > 0) {
@@ -741,7 +744,9 @@ export async function createDocument(input: CreateDocumentInput) {
     : and(
         eq(billingDocuments.orderId, input.orderId),
         isNull(billingDocuments.splitId),
-        sql`${billingDocuments.status} != 'voided'`
+        sql`${billingDocuments.status} != 'voided'`,
+        // El documento interno de cortesía acompaña al comprobante; no es una venta
+        sql`${billingDocuments.documentType} <> 'cortesia'`,
       );
 
   const existingDoc = await db
@@ -787,7 +792,11 @@ export async function createDocument(input: CreateDocumentInput) {
   const priceInclTax = resolvedSeries.priceInclTax;
   const taxRate = toNum(resolvedSeries.taxRate);
 
-  let lineCalcs = ois.map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  // Las cortesías no van al comprobante: se documentan aparte (documento interno CT)
+  let lineCalcs = ois.filter((oi) => !oi.isCourtesy).map((oi) => resolveLineCalc(oi, priceInclTax, taxRate));
+  if (lineCalcs.length === 0 && ois.length > 0 && ois.every((oi) => oi.isCourtesy)) {
+    throw new Error('Todos los productos son cortesía: regístralo con la opción Cortesía del cobro');
+  }
   if (lineCalcs.length === 0 && input.splitId != null) {
     const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, input.splitId));
     if (split && toNum(split.total) > 0) {
@@ -886,6 +895,11 @@ export async function createDocument(input: CreateDocumentInput) {
         ...(pendingCustomerData?.phone && !order.customerPhone ? { customerPhone: pendingCustomerData.phone } : {}),
         updatedAt: new Date(),
       }).where(eq(orders.id, order.id));
+    }
+
+    // Productos en cortesía del pedido: van en su documento interno de cortesía (una vez)
+    if (series.registerId != null && ois.some((oi) => oi.isCourtesy)) {
+      await createCourtesyDocument(tx, order, series.registerId, input.createdBy ?? null);
     }
 
     return { docId: doc.id, isActiveFacturacion: series.isActiveFacturacion };
@@ -1601,6 +1615,8 @@ export async function getDocumentReceipt(id: number, userId?: number) {
       discountAmount: orderDiscount?.discountAmount ?? '0.00',
       discountMotivo: orderDiscount?.discountMotivo ?? null,
       orderTrackingCode: orderDiscount?.trackingCode ?? null,
+      // Cortesía: imprimir el valor de referencia de los productos (activación de la caja)
+      printValuedCourtesies: !!effectiveActivations['print_valued_courtesies'],
     },
   };
 }
@@ -1663,10 +1679,26 @@ export async function voidDocument(
         eq(billingDocuments.status, 'issued'),
         sql`${billingDocuments.id} <> ${doc.id}`,
         sql`${billingDocuments.documentType} <> 'nota_de_credito'`,
+        sql`${billingDocuments.documentType} <> 'cortesia'`,
       ))
       .limit(1);
     if (otherDoc) {
       throw new Error(`No se puede anular también el pedido: tiene otro comprobante vigente (${otherDoc.documentNumber}). Anula solo este comprobante o anula primero los demás`);
+    }
+  }
+
+  if (doc.documentType === 'cortesia') {
+    const [saleDoc] = await db
+      .select({ documentNumber: billingDocuments.documentNumber })
+      .from(billingDocuments)
+      .where(and(
+        eq(billingDocuments.orderId, doc.orderId),
+        eq(billingDocuments.status, 'issued'),
+        sql`${billingDocuments.documentType} NOT IN ('nota_de_credito', 'cortesia')`,
+      ))
+      .limit(1);
+    if (saleDoc) {
+      throw new Error(`Esta cortesía acompaña al comprobante ${saleDoc.documentNumber}: anula ese comprobante y la cortesía se anula con él`);
     }
   }
 
@@ -1720,6 +1752,19 @@ export async function voidDocument(
     .where(eq(billingDocuments.id, id));
 
   await releaseOrderItemLinks(db, id);
+
+  // Cortesías: el documento de cortesía que acompaña a este comprobante se anula con él.
+  // Si lo anulado es la cortesía de un pedido regalado completo, la cortesía se deshace.
+  if (doc.documentType === 'cortesia') {
+    await revertOrderCourtesy(db, doc.orderId);
+  } else if (doc.documentType !== 'nota_de_credito') {
+    for (const ctId of await issuedCourtesyDocumentIds(db, doc.orderId, id)) {
+      await db.update(billingDocuments).set({
+        status: 'voided', voidedAt: new Date(), voidedReason: reason.trim(), voidedBy: voidedByName, updatedAt: new Date(),
+      }).where(eq(billingDocuments.id, ctId));
+      await releaseOrderItemLinks(db, ctId);
+    }
+  }
 
   // 2. Revertir el cobro en caja y eliminar order_payments
   try {

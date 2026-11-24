@@ -3,6 +3,7 @@ import { cashSessions, cashRegisters, branches, users } from '../../../../../db/
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { sendMail, type MailAttachment } from '../../../../../utils/mailer';
 import { getSmtpConfig } from '../config-local/mail-settings.service';
+import { getSessionCourtesies } from './courtesy.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 
@@ -64,6 +65,10 @@ export async function sendCloseReportEmail(
     ['Efectivo contado', money(s.closingBalance)],
     ['Diferencia', money(s.difference)],
   ];
+  const courtesies = await getSessionCourtesies(s.id);
+  if (courtesies.count > 0) {
+    lines.push(['Cortesías', `${courtesies.count} · valor de referencia ${money(String(courtesies.amount))}`]);
+  }
 
   const subject = `Cierre de turno ${s.code ?? s.id} — ${row.registerName} (${row.branchName})`;
   const text = `${subject}\n\n${lines.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nSe adjuntan la liquidación del cajero, el paloteo de producción y las anulaciones del turno.`;

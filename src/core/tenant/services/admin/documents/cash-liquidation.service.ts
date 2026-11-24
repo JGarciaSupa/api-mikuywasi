@@ -1,3 +1,4 @@
+import { getSessionCourtesies } from './courtesy.service';
 import {
   cashSessions, cashMovements, cashRegisters, branches, orders, billingDocuments, paymentMethods,
   cashSessionParticipants, cashRegisterDocumentSeries, orderPayments, users as usersTable,
@@ -105,7 +106,7 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
       .select({ doc: billingDocuments, trackingCode: orders.trackingCode, orderSessionId: orders.cashSessionId })
       .from(billingDocuments)
       .innerJoin(orders, eq(billingDocuments.orderId, orders.id))
-      .where(and(inArray(billingDocuments.orderId, orderIds), ne(billingDocuments.documentType, 'nota_de_credito')))
+      .where(and(inArray(billingDocuments.orderId, orderIds), ne(billingDocuments.documentType, 'nota_de_credito'), ne(billingDocuments.documentType, 'cortesia')))
       .orderBy(asc(billingDocuments.series), asc(billingDocuments.sequential))
       .then((rows) => rows.map((r) => ({ ...r.doc, trackingCode: r.trackingCode, orderSessionId: r.orderSessionId })))
     : [];
@@ -311,9 +312,18 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
     };
   });
 
+  // ── Cortesías del turno (documento interno CT): informativas, no suman a ventas ni a caja ──
+  const courtesyData = await getSessionCourtesies(sessionId);
+  const courtesies = courtesyData.rows.filter((r) => matchesUser(r.user));
+  for (const c of courtesyData.rows) if (c.user) users.add(c.user);
+
   // ── Correlativos por serie ──
   const bySeries = new Map<string, { documentType: string; series: string; from: string; to: string; fromSeq: number; toSeq: number; issued: number; voided: number }>();
-  for (const d of sessionDocs) {
+  const courtesySeriesDocs = courtesyData.rows.map((c) => {
+    const [series, seq] = c.documentNumber.split('-');
+    return { series, sequential: Number(seq), documentNumber: c.documentNumber, documentType: 'cortesia', status: c.status };
+  });
+  for (const d of [...sessionDocs, ...courtesySeriesDocs]) {
     const entry = bySeries.get(d.series) ?? {
       documentType: d.documentType, series: d.series, from: d.documentNumber, to: d.documentNumber,
       fromSeq: d.sequential, toSeq: d.sequential, issued: 0, voided: 0,
@@ -352,6 +362,10 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
     creditNotes: { count: creditNotes.length, total: sum(creditNotes, (d) => d.total) },
     pendingPayment: { count: pending.length, total: sum(pending, (d) => d.total) },
     discounts: { count: discounts.length, total: sum(discounts, (d) => d.amount) },
+    courtesies: {
+      count: courtesies.filter((c) => c.status === 'issued').length,
+      amount: sum(courtesies.filter((c) => c.status === 'issued'), (c) => c.amount),
+    },
     expenses: sum(expenses, (e) => e.amount),
     manualIncomes: sum(incomes, (e) => e.amount),
     // Arqueo del turno completo (no depende del filtro de usuario)
@@ -383,6 +397,7 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
     expenses,
     incomes,
     discounts,
+    courtesies,
     otherShiftOrders,
     correlatives,
     summary,
@@ -454,6 +469,8 @@ export async function getCashierLiquidation(params: { userId: number; branchId: 
         tips: t.summary.tips,
         retention: t.summary.retention,
         expenses: t.summary.expenses,
+        courtesiesCount: t.summary.courtesies.count,
+        courtesiesAmount: t.summary.courtesies.amount,
       },
     })),
     byMethod: [...byMethod.values()].sort((a, b) => Number(b.isCash) - Number(a.isCash) || b.amount - a.amount),
@@ -466,6 +483,8 @@ export async function getCashierLiquidation(params: { userId: number; branchId: 
       tips: sumT((t) => t.summary.tips),
       retention: sumT((t) => t.summary.retention),
       expenses: sumT((t) => t.summary.expenses),
+      courtesiesCount: sumT((t) => t.summary.courtesies.count),
+      courtesiesAmount: sumT((t) => t.summary.courtesies.amount),
     },
   };
 }

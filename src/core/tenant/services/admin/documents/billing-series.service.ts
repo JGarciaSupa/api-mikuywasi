@@ -5,7 +5,9 @@ import { type TaxConfig, resolveBranchMainTaxRate } from '../../shared/taxes.ser
 
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
 // El pivote acepta además nota_de_credito (documento fiscal auto).
-export type ReceiptDocumentType = 'factura' | 'boleta' | 'nota_de_venta' | 'nota_de_credito';
+export type ReceiptDocumentType = 'factura' | 'boleta' | 'nota_de_venta' | 'nota_de_credito' | 'cortesia';
+// Serie interna de cortesías (CT01 por caja): no se ofrece en el cobro, la usa solo el flujo de cortesía.
+export const COURTESY_RECEIPT_CODE = 'CORTESIA';
 
 // Traduce el código del tipo de comprobante del MAESTRO (SUNAT) al enum interno.
 // Los códigos SUNAT (01/03/07) van a facturación electrónica; cualquier otro
@@ -15,6 +17,7 @@ export function documentTypeFromReceiptCode(code: string): ReceiptDocumentType {
     case '01': return 'factura';
     case '03': return 'boleta';
     case '07': return 'nota_de_credito';
+    case COURTESY_RECEIPT_CODE: return 'cortesia';
     default: return 'nota_de_venta';
   }
 }
@@ -24,6 +27,7 @@ export function receiptCodeFromDocumentType(type: string): string {
     case 'factura': return '01';
     case 'boleta': return '03';
     case 'nota_de_credito': return '07';
+    case 'cortesia': return COURTESY_RECEIPT_CODE;
     default: return '00';
   }
 }
@@ -297,7 +301,8 @@ export async function listAvailableDocumentTypesForRegister(registerId: number):
       eq(cashRegisterDocumentSeries.isActive, true),
     ));
 
-  return rows.map((r) => {
+  // La serie de cortesía no es un documento de venta: no se ofrece en el cobro
+  return rows.filter((r) => r.receiptTypeCode !== COURTESY_RECEIPT_CODE).map((r) => {
     const docType = r.receiptTypeCode ? documentTypeFromReceiptCode(r.receiptTypeCode) : 'nota_de_venta';
     return {
       documentType: docType as DocumentType,

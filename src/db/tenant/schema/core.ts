@@ -559,6 +559,17 @@ export const orders = pgTable('orders', {
 	discountById: integer('discount_by_id').references(() => users.id),
 	discountAt: timestamp('discount_at', { withTimezone: true }),
 
+	// Cortesía de pedido completo (motivo del catálogo reasons type='courtesy'): el pedido se
+	// cierra en 0 sin ingreso de caja y se emite un documento interno de cortesía (CT).
+	// courtesyAmount = valor de referencia de todo lo regalado (pedido completo o productos sueltos).
+	isCourtesy: boolean('is_courtesy').default(false).notNull(),
+	courtesyAmount: decimal('courtesy_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
+	courtesyReasonId: integer('courtesy_reason_id'), // FK lógica a reasons
+	courtesyMotivo: varchar('courtesy_motivo', { length: 200 }),
+	courtesyById: integer('courtesy_by_id').references(() => users.id),
+	courtesyAuthorizedById: integer('courtesy_authorized_by_id').references(() => users.id),
+	courtesyAt: timestamp('courtesy_at', { withTimezone: true }),
+
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -637,6 +648,15 @@ export const orderItems = pgTable('order_items', {
 	// esté pendiente o parcial — y vuelve a NULL si cocina deshace la marca.
 	preparedAt: timestamp('prepared_at', { withTimezone: true }),
 	preparedById: integer('prepared_by_id').references(() => users.id),
+	// Cortesía de la línea: totalPrice queda en 0 y courtesyAmount guarda su valor de referencia.
+	// No va al comprobante SUNAT; se documenta en el documento interno de cortesía del pedido.
+	isCourtesy: boolean('is_courtesy').default(false).notNull(),
+	courtesyAmount: decimal('courtesy_amount', { precision: 10, scale: 2 }).default('0.00').notNull(),
+	courtesyReasonId: integer('courtesy_reason_id'), // FK lógica a reasons
+	courtesyMotivo: varchar('courtesy_motivo', { length: 200 }),
+	courtesyById: integer('courtesy_by_id').references(() => users.id),
+	courtesyAuthorizedById: integer('courtesy_authorized_by_id').references(() => users.id),
+	courtesyAt: timestamp('courtesy_at', { withTimezone: true }),
 	// Cuándo entró la línea al pedido. Las adiciones posteriores del mozo tienen su
 	// propio cronómetro en cocina, distinto al del pedido completo.
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
