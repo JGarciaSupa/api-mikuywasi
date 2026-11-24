@@ -1,6 +1,7 @@
 import { sql, relations } from 'drizzle-orm';
 import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, jsonb, uniqueIndex, date, bigserial } from 'drizzle-orm/pg-core';
 import { users, products, orders, branches, orderSplits, printers } from './core';
+import { reasons } from './reasons';
 
 // ==========================================
 // 🏬 WAREHOUSE — CATALOGUE
@@ -745,6 +746,8 @@ export const cashMovements = pgTable('cash_movements', {
 	orderId: varchar('order_id', { length: 12 }).references(() => orders.id),
 	splitId: integer('split_id').references(() => orderSplits.id), // cuenta/split del pedido (ingreso por split)
 	reference: varchar('reference', { length: 100 }),
+	// Categoría del movimiento manual (reasons cash_expense / cash_income); null en ventas y ajustes automáticos
+	reasonId: integer('reason_id').references(() => reasons.id, { onDelete: 'set null' }),
 	createdBy: varchar('created_by', { length: 100 }),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

@@ -21,8 +21,9 @@ export const reasons = pgTable('reasons', {
 	// courtesy = Cortesía | order_cancel = Eliminación de pedidos (ORDER)
 	// document_void = Anulaciones (DOCUMENT) | discount = Motivos de descuento
 	// payment_change = Cambio de forma de pago
+	// cash_expense / cash_income = Categorías de egresos e ingresos de caja (movimientos manuales)
 	type: varchar('type', { length: 20,
-		enum: ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change'] as const }).notNull(),
+		enum: ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change', 'cash_expense', 'cash_income'] as const }).notNull(),
 	description: varchar('description', { length: 50 }).notNull(),
 	longDescription: varchar('long_description', { length: 150 }),
 	// TOPE (monto máximo). Solo courtesy y discount; en discount es por pedido.

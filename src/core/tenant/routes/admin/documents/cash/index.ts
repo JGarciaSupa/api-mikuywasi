@@ -40,7 +40,7 @@ routes.post('/sessions/:id/close', cash.closeCashSession);
 routes.get('/sessions/:id/close-count', cash.getCloseCountSummary);
 routes.post('/sessions/:id/close/verify-authorization', cash.verifyCloseAuthorization);
 routes.post('/sessions/:id/email-report', requirePermission('caja', 'caja.cerrar_sesion'), cash.emailCloseReport);
-routes.post('/sessions/:id/movements', cash.addCashMovement);
+routes.post('/sessions/:id/movements', requirePermission('caja', 'caja.registrar_movimiento'), cash.addCashMovement);
 routes.post('/refund', cash.refundOrder);
 
 export default routes;

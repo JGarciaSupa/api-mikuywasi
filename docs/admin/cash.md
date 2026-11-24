@@ -178,3 +178,26 @@ caja del turno (los destinatarios nunca vienen del request) un resumen del turno
 al cerrar el turno con la liquidación del cajero y el PDF de paloteo y anulaciones. Solo turnos cerrados y con acceso
 al turno (dueño, participante o `caja.ver_todos_turnos`). 422 si falta SMTP, la caja no tiene correos o los archivos
 no son válidos. Se envía desde el **correo de envío del restaurante** (ver `docs/admin/mail-settings.md`); si no está configurado o está desactivado, 422.
+
+## Ingresos y egresos de caja (movimientos manuales)
+
+### POST `/api/cash/sessions/:id/movements` (permiso `caja.registrar_movimiento`)
+
+Cuerpo: `{ movementType: 'expense'|'income'|'withdrawal'|'deposit', amount > 0, concept?, reasonId?, paymentMethod?, reference? }`.
+- `reasonId`: categoría de la sucursal del turno, de tipo **`cash_expense`** (egreso/retiro) o **`cash_income`** (ingreso/depósito).
+  Se administran en Motivos (`/api/reasons`, tipos nuevos). Sin `concept`, el concepto es la descripción de la categoría.
+- Las referencias `reverso`, `devolucion` y `cambio_forma_pago` están reservadas para los ajustes automáticos (400).
+- `cash_movements.reason_id` (migración `0105_add_cash_movement_reason`). Categorías por defecto: tarea de despliegue `0005`.
+
+### Reporte de caja (`/api/cash/reports/summary`)
+
+`kpis.totalIncome` = ventas netas (cobros − reversos) + ingresos de caja; `kpis.totalExpense` = solo gastos registrados a mano.
+Ajustes automáticos aparte: `totalReversal` (anulación / cambio de documento), `totalRefund` (devoluciones), `paymentChangeMoves`.
+`topExpenseConcepts` agrupa los gastos manuales por categoría (o concepto). Los movimientos traen `kind` y `category`.
+
+## Anular y volver a cobrar (cambio de documento)
+
+- Al anular el comprobante, cada ingreso vigente del pedido recibe un reverso (`reference='reverso'`): en su turno si
+  sigue abierto; si ya cerró, en el turno abierto de quien anula en esa sucursal.
+- Al volver a cobrar el pedido, el nuevo ingreso **sí** se registra (antes se omitía porque ya existía uno, aunque revertido).
+- Un pedido puede anularse y cobrarse varias veces: los reversos se emparejan con los ingresos por orden.

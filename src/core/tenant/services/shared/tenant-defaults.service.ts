@@ -13,7 +13,7 @@ type TenantDb = Pick<ReturnType<typeof getTenantDb>, 'select' | 'insert' | 'upda
 
 export const DEFAULT_PAYMENT_METHOD = { name: 'Efectivo', isCash: true } as const;
 
-type DefaultReasonType = 'order_cancel' | 'document_void' | 'payment_change';
+type DefaultReasonType = 'order_cancel' | 'document_void' | 'payment_change' | 'cash_expense' | 'cash_income';
 
 export const DEFAULT_REASONS: { type: DefaultReasonType; description: string }[] = [
   // Eliminación de productos de un pedido
@@ -32,6 +32,16 @@ export const DEFAULT_REASONS: { type: DefaultReasonType; description: string }[]
   { type: 'payment_change', description: 'El cliente cambió de medio de pago' },
   { type: 'payment_change', description: 'Pago mixto mal registrado' },
   { type: 'payment_change', description: 'Error en el monto por medio de pago' },
+  // Categorías de egresos de caja (gastos del día sin salir a un Excel)
+  { type: 'cash_expense', description: 'Compra de insumos' },
+  { type: 'cash_expense', description: 'Pago a proveedor' },
+  { type: 'cash_expense', description: 'Servicios (luz, agua, gas)' },
+  { type: 'cash_expense', description: 'Movilidad' },
+  { type: 'cash_expense', description: 'Adelanto de personal' },
+  { type: 'cash_expense', description: 'Otros gastos' },
+  // Categorías de ingresos de caja (no ventas)
+  { type: 'cash_income', description: 'Fondo adicional' },
+  { type: 'cash_income', description: 'Otros ingresos' },
 ];
 
 // Comprobantes de cada caja nueva. La nota de crédito no se incluye: su serie se crea

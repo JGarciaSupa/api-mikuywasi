@@ -1,5 +1,5 @@
 import { eq, desc, asc, and, gte, lte, sql, ilike, isNull, or, ne, inArray } from 'drizzle-orm';
-import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries, printers } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, orders, cashRegisters, cashSessionSequences, users, paymentMethods, orderSplits, branches, orderPayments, cashSessionParticipants, cashRegisterDocumentSeries, printers, reasons } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -23,6 +23,9 @@ function toNum(v: unknown): number {
 function round2(n: number): string {
   return n.toFixed(2);
 }
+
+// Referencias que marcan movimientos automáticos (no los registra el cajero a mano)
+export const AUTOMATIC_MOVEMENT_REFERENCES = ['reverso', 'devolucion', 'cambio_forma_pago'];
 
 /**
  * Formatea el concepto de venta amigable para arqueos y movimientos de caja:
@@ -770,14 +773,35 @@ export async function addCashMovement(
     paymentMethod?: string;
     orderId?: string;
     reference?: string;
+    reasonId?: number;
   },
   actor?: AuditActor
 ) {
   const db = getTenantDb();
 
+  if (!['income', 'expense', 'withdrawal', 'deposit'].includes(data.movementType)) throw new Error('Tipo de movimiento inválido');
+  if (!(data.amount > 0)) throw new Error('El monto debe ser mayor a 0');
+  // Estas referencias marcan los ajustes automáticos (reverso, devolución, cambio de forma de pago)
+  if (data.reference && AUTOMATIC_MOVEMENT_REFERENCES.includes(data.reference.trim().toLowerCase())) {
+    throw new Error('Esa referencia está reservada para los ajustes automáticos; usa otra');
+  }
+
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
   if (!session) throw new Error('Sesión no encontrada');
   if (session.status !== 'open') throw new Error('La sesión ya está cerrada');
+
+  // Categoría: de la sucursal del turno y del sentido del movimiento (egreso / ingreso)
+  let concept = (data.concept ?? '').trim();
+  if (data.reasonId) {
+    const isOut = data.movementType === 'expense' || data.movementType === 'withdrawal';
+    const [reason] = await db
+      .select({ id: reasons.id, description: reasons.description })
+      .from(reasons)
+      .where(and(eq(reasons.id, data.reasonId), eq(reasons.branchId, session.branchId), eq(reasons.type, isOut ? 'cash_expense' : 'cash_income')));
+    if (!reason) throw new Error('Categoría inválida para este movimiento');
+    if (!concept) concept = reason.description;
+  }
+  if (!concept) throw new Error('Indica el concepto o la categoría del movimiento');
 
   // Retiros/depósitos son efectivo por naturaleza; el resto según el método configurado.
   const isCash = (data.movementType === 'withdrawal' || data.movementType === 'deposit')
@@ -790,12 +814,13 @@ export async function addCashMovement(
       .values({
         sessionId,
         movementType: data.movementType,
-        concept: data.concept,
+        concept: concept.slice(0, 200),
         amount: round2(data.amount),
         paymentMethod: data.paymentMethod,
         isCash,
         orderId: data.orderId ?? null,
         reference: data.reference,
+        reasonId: data.reasonId ?? null,
         createdBy: actor?.userName ?? 'sistema',
       })
       .returning();
@@ -811,16 +836,34 @@ export async function addCashMovement(
       userId: actor?.userId,
       userName: actor?.userName,
       module: 'caja',
-      description: `Movimiento de caja [${data.movementType}]: ${data.concept} — S/ ${round2(data.amount)}`,
+      description: `Movimiento de caja [${data.movementType}]: ${concept} — S/ ${round2(data.amount)}`,
     });
 
     return { movement, session: updated };
   });
 }
 
+// Ingresos de venta vigentes de un pedido (splitId null) o de una cuenta: los que aún no tienen
+// reverso. El reverso no enlaza al ingreso: se emparejan por orden (los primeros N quedan revertidos).
+// Los movimientos de cambio de forma de pago (otro turno) no cuentan como cobro ni como reverso.
+async function unreversedSaleIncomes(orderId: string | null, splitId: number | null) {
+  const db = getTenantDb();
+  const keyCond = splitId != null
+    ? eq(cashMovements.splitId, splitId)
+    : and(eq(cashMovements.orderId, orderId ?? ''), isNull(cashMovements.splitId));
+  const rows = await db
+    .select()
+    .from(cashMovements)
+    .where(and(keyCond, or(isNull(cashMovements.reference), ne(cashMovements.reference, 'cambio_forma_pago'))))
+    .orderBy(asc(cashMovements.id));
+  const incomes = rows.filter((r) => r.movementType === 'income');
+  const reversed = rows.filter((r) => r.movementType === 'expense' && r.reference === 'reverso').length;
+  return incomes.slice(reversed);
+}
+
 // Crea automáticamente el INGRESO de caja al cobrar un pedido.
 // Se atribuye al turno del CAJERO que cobró (orders.collectedSessionId), NO al del mozo.
-// Idempotente: si ya existe un ingreso para ese pedido, no duplica.
+// Idempotente: si ya existe un ingreso vigente (sin reverso) para ese pedido, no duplica.
 // No lanza error: si el turno no existe/está cerrado, devuelve created=false (el pago no se bloquea).
 export async function recordOrderSaleIncome(
   orderId: string,
@@ -829,12 +872,9 @@ export async function recordOrderSaleIncome(
 ): Promise<{ created: boolean; reason?: string }> {
   const db = getTenantDb();
 
-  const [existing] = await db
-    .select({ id: cashMovements.id })
-    .from(cashMovements)
-    .where(and(eq(cashMovements.orderId, orderId), eq(cashMovements.movementType, 'income'), isNull(cashMovements.splitId)))
-    .limit(1);
-  if (existing) return { created: false, reason: 'already_recorded' };
+  // Tras anular el comprobante (cambio de documento) el ingreso anterior ya tiene reverso: el
+  // nuevo cobro sí se registra.
+  if ((await unreversedSaleIncomes(orderId, null)).length > 0) return { created: false, reason: 'already_recorded' };
 
   // Atribución al turno del cajero que cobró (collectedSessionId), no al del mozo creador.
   const [order] = await db
@@ -906,12 +946,7 @@ export async function recordOrderMultiPaymentIncome(
 ): Promise<{ created: boolean; reason?: string }> {
   const db = getTenantDb();
 
-  const [existing] = await db
-    .select({ id: cashMovements.id })
-    .from(cashMovements)
-    .where(and(eq(cashMovements.orderId, orderId), eq(cashMovements.movementType, 'income'), isNull(cashMovements.splitId)))
-    .limit(1);
-  if (existing) return { created: false, reason: 'already_recorded' };
+  if ((await unreversedSaleIncomes(orderId, null)).length > 0) return { created: false, reason: 'already_recorded' };
 
   const [order] = await db
     .select({
@@ -967,46 +1002,43 @@ export async function recordOrderMultiPaymentIncome(
   return { created: true };
 }
 
-// Revierte TODOS los ingresos de un pedido anulado/cancelado (nivel pedido y por split).
-// Inserta un egreso de reverso por cada ingreso sin reverso, en su turno si sigue abierto.
-// Idempotente: no revierte dos veces (se identifica por splitId).
+// Revierte TODOS los ingresos vigentes de un pedido anulado/cancelado (nivel pedido y por split).
+// Inserta un egreso de reverso por cada ingreso sin reverso: en su turno si sigue abierto; si ya
+// cerró, en el turno abierto de quien anula en la sucursal del pedido (como el cambio de forma de pago).
+// Idempotente: los ingresos ya revertidos no se vuelven a revertir.
 export async function reverseOrderSaleMovement(
   orderId: string,
   actor?: AuditActor,
 ): Promise<{ reversed: boolean; reason?: string }> {
   const db = getTenantDb();
 
-  const incomes = await db
-    .select()
-    .from(cashMovements)
-    .where(and(eq(cashMovements.orderId, orderId), eq(cashMovements.movementType, 'income')));
-  if (incomes.length === 0) return { reversed: false, reason: 'no_income' };
-
-  const reverses = await db
+  const allIncomes = await db
     .select({ splitId: cashMovements.splitId })
     .from(cashMovements)
-    .where(and(
-      eq(cashMovements.orderId, orderId),
-      eq(cashMovements.movementType, 'expense'),
-      eq(cashMovements.reference, 'reverso'),
-    ));
-  const reversedKeys = new Set(reverses.map((r) => r.splitId ?? 'order'));
+    .where(and(eq(cashMovements.orderId, orderId), eq(cashMovements.movementType, 'income')));
+  if (allIncomes.length === 0) return { reversed: false, reason: 'no_income' };
+
+  const splitKeys = [...new Set(allIncomes.map((r) => r.splitId))];
+  const incomes = (await Promise.all(splitKeys.map((sid) => unreversedSaleIncomes(orderId, sid)))).flat();
+
+  const [order] = await db.select({ branchId: orders.branchId }).from(orders).where(eq(orders.id, orderId)).limit(1);
+  const actorSession = await getActiveSessionForUserInBranch(actor?.userId, order?.branchId);
 
   const sessionsToRecompute = new Set<number>();
   let any = false;
 
   await db.transaction(async (tx) => {
     for (const income of incomes) {
-      const key = income.splitId ?? 'order';
-      if (reversedKeys.has(key)) continue;
       const [session] = await tx.select().from(cashSessions).where(eq(cashSessions.id, income.sessionId));
-      if (!session || session.status !== 'open') continue; // turno cerrado → no se puede revertir aquí
+      const targetSessionId = session?.status === 'open' ? income.sessionId : actorSession?.id;
+      if (!targetSessionId) continue; // turno cerrado y quien anula no tiene turno abierto
+      const fromClosed = targetSessionId !== income.sessionId;
       const [movement] = await tx
         .insert(cashMovements)
         .values({
-          sessionId: income.sessionId,
+          sessionId: targetSessionId,
           movementType: 'expense',
-          concept: `Reverso venta ${orderId} (anulada)`,
+          concept: `Reverso venta ${orderId} (anulada)${fromClosed ? ' · cobrada en un turno ya cerrado' : ''}`,
           amount: income.amount,
           paymentMethod: income.paymentMethod,
           retentionPercentage: income.retentionPercentage,
@@ -1018,7 +1050,7 @@ export async function reverseOrderSaleMovement(
           createdBy: actor?.userName ?? 'sistema',
         })
         .returning();
-      sessionsToRecompute.add(income.sessionId);
+      sessionsToRecompute.add(targetSessionId);
       any = true;
       await writeAuditLog({
         tableName: 'cash_movements',
@@ -1047,12 +1079,7 @@ export async function recordSplitSaleIncome(
 ): Promise<{ created: boolean; reason?: string }> {
   const db = getTenantDb();
 
-  const [existing] = await db
-    .select({ id: cashMovements.id })
-    .from(cashMovements)
-    .where(and(eq(cashMovements.splitId, splitId), eq(cashMovements.movementType, 'income')))
-    .limit(1);
-  if (existing) return { created: false, reason: 'already_recorded' };
+  if ((await unreversedSaleIncomes(null, splitId)).length > 0) return { created: false, reason: 'already_recorded' };
 
   const [split] = await db.select().from(orderSplits).where(eq(orderSplits.id, splitId)).limit(1);
   if (!split) return { created: false, reason: 'split_not_found' };
@@ -1157,19 +1184,15 @@ export async function reverseSplitSaleIncome(
 ): Promise<{ reversed: boolean; reason?: string }> {
   const db = getTenantDb();
 
-  const [income] = await db
-    .select()
+  const [anyIncome] = await db
+    .select({ id: cashMovements.id })
     .from(cashMovements)
     .where(and(eq(cashMovements.splitId, splitId), eq(cashMovements.movementType, 'income')))
     .limit(1);
-  if (!income) return { reversed: false, reason: 'no_income' };
+  if (!anyIncome) return { reversed: false, reason: 'no_income' };
 
-  const [already] = await db
-    .select({ id: cashMovements.id })
-    .from(cashMovements)
-    .where(and(eq(cashMovements.splitId, splitId), eq(cashMovements.movementType, 'expense'), eq(cashMovements.reference, 'reverso')))
-    .limit(1);
-  if (already) return { reversed: false, reason: 'already_reversed' };
+  const [income] = await unreversedSaleIncomes(null, splitId);
+  if (!income) return { reversed: false, reason: 'already_reversed' };
 
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, income.sessionId));
   if (!session || session.status !== 'open') return { reversed: false, reason: 'session_closed' };

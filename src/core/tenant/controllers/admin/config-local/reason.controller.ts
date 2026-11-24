@@ -2,8 +2,8 @@ import type { Context } from 'hono';
 import { safeMessage } from '@/utils/errors';
 import * as reasonService from '../../../services/admin/config-local/reason.service';
 
-type ReasonType = 'courtesy' | 'order_cancel' | 'document_void' | 'discount' | 'payment_change';
-const VALID_TYPES: ReasonType[] = ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change'];
+type ReasonType = 'courtesy' | 'order_cancel' | 'document_void' | 'discount' | 'payment_change' | 'cash_expense' | 'cash_income';
+const VALID_TYPES: ReasonType[] = ['courtesy', 'order_cancel', 'document_void', 'discount', 'payment_change', 'cash_expense', 'cash_income'];
 
 export const listReasonsController = async (c: Context) => {
   try {
