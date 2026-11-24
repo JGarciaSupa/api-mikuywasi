@@ -232,6 +232,24 @@ export const verifyCloseAuthorization = async (c: Context) => {
   }
 };
 
+// GET /cash/sessions/:id/close-count — modo del cierre (a ciegas / declarado) y medios de pago a
+// contar; en modo declarado incluye los montos registrados aunque no se tenga caja.ver_contabilidad.
+export const getCloseCountSummary = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const session = await cash.getCashSessionById(id);
+    if (!session) return c.json({ success: false, message: 'Sesión no encontrada' }, 404);
+    const currentUserId = getCurrentUserId(c);
+    if (!hasPermission(c, 'caja.ver_todos_turnos') && session.userId !== currentUserId && !(await cash.isSessionParticipant(id, currentUserId))) {
+      return c.json({ success: false, message: 'No tienes acceso a esta sesión' }, 403);
+    }
+    const data = await cash.getCloseCountSummary(id);
+    return c.json({ success: true, data });
+  } catch (e) {
+    return jsonError(c, e, 'Error al obtener el conteo del cierre');
+  }
+};
+
 export const closeCashSession = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
@@ -243,6 +261,9 @@ export const closeCashSession = async (c: Context) => {
         notes: body.notes,
         password: body.password,
         authCode: typeof body.authCode === 'string' ? body.authCode : undefined,
+        counted: Array.isArray(body.counted)
+          ? body.counted.map((x: { method?: unknown; amount?: unknown }) => ({ method: String(x?.method ?? ''), amount: Number(x?.amount) }))
+          : undefined,
         geo: parseGeo(body.geo),
         terminalToken: c.req.header('X-Cash-Terminal') ?? null,
         canOperateAnyRegister: hasPermission(c, 'caja.gestionar_cajas'),

@@ -201,6 +201,17 @@ const activationsData = [
 		order: 1,
 		isActive: true,
 		module: "impresion"
+	},
+	{
+		id: 17,
+		code: "CLOSE_BLIND_COUNT",
+		name: "Cierre a ciegas",
+		description: "Al cerrar el turno, el cajero escribe el efectivo y lo cobrado con cada tarjeta o medio de pago sin ver lo registrado en el sistema. Apagado: se declara tal cual lo registrado.",
+		category: "Cierre de turno",
+		defaultEnabled: false,
+		order: 2,
+		isActive: true,
+		module: "caja_chica"
 	}
 ];
 

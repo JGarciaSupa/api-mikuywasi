@@ -2,7 +2,22 @@
 
 ## POST `/api/cash/sessions/:id/close`
 
-Cuerpo: `{ closingBalance: number, notes?: string, password?: string, authCode?: string, geo? }`.
+Cuerpo: `{ notes?: string, password?: string, authCode?: string, counted?: [{ method: string, amount: number }], geo? }`.
+(`closingBalance` se sigue aceptando por compatibilidad, pero se ignora: el efectivo contado lo resuelve la API.)
+
+### Conteo del cierre (activación por caja `CLOSE_BLIND_COUNT`, "Cierre a ciegas")
+
+- **Apagada (por defecto) — declarado:** se declara tal cual lo registrado. `closingBalance` = efectivo del sistema, diferencia 0.
+- **Encendida — a ciegas:** `counted` es obligatorio con `{ method: 'Efectivo', amount }` y un elemento por medio no efectivo
+  (nombre del método de pago). Lo que falte cuenta como 0. `closingBalance` = efectivo contado; `difference` = contado − efectivo del sistema.
+- En ambos modos se guarda `cash_sessions.closing_breakdown = { mode, methods: [{ method, isCash, expected, counted, difference }] }`
+  ("Efectivo" = fondo + cobros en efectivo − egresos en efectivo; cada medio no efectivo con su neto del turno).
+
+### GET `/api/cash/sessions/:id/close-count`
+
+Para el diálogo de cierre (dueño o participante del turno, o `caja.ver_todos_turnos`):
+`{ mode: 'blind' | 'declared', methods: [{ method, isCash, amount }] }`. A ciegas `amount` es `null`; declarado trae lo registrado
+(aunque el usuario no tenga `caja.ver_contabilidad`).
 
 - Si el turno **no** tiene pedidos abiertos, cierra como siempre (`password` no hace falta).
 - Si tiene pedidos abiertos (pedidos de la sucursal que no estén cancelados y estén sin terminar o sin cobrar), exige una autorización:
