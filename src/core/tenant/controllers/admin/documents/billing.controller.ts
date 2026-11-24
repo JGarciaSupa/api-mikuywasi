@@ -249,7 +249,7 @@ export const voidDocumentController = async (c: Context) => {
     const status =
       error.message?.includes('no encontrado') ? 404 :
         error.message?.includes('Contraseña') || error.message?.includes('autorizado') ? 403 :
-          error.message?.includes('No se puede') ? 422 :
+          error.message?.includes('No se puede') || error.message?.includes('acompaña al comprobante') ? 422 :
             error.message?.includes('motivo') ? 400 :
               500;
     return c.json({ success: false, message: safeMessage(error, 'Error al anular documento') }, status as any);
