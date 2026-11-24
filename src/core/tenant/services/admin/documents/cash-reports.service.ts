@@ -1,4 +1,4 @@
-import { cashSessions, cashMovements, cashRegisters, users, orders, orderItems, ordersItemsDeleted } from '../../../../../db/tenant/schema';
+import { cashSessions, cashMovements, cashRegisters, users, orders, orderItems, ordersItemsDeleted, reasons } from '../../../../../db/tenant/schema';
 import { eq, and, ne, desc, asc, sql, count, gte, lte, isNull, isNotNull } from 'drizzle-orm';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 
@@ -44,6 +44,19 @@ const notReversedIncome = sql`NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r
   AND r.order_id IS NOT DISTINCT FROM ${cashMovements.orderId}
   AND r.split_id IS NOT DISTINCT FROM ${cashMovements.splitId})`;
 
+// Clase de cada movimiento: los manuales (gastos e ingresos de caja) van aparte de los ajustes
+// automáticos (reverso por anulación o cambio de documento, devolución, cambio de forma de pago).
+const movementKindExpr = sql<string>`CASE
+  WHEN ${cashMovements.reference} = 'cambio_forma_pago' THEN 'payment_change'
+  WHEN ${cashMovements.movementType} = 'expense' AND ${cashMovements.reference} = 'reverso' THEN 'reversal'
+  WHEN ${cashMovements.movementType} = 'expense' AND ${cashMovements.reference} = 'devolucion' THEN 'refund'
+  WHEN ${cashMovements.movementType} = 'income' AND ${cashMovements.orderId} IS NOT NULL THEN 'sale'
+  WHEN ${cashMovements.movementType} = 'income' THEN 'manual_income'
+  WHEN ${cashMovements.movementType} = 'expense' THEN 'manual_expense'
+  ELSE ${cashMovements.movementType} END`;
+const isPaymentChange = sql`${cashMovements.reference} IS NOT DISTINCT FROM 'cambio_forma_pago'`;
+const isReversal = sql`(${cashMovements.movementType} = 'expense' AND ${cashMovements.reference} IS NOT DISTINCT FROM 'reverso')`;
+
 /** Condiciones sobre movimientos (rango por fecha del movimiento, join a su turno) */
 const movementConditions = (f: CashReportFilters) => {
   const conditions = [
@@ -77,22 +90,30 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
 
   const amountExpr = sql<string>`COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)), 0)`;
 
-  // Totales por tipo de movimiento
-  const byType = await db
-    .select({ type: cashMovements.movementType, moves: count(), total: amountExpr })
+  // Totales por clase de movimiento (manuales vs. ajustes automáticos)
+  const byKind = await db
+    .select({ kind: movementKindExpr, moves: count(), total: amountExpr })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
     .where(movesWhere)
-    .groupBy(cashMovements.movementType);
+    .groupBy(sql`1`);
 
   const totals: Record<string, { moves: number; total: number }> = {};
-  for (const row of byType) {
-    totals[row.type] = { moves: row.moves, total: roundMoney(toNum(row.total)) };
+  for (const row of byKind) {
+    totals[row.kind] = { moves: row.moves, total: roundMoney(toNum(row.total)) };
   }
-  const income = totals.income ?? { moves: 0, total: 0 };
-  const expense = totals.expense ?? { moves: 0, total: 0 };
-  const withdrawal = totals.withdrawal ?? { moves: 0, total: 0 };
-  const deposit = totals.deposit ?? { moves: 0, total: 0 };
+  const zero = { moves: 0, total: 0 };
+  const sale = totals.sale ?? zero;
+  const reversal = totals.reversal ?? zero;
+  const manualIncome = totals.manual_income ?? zero;
+  const manualExpense = totals.manual_expense ?? zero;
+  const refund = totals.refund ?? zero;
+  const paymentChange = totals.payment_change ?? zero;
+  const withdrawal = totals.withdrawal ?? zero;
+  const deposit = totals.deposit ?? zero;
+  // Ventas netas: lo cobrado menos lo revertido al anular o cambiar el documento
+  const netSales = roundMoney(sale.total - reversal.total);
+  const totalIncome = roundMoney(netSales + manualIncome.total);
 
   // Propinas de los cobros del rango (ya incluidas en los ingresos), sin los cobros revertidos
   const [tipsAgg] = await db
@@ -116,7 +137,8 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
     .from(cashSessions)
     .where(sessionsWhere);
 
-  // Series diarias de ingresos y egresos (egresos = gastos + retiros)
+  // Series diarias: ingresos netos (ventas - reversos + ingresos manuales + depósitos) y egresos
+  // (gastos + devoluciones + retiros); el cambio de forma de pago se compensa y no cuenta.
   const bucketExpr = sql<string>`to_char(${cashMovements.createdAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`;
   // GROUP BY 1 (posición): repetir la expresión duplicaría el placeholder de la
   // zona horaria y Postgres trataría cada aparición como una expresión distinta.
@@ -124,8 +146,9 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
     .select({
       bucket: bucketExpr,
       movesCount: count(),
-      income: sql<string>`COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)) FILTER (WHERE ${cashMovements.movementType} IN ('income', 'deposit')), 0)`,
-      expense: sql<string>`COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)) FILTER (WHERE ${cashMovements.movementType} IN ('expense', 'withdrawal')), 0)`,
+      income: sql<string>`COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)) FILTER (WHERE ${cashMovements.movementType} IN ('income', 'deposit') AND NOT ${isPaymentChange}), 0)
+        - COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)) FILTER (WHERE ${isReversal}), 0)`,
+      expense: sql<string>`COALESCE(SUM(CAST(${cashMovements.amount} AS DECIMAL)) FILTER (WHERE ${cashMovements.movementType} IN ('expense', 'withdrawal') AND NOT ${isPaymentChange} AND NOT ${isReversal}), 0)`,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
@@ -133,29 +156,31 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
     .groupBy(sql`1`)
     .orderBy(sql`1`);
 
-  // Ingresos por método de pago
+  // Ingresos por método de pago (netos de reversos; sin cambios de forma de pago)
   const byPaymentMethod = await db
     .select({
       label: cashMovements.paymentMethod,
-      moves: count(),
-      total: amountExpr,
+      moves: sql<number>`COUNT(*) FILTER (WHERE ${cashMovements.movementType} = 'income')::int`,
+      total: sql<string>`COALESCE(SUM(CASE WHEN ${cashMovements.movementType} = 'income' THEN CAST(${cashMovements.amount} AS DECIMAL) ELSE -CAST(${cashMovements.amount} AS DECIMAL) END), 0)`,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
-    .where(and(movesWhere, eq(cashMovements.movementType, 'income')))
+    .where(and(movesWhere, sql`(${cashMovements.movementType} = 'income' OR ${isReversal})`, sql`NOT ${isPaymentChange}`))
     .groupBy(cashMovements.paymentMethod);
 
-  // Top conceptos de gasto (en qué se va la plata de caja)
+  // Gastos de caja por categoría (o concepto si no tiene): solo los registrados a mano
+  const expenseLabel = sql<string>`COALESCE(${reasons.description}, ${cashMovements.concept})`;
   const topExpenseConcepts = await db
     .select({
-      label: cashMovements.concept,
+      label: expenseLabel,
       moves: count(),
       total: amountExpr,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
-    .where(and(movesWhere, eq(cashMovements.movementType, 'expense')))
-    .groupBy(cashMovements.concept)
+    .leftJoin(reasons, eq(cashMovements.reasonId, reasons.id))
+    .where(and(movesWhere, sql`${movementKindExpr} = 'manual_expense'`))
+    .groupBy(sql`1`)
     .orderBy(desc(amountExpr))
     .limit(10);
 
@@ -212,13 +237,23 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
 
   return {
     kpis: {
-      totalIncome: income.total,
-      incomeMoves: income.moves,
-      totalExpense: expense.total,
-      expenseMoves: expense.moves,
+      // Ingresos = ventas netas (sin lo revertido) + ingresos de caja; Gastos = solo los registrados a mano
+      totalIncome,
+      incomeMoves: sale.moves + manualIncome.moves,
+      totalExpense: manualExpense.total,
+      expenseMoves: manualExpense.moves,
       totalWithdrawal: withdrawal.total,
       totalDeposit: deposit.total,
-      netFlow: roundMoney(income.total + deposit.total - expense.total - withdrawal.total),
+      netSales,
+      totalManualIncome: manualIncome.total,
+      // Ajustes automáticos (no son gastos): reversos por anulación/cambio de documento, devoluciones
+      // al cliente y cambios de forma de pago (se compensan entre sí)
+      totalReversal: reversal.total,
+      reversalMoves: reversal.moves,
+      totalRefund: refund.total,
+      refundMoves: refund.moves,
+      paymentChangeMoves: paymentChange.moves,
+      netFlow: roundMoney(totalIncome + deposit.total - manualExpense.total - refund.total - withdrawal.total),
       sessionsCount: sessionsAgg?.sessionsCount ?? 0,
       closedCount: sessionsAgg?.closedCount ?? 0,
       shortageCount: sessionsAgg?.shortageCount ?? 0,
@@ -300,11 +335,15 @@ export const getCashReportMovements = async (
       orderId: cashMovements.orderId,
       orderTrackingCode: orders.trackingCode,
       createdBy: cashMovements.createdBy,
+      // manual_expense | manual_income | sale | reversal | refund | payment_change | withdrawal | deposit
+      kind: movementKindExpr,
+      category: reasons.description,
     })
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
     .leftJoin(cashRegisters, eq(cashSessions.registerId, cashRegisters.id))
     .leftJoin(orders, eq(cashMovements.orderId, orders.id))
+    .leftJoin(reasons, eq(cashMovements.reasonId, reasons.id))
     .where(and(...conditions))
     .orderBy(desc(cashMovements.createdAt))
     .limit(limit);

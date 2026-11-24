@@ -315,6 +315,7 @@ export const addCashMovement = async (c: Context) => {
         paymentMethod: body.paymentMethod,
         orderId: body.orderId,
         reference: body.reference,
+        reasonId: body.reasonId != null && body.reasonId !== '' ? Number(body.reasonId) : undefined,
       },
       getAuditActor(c)
     );
