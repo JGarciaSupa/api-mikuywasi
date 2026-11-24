@@ -184,7 +184,7 @@ export async function createCourtesyDocument(
     sequential,
     documentNumber: `${series.series}-${padSequential(sequential)}`,
     buyerDocType: null,
-    buyerDocNumber: '00000000',
+    buyerDocNumber: null,
     buyerName: order.customerName?.trim() || 'CLIENTE FINAL',
     emisorRuc: emisor.ruc || null,
     emisorName: emisor.name || null,
