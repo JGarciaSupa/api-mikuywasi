@@ -32,7 +32,7 @@ export const billingDocuments = pgTable('billing_documents', {
 	splitId: integer('split_id').references(() => orderSplits.id),
 	seriesId: integer('series_id').notNull().references(() => cashRegisterDocumentSeries.id),
 	documentType: varchar('document_type', { length: 20,
-		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito'] as const }).notNull(),
+		enum: ['factura', 'boleta', 'nota_de_venta', 'nota_de_credito', 'cortesia'] as const }).notNull(),
 	series: varchar('series', { length: 10 }).notNull(),
 	sequential: integer('sequential').notNull(),
 	documentNumber: varchar('document_number', { length: 20 }).notNull().unique(),
@@ -71,6 +71,10 @@ export const billingDocuments = pgTable('billing_documents', {
 
 	// Pago pendiente: marca interna (no SUNAT, no caja) de que el cliente se llevó la venta
 	// sin pagar por un acuerdo con el dueño. Se resuelve a mano con "Marcar como cobrado".
+	// Documento interno de cortesía (document_type 'cortesia'): total 0; valor de referencia y
+	// motivo de lo regalado. No va a SUNAT ni suma a ventas ni a caja.
+	courtesyAmount: decimal('courtesy_amount', { precision: 12, scale: 2 }).default('0.00').notNull(),
+	courtesyMotivo: varchar('courtesy_motivo', { length: 200 }),
 	paymentPending: boolean('payment_pending').default(false).notNull(),
 	paymentPendingNote: varchar('payment_pending_note', { length: 200 }),
 	paymentCollectedAt: timestamp('payment_collected_at', { withTimezone: true }),

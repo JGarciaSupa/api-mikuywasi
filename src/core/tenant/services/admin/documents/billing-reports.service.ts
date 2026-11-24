@@ -58,10 +58,11 @@ const issuedConditions = (f: BillingReportFilters, currency?: string) => [
   eq(billingDocuments.status, 'issued'),
 ];
 
-// Emitidos que suman facturación: issued y que no son nota de crédito
+// Emitidos que suman facturación: issued y que no son nota de crédito ni cortesía (documento interno en 0)
 const emittedConditions = (f: BillingReportFilters, currency?: string) => [
   ...issuedConditions(f, currency),
   ne(billingDocuments.documentType, 'nota_de_credito'),
+  ne(billingDocuments.documentType, 'cortesia'),
 ];
 
 /**

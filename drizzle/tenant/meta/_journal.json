@@ -715,6 +715,13 @@
       "when": 1795100000000,
       "tag": "0101_create_mail_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1795200000000,
+      "tag": "0102_add_courtesies",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { createExchangeRate } from '../config-local/exchange-rate.service';
 import { ensureDefaultRegisterSeries } from '../../shared/tenant-defaults.service';
 import { assertPlanLimit } from '../../shared/plan-limits.service';
 import { authorizeByPassword } from './security-auth.service';
+import { getSessionCourtesies } from './courtesy.service';
 import { consumeCloseAuthorizationCode, isTerminalLinkedToRegister, TerminalRequiredError, getTerminalByToken } from './cash-terminals.service';
 import { getCashOperationContext } from '../../../../../utils/cash-operation-context';
 import { buildPermissionsForUser } from '../users/rbac.service';
@@ -424,7 +425,9 @@ export async function getCashSessionById(id: number) {
   const tips = (await getSessionTips([id])).get(id) ?? { totalTips: '0.00', cashTips: '0.00' };
 
   const [withParticipants] = await attachSessionParticipants([session]);
-  return { ...withParticipants, movements, generatedMovements, totalsByMethod, ...tips };
+  // Cortesías del turno: informativas (no suman a ventas ni al efectivo)
+  const { count: courtesyCount, amount: courtesyAmount } = await getSessionCourtesies(id);
+  return { ...withParticipants, movements, generatedMovements, totalsByMethod, ...tips, courtesies: { count: courtesyCount, amount: courtesyAmount } };
 }
 
 /**

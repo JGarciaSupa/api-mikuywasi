@@ -54,6 +54,7 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'pedidos.operar_otros', name: 'Operar pedidos de otros usuarios o cajas', description: 'Retomar en el POS, cobrar y refacturar pedidos creados por otro usuario o en otra caja/turno (por ejemplo, si el cajero no está).', order: 8 },
       { code: 'pedidos.anular', name: 'Anular pedidos', description: 'Anular un pedido completo sin comprobante emitido (con comprobante se anula desde Documentos).', order: 9 },
       { code: 'pedidos.cambiar_forma_pago', name: 'Cambiar forma de pago de ventas cobradas', description: 'Cambiar el medio de pago de una venta ya cobrada (desde Facturación). Si el turno donde se cobró ya cerró, además pide la contraseña de un supervisor.', order: 10 },
+      { code: 'pedidos.cortesia', name: 'Dar cortesías', description: 'Registrar un pedido completo o productos sueltos como cortesía (sin cobro). Pide motivo del catálogo y la contraseña de un supervisor.', order: 11 },
     ],
   },
   {
@@ -201,6 +202,8 @@ export const RBAC_ACTIONS: SeedAction[] = [
       { code: 'seguridad.autorizar_cambiar_forma_pago', name: 'Autorizar cambio de forma de pago', description: 'Su contraseña autoriza cambiar la forma de pago de una venta cobrada (obligatoria si el turno donde se cobró ya cerró; la corrección se registra en el turno abierto de quien la cambia).', order: 4 },
       { code: 'seguridad.autorizar_anular_documento', name: 'Autorizar anular comprobantes', description: 'Su contraseña autoriza anular un comprobante cuando la caja exige contraseña ("Solicitar contraseña para anular comprobantes").', order: 5 },
       { code: 'seguridad.anular_sin_contrasena', name: 'Anular sin contraseña de supervisor', description: 'Anula comprobantes, pedidos y productos sin escribir contraseña aunque la caja la exija (gerente o cajero de confianza).', order: 6 },
+      { code: 'seguridad.autorizar_cortesia', name: 'Autorizar cortesías', description: 'Su contraseña autoriza dar una cortesía (pedido completo o producto).', order: 7 },
+      { code: 'seguridad.cortesia_sin_contrasena', name: 'Dar cortesías sin contraseña de supervisor', description: 'Registra cortesías sin escribir la contraseña de un supervisor (gerente).', order: 8 },
     ],
   },
 ];
@@ -238,6 +241,7 @@ export const RBAC_ROLES: SeedRole[] = [
       'pedidos.transferir',
       'pedidos.mover_mesa',
       'pedidos.cambiar_forma_pago',
+      'pedidos.cortesia',
       'caja.ver_sesiones',
       'caja.abrir_sesion',
       'caja.cerrar_sesion',

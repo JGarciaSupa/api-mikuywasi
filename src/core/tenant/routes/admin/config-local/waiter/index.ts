@@ -20,6 +20,8 @@ import { payOrderWithMultiplePaymentsController, listOrderPaymentsController } f
 import { validateMultiPayment } from '../../../../validations/admin/config-local/order-payments.validation';
 import { applyOrderDiscountController, removeOrderDiscountController } from '../../../../controllers/admin/documents/order-discount.controller';
 import { validateApplyDiscount } from '../../../../validations/admin/config-local/order-discount.validation';
+import { giveOrderCourtesyController, giveItemCourtesyController, removeItemCourtesyController } from '../../../../controllers/admin/documents/courtesy.controller';
+import { validateCourtesy } from '../../../../validations/admin/config-local/courtesy.validation';
 
 const routes = new Hono();
 
@@ -44,6 +46,11 @@ routes.get('/orders/:id/payments', listOrderPaymentsController);
 routes.post('/orders/:id/payments', auditForeignOrder('Cobro', orderIdFromParam('id')), validateMultiPayment, payOrderWithMultiplePaymentsController);
 routes.post('/orders/:id/discount', requirePermission('pedidos', 'pedidos.cambiar_estado_pago'), validateApplyDiscount, applyOrderDiscountController);
 routes.delete('/orders/:id/discount', requirePermission('pedidos', 'pedidos.cambiar_estado_pago'), removeOrderDiscountController);
+// Cortesías (motivo del catálogo + contraseña de supervisor, salvo seguridad.cortesia_sin_contrasena)
+const canGiveCourtesy = requirePermission('pedidos', 'pedidos.cortesia');
+routes.post('/orders/:id/courtesy', canGiveCourtesy, validateCourtesy, giveOrderCourtesyController);
+routes.post('/orders/:id/items/:itemId/courtesy', canGiveCourtesy, validateCourtesy, giveItemCourtesyController);
+routes.delete('/orders/:id/items/:itemId/courtesy', canGiveCourtesy, removeItemCourtesyController);
 routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
 routes.patch('/orders/:id/items', editOrderItemController);
 routes.post('/orders/:id/items/:itemId/annul', annulOrderItemController);
