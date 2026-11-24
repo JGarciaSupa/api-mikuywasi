@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
-import { orders, orderSplits, orderItems, products, branches, paymentMethods } from './core';
+import { pgTable, serial, text, decimal, integer, timestamp, index, varchar, boolean, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
+import { orders, orderSplits, orderItems, products, branches, paymentMethods, users } from './core';
 import { cashRegisters } from './warehouse';
 
 // 🧾 FACTURACIÓN — SERIES Y DOCUMENTOS DE VENTA
@@ -127,6 +127,34 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 }, (table) => ({
 	docIdx: index('billing_doc_lines_doc_idx').on(table.documentId),
 	orderItemUniqueIdx: uniqueIndex('billing_doc_lines_order_item_unique_idx').on(table.orderItemId),
+}));
+
+// Autorización remota de una anulación (pedido, producto enviado o comprobante): el supervisor valida
+// su contraseña en su celular (enlace con token) y la API genera un código de 6 dígitos de un solo uso,
+// válido solo para esa anulación y para quien la pidió. Mismo modelo que cash_close_authorizations.
+export const voidAuthorizations = pgTable('void_authorizations', {
+	id: serial('id').primaryKey(),
+	type: varchar('type', { length: 20, enum: ['order', 'item', 'document'] as const }).notNull(),
+	orderId: varchar('order_id', { length: 12 }).references(() => orders.id),
+	orderItemId: integer('order_item_id').references(() => orderItems.id),
+	documentId: integer('document_id').references(() => billingDocuments.id),
+	branchId: integer('branch_id').notNull().references(() => branches.id),
+	// Lo que ve el supervisor al aprobar (pedido, producto, cantidad, importe, motivo)
+	summary: jsonb('summary').$type<Record<string, unknown>>(),
+	requestTokenHash: varchar('request_token_hash', { length: 64 }).notNull(),
+	requestedById: integer('requested_by_id').references(() => users.id),
+	status: varchar('status', { length: 20, enum: ['pending', 'approved', 'used', 'locked'] as const }).notNull().default('pending'),
+	codeHash: varchar('code_hash', { length: 64 }),
+	approvedById: integer('approved_by_id').references(() => users.id),
+	approvedAt: timestamp('approved_at', { withTimezone: true }),
+	usedAt: timestamp('used_at', { withTimezone: true }),
+	failedAttempts: integer('failed_attempts').notNull().default(0),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+	requestTokenHashUnique: uniqueIndex('void_authorizations_request_token_hash_idx').on(table.requestTokenHash),
+	orderIdx: index('void_authorizations_order_idx').on(table.orderId),
+	documentIdx: index('void_authorizations_document_idx').on(table.documentId),
 }));
 
 // ── Relations Billing ────────────────────────────────────────────────────────

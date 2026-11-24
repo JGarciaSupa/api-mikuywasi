@@ -21,7 +21,7 @@ import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveFacturadorConfig } from '../../../../../utils/resolve-facturador-config';
 import { emitirComprobante, emitirNotaCredito, obtenerEmpresa, obtenerPdfBuffer, diagnosticarEmision, type CodigoMotivoNC } from '../../../../../utils/facturador-client';
 import { getActiveSessionForUser, getActiveSessionForUserInBranch, reverseOrderSaleMovement, reverseSplitSaleIncome } from './cash.service';
-import { authorizeByPassword } from './security-auth.service';
+import { authorizeVoid } from './void-authorizations.service';
 import { syncOrderPaymentStatus } from './order-splits.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
@@ -1660,6 +1660,10 @@ export async function voidDocument(
   actor?: AuditActor,
   // El usuario tiene seguridad.anular_sin_contrasena: no se le pide la contraseña de supervisor
   skipPassword = false,
+  // Código de 6 dígitos de la autorización remota por WhatsApp (alternativa a la contraseña)
+  authCode?: string,
+  // El usuario no tiene facturacion.anular: se exige autorización aunque la caja no la pida
+  requireAuthorization = false,
 ) {
   const db = getTenantDb();
   const [doc] = await db.select().from(billingDocuments).where(eq(billingDocuments.id, id));
@@ -1709,10 +1713,13 @@ export async function voidDocument(
   if (session?.registerId != null) {
     effective = await resolveForRegister(session.registerId);
   }
-  if (effective['PASSWORD_VOID_DOCUMENT'] && !skipPassword) {
-    const auth = await authorizeByPassword('seguridad.autorizar_anular_documento', password ?? '');
-    if (!auth) throw new Error('Contraseña de autorización inválida');
-    authorizedById = auth.userId;
+  if (requireAuthorization || (effective['PASSWORD_VOID_DOCUMENT'] && !skipPassword)) {
+    authorizedById = await authorizeVoid({ type: 'document', documentId: doc.id }, { password, authCode }, actor?.userId);
+    if (!authorizedById) {
+      throw new Error(authCode
+        ? 'Contraseña de autorización inválida o código vencido o ya usado. Si el código venció, solicita uno nuevo.'
+        : 'Contraseña de autorización inválida');
+    }
   }
 
   let creditNoteNumber: string | null = null;

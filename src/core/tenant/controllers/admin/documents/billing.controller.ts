@@ -234,13 +234,15 @@ export const createDocumentController = async (c: Context) => {
 export const voidDocumentController = async (c: Context) => {
   try {
     const id = Number(c.req.param('id'));
-    const { reason, cancelOrder, password } = await c.req.json();
+    const { reason, cancelOrder, password, authCode } = await c.req.json();
     if (cancelOrder === true && !hasPermission(c, 'pedidos.anular') && !hasPermission(c, 'mozo.cancelar_pedido')) {
       return c.json({ success: false, message: 'No tienes permisos para anular también el pedido' }, 403);
     }
     const actor = getAuditActor(c);
+    // Sin facturacion.anular se puede anular igual con la autorización de un supervisor
     const updated = await billingService.voidDocument(
       id, reason, cancelOrder === true, password, actor, hasPermission(c, 'seguridad.anular_sin_contrasena'),
+      typeof authCode === 'string' ? authCode : undefined, !hasPermission(c, 'facturacion.anular'),
     );
     // El service ya escribe su propio registro (VOID) en audit_log
     c.set('auditLogged', true);

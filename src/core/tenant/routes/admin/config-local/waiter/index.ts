@@ -1,6 +1,5 @@
-import { Hono, type Context, type Next } from 'hono';
+import { Hono } from 'hono';
 import { authMiddleware, requirePermission } from '../../../../middleware/auth.middleware';
-import { hasPermission } from '@/utils/permissions';
 import { auditForeignOrder, orderIdFromParam } from '../../../../middleware/foreign-order-audit.middleware';
 import { requireOwnTableOrder } from '../../../../middleware/waiter-scope.middleware';
 import {
@@ -25,12 +24,6 @@ import { validateCourtesy } from '../../../../validations/admin/config-local/cou
 
 const routes = new Hono();
 
-// Anular un pedido completo: el mozo con su permiso o quien tenga pedidos.anular
-const canCancelOrder = async (c: Context, next: Next) => {
-  if (hasPermission(c, 'mozo.cancelar_pedido') || hasPermission(c, 'pedidos.anular')) return next();
-  return c.json({ success: false, message: 'No tienes permisos para anular pedidos' }, 403);
-};
-
 routes.use('*', authMiddleware);
 // "Meseros solo ven sus mesas": un pedido de mesa ajeno no se abre ni se opera
 routes.use('/orders/:id', requireOwnTableOrder);
@@ -54,6 +47,8 @@ routes.delete('/orders/:id/items/:itemId/courtesy', canGiveCourtesy, removeItemC
 routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
 routes.patch('/orders/:id/items', editOrderItemController);
 routes.post('/orders/:id/items/:itemId/annul', annulOrderItemController);
-routes.post('/orders/:id/cancel', canCancelOrder, cancelOrderController);
+// Anular un pedido completo: con mozo.cancelar_pedido o pedidos.anular; sin ellos, exige la
+// autorización de un supervisor (contraseña o código por WhatsApp). Lo resuelve el controller.
+routes.post('/orders/:id/cancel', cancelOrderController);
 
 export default routes;
