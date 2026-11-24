@@ -37,6 +37,7 @@ routes.get('/sessions/:id', cash.getCashSessionById);
 routes.get('/sessions/:id/liquidation', getCashSessionLiquidationController);
 routes.get('/liquidation/cashier', getCashierLiquidationController);
 routes.post('/sessions/:id/close', cash.closeCashSession);
+routes.post('/sessions/:id/close/verify-authorization', cash.verifyCloseAuthorization);
 routes.post('/sessions/:id/email-report', requirePermission('caja', 'caja.cerrar_sesion'), cash.emailCloseReport);
 routes.post('/sessions/:id/movements', cash.addCashMovement);
 routes.post('/refund', cash.refundOrder);

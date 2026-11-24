@@ -402,7 +402,8 @@ export async function approveCloseRequest(requestToken: string, password: string
  * Canjea el código de cierre remoto del turno. Devuelve el id del supervisor que lo aprobó,
  * o null si el código no corresponde (suma un intento fallido y bloquea al llegar al tope).
  */
-export async function consumeCloseAuthorizationCode(sessionId: number, code: string): Promise<number | null> {
+// consume=false solo verifica (el cierre lo consume después); los intentos fallidos cuentan igual.
+export async function consumeCloseAuthorizationCode(sessionId: number, code: string, consume = true): Promise<number | null> {
   const db = getTenantDb();
   const clean = code.replace(/\D/g, '');
   const [req] = await db
@@ -425,6 +426,7 @@ export async function consumeCloseAuthorizationCode(sessionId: number, code: str
       .where(eq(cashCloseAuthorizations.id, req.id));
     return null;
   }
+  if (!consume) return req.approvedById;
 
   const [used] = await db
     .update(cashCloseAuthorizations)

@@ -1317,6 +1317,37 @@ export class OpenOrdersOnCloseError extends Error {
   }
 }
 
+/**
+ * Verifica la autorización para cerrar un turno con pedidos abiertos (código de WhatsApp o
+ * contraseña de supervisor) sin consumirla: el diálogo de cierre la valida antes de imprimir el
+ * arqueo; el cierre la vuelve a validar y consume el código.
+ */
+export async function verifyCloseAuthorization(id: number, data: { password?: string; authCode?: string }) {
+  const db = getTenantDb();
+  const [session] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, id));
+  if (!session) throw new Error('Sesión no encontrada');
+  if (session.status !== 'open') throw new Error('La sesión ya está cerrada');
+
+  const authCode = data.authCode?.trim() ?? '';
+  const pwd = data.password?.trim() ?? '';
+  let authorizedById: number | null = null;
+  if (authCode) authorizedById = await consumeCloseAuthorizationCode(id, authCode, false);
+  if (!authorizedById && pwd) {
+    const auth = await authorizeByPassword('seguridad.autorizar_cierre_turno', pwd);
+    authorizedById = auth?.userId ?? null;
+  }
+  if (!authorizedById) {
+    throw new OpenOrdersOnCloseError(
+      authCode
+        ? 'Código de autorización o contraseña inválidos. Si el código venció o ya se usó, solicita uno nuevo.'
+        : 'Contraseña de autorización inválida',
+      [],
+    );
+  }
+  const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, authorizedById));
+  return { authorizedById, authorizedByName: user?.name ?? null };
+}
+
 export async function closeCashSession(
   id: number,
   data: { closingBalance: number; notes?: string; password?: string; authCode?: string } & CashDeviceInput,

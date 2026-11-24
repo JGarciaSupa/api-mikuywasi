@@ -210,6 +210,25 @@ export const openCashSession = async (c: Context) => {
   }
 };
 
+// POST /cash/sessions/:id/close/verify-authorization — valida la contraseña o el código de
+// autorización del cierre con pedidos abiertos, sin consumirlo (antes de imprimir el arqueo)
+export const verifyCloseAuthorization = async (c: Context) => {
+  try {
+    const id = parseInt(c.req.param('id') || '0');
+    const body = await c.req.json();
+    const data = await cash.verifyCloseAuthorization(id, {
+      password: typeof body.password === 'string' ? body.password : undefined,
+      authCode: typeof body.authCode === 'string' ? body.authCode : undefined,
+    });
+    return c.json({ success: true, message: 'Autorización válida', data });
+  } catch (e) {
+    if (e instanceof cash.OpenOrdersOnCloseError) {
+      return c.json({ success: false, message: e.message, requiresAuthorization: true }, 403);
+    }
+    return jsonError(c, e, 'Error al validar la autorización');
+  }
+};
+
 export const closeCashSession = async (c: Context) => {
   try {
     const id = parseInt(c.req.param('id') || '0');
