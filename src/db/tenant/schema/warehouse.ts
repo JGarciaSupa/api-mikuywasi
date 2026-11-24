@@ -635,6 +635,12 @@ export const cashSessions = pgTable('cash_sessions', {
 	expectedBalance: decimal('expected_balance', { precision: 12, scale: 2 }).notNull().default('0'),
 	// closingBalance - expectedBalance (filled on close)
 	difference: decimal('difference', { precision: 12, scale: 2 }),
+	// Conteo del cierre por medio de pago: efectivo (agrupado) y cada medio no efectivo, con lo que
+	// hay en el sistema (expected), lo contado/declarado (counted) y la diferencia. Null en turnos antiguos.
+	closingBreakdown: jsonb('closing_breakdown').$type<{
+		mode: 'blind' | 'declared';
+		methods: { method: string; isCash: boolean; expected: string; counted: string; difference: string }[];
+	}>(),
 	status: varchar('status', { length: 20, enum: ['open', 'closed'] as const }).notNull().default('open'),
 	notes: varchar('notes', { length: 300 }),
 	openedAt: timestamp('opened_at', { withTimezone: true }).defaultNow(),

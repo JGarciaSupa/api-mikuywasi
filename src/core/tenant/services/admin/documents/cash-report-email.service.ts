@@ -61,7 +61,7 @@ export async function sendCloseReportEmail(
     ['Fondo inicial', money(s.openingBalance)],
     ['Total ingresos', money(s.totalIncome)],
     ['Total egresos', money(s.totalExpense)],
-    ['Efectivo esperado', money(s.expectedBalance)],
+    ['Efectivo', money(s.expectedBalance)],
     ['Efectivo contado', money(s.closingBalance)],
     ['Diferencia', money(s.difference)],
   ];

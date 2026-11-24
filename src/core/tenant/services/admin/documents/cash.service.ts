@@ -12,6 +12,7 @@ import { consumeCloseAuthorizationCode, isTerminalLinkedToRegister, TerminalRequ
 import { getCashOperationContext } from '../../../../../utils/cash-operation-context';
 import { buildPermissionsForUser } from '../users/rbac.service';
 import { geoAuditFields, MAX_CASH_ACCURACY_M, type GeoInput } from '../../../../../utils/geo';
+import { resolveForRegister } from '../config-local/activation.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -1317,6 +1318,89 @@ export class OpenOrdersOnCloseError extends Error {
   }
 }
 
+// ─── Conteo del cierre por medio de pago ────────────────────────────────────────────────
+
+export interface CloseCountInput { method: string; amount: number }
+export const CASH_COUNT_METHOD = 'Efectivo';
+
+// Filas del conteo: "Efectivo" (fondo + cobros en efectivo - egresos en efectivo, es decir el
+// expectedBalance) y cada medio no efectivo activo de la sucursal o usado en el turno, con su neto.
+async function buildCloseCountRows(session: typeof cashSessions.$inferSelect) {
+  const db = getTenantDb();
+  const methods = await db
+    .select({ name: paymentMethods.name, isCash: paymentMethods.isCash, isActive: paymentMethods.isActive })
+    .from(paymentMethods)
+    .where(or(eq(paymentMethods.branchId, session.branchId), isNull(paymentMethods.branchId)));
+  const movements = await db.select().from(cashMovements).where(eq(cashMovements.sessionId, session.id));
+
+  const nonCash = new Map<string, { method: string; expected: number }>();
+  for (const pm of methods) {
+    if (pm.isActive && !pm.isCash) nonCash.set(pm.name.trim().toLowerCase(), { method: pm.name.trim(), expected: 0 });
+  }
+  for (const m of movements) {
+    const cash = m.isCash != null ? m.isCash : isCashMethod(m.paymentMethod);
+    if (cash) continue;
+    const name = (m.paymentMethod ?? '').trim() || 'Otro';
+    const row = nonCash.get(name.toLowerCase()) ?? { method: name, expected: 0 };
+    const amt = toNum(m.amount);
+    row.expected += m.movementType === 'income' || m.movementType === 'deposit' ? amt : -amt;
+    nonCash.set(name.toLowerCase(), row);
+  }
+  return [
+    { method: CASH_COUNT_METHOD, isCash: true, expected: toNum(session.expectedBalance) },
+    ...[...nonCash.values()].map((r) => ({ method: r.method, isCash: false, expected: r.expected })),
+  ];
+}
+
+async function isBlindClose(registerId: number | null) {
+  if (registerId == null) return false;
+  return !!(await resolveForRegister(registerId)).CLOSE_BLIND_COUNT;
+}
+
+/**
+ * Qué debe mostrar el diálogo de cierre. A ciegas: solo los medios a contar (sin montos).
+ * Declarado: los montos registrados, tal cual se declararán (también para quien no ve la contabilidad).
+ */
+export async function getCloseCountSummary(sessionId: number) {
+  const db = getTenantDb();
+  const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
+  if (!session) throw new Error('Sesión no encontrada');
+  const blind = await isBlindClose(session.registerId);
+  const rows = await buildCloseCountRows(session);
+  return {
+    mode: blind ? 'blind' as const : 'declared' as const,
+    methods: rows.map((r) => ({ method: r.method, isCash: r.isCash, amount: blind ? null : round2(r.expected) })),
+  };
+}
+
+async function resolveCloseCount(session: typeof cashSessions.$inferSelect, counted?: CloseCountInput[]) {
+  const blind = await isBlindClose(session.registerId);
+  const rows = await buildCloseCountRows(session);
+  let countedFor: (r: { method: string; expected: number }) => number = (r) => r.expected;
+  if (blind) {
+    if (!Array.isArray(counted) || counted.length === 0) {
+      throw new Error('Cierre a ciegas: ingresa el efectivo contado y lo cobrado con cada medio de pago');
+    }
+    const byMethod = new Map<string, number>();
+    for (const c of counted) {
+      if (typeof c?.method !== 'string' || !Number.isFinite(c.amount) || c.amount < 0) {
+        throw new Error('Los montos contados deben ser números mayores o iguales a 0');
+      }
+      byMethod.set(c.method.trim().toLowerCase(), c.amount);
+    }
+    if (!byMethod.has(CASH_COUNT_METHOD.toLowerCase())) throw new Error('Cierre a ciegas: ingresa el efectivo contado');
+    countedFor = (r) => byMethod.get(r.method.toLowerCase()) ?? 0;
+  }
+  const methods = rows.map((r) => {
+    const value = countedFor(r);
+    return { method: r.method, isCash: r.isCash, expected: round2(r.expected), counted: round2(value), difference: round2(value - r.expected) };
+  });
+  return {
+    closingBalance: countedFor(rows[0]),
+    breakdown: { mode: blind ? 'blind' as const : 'declared' as const, methods },
+  };
+}
+
 /**
  * Verifica la autorización para cerrar un turno con pedidos abiertos (código de WhatsApp o
  * contraseña de supervisor) sin consumirla: el diálogo de cierre la valida antes de imprimir el
@@ -1350,7 +1434,7 @@ export async function verifyCloseAuthorization(id: number, data: { password?: st
 
 export async function closeCashSession(
   id: number,
-  data: { closingBalance: number; notes?: string; password?: string; authCode?: string } & CashDeviceInput,
+  data: { closingBalance: number; notes?: string; password?: string; authCode?: string; counted?: CloseCountInput[] } & CashDeviceInput,
   actor?: AuditActor
 ) {
   const db = getTenantDb();
@@ -1361,6 +1445,10 @@ export async function closeCashSession(
 
   // Equipo vinculado y/o ubicación, según la configuración de la sucursal
   await assertCashDevice(session.branchId, session.registerId, data);
+
+  // Conteo por medio de pago (antes de consumir una autorización): a ciegas, lo que escribe el
+  // cajero; declarado, lo registrado. El efectivo contado lo calcula siempre el servidor.
+  const count = await resolveCloseCount(session, data.counted);
 
   // Pedidos abiertos del turno (creados en él o transferidos a él): sin cobrar o sin terminar.
   // Se puede cerrar igual con contraseña de autorización; los pedidos siguen abiertos y los
@@ -1411,15 +1499,16 @@ export async function closeCashSession(
     ? await db.select({ branchId: cashRegisters.branchId }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId))
     : [];
 
-  const difference = data.closingBalance - toNum(session.expectedBalance);
+  const difference = count.closingBalance - toNum(session.expectedBalance);
 
   const [closed] = await db
     .update(cashSessions)
     .set({
       status: 'closed',
       closedBy: closedByName ?? 'sistema',
-      closingBalance: round2(data.closingBalance),
+      closingBalance: round2(count.closingBalance),
       difference: round2(difference),
+      closingBreakdown: count.breakdown,
       notes: data.notes ?? session.notes,
       closedAt: new Date(),
     })
