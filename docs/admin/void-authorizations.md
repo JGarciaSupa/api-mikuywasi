@@ -27,6 +27,15 @@ Crea la solicitud. Cualquier usuario autenticado.
 
 `201 { success: true, data: { id, requestToken, expiresAt } }` — el admin arma el enlace `/autorizar-anulacion?r=<requestToken>`.
 
+## POST `/api/admin/void-authorizations/verify` (con sesión, 15 intentos / 15 min por IP)
+
+Valida la contraseña o el código **sin consumirlo** y devuelve quién autoriza, para mostrarlo antes de anular (el código fallido suma intentos igual).
+
+```json
+{ "type": "order", "orderId": "abc123", "password": "123456", "authCode": "123456" }
+```
+`200 { success: true, data: { authorizedById, authorizedByName } }` · `403` si no autoriza.
+
 ## GET `/api/admin/void-authorizations/:token` (público)
 
 `{ success: true, data: { type, status: 'pending'|'approved'|'used'|'locked'|'expired', expiresAt, branchName, requestedByName, summary: { orderNumber?, tableName?, productName?, quantity?, documentNumber?, amount?, motivo? } } }`
