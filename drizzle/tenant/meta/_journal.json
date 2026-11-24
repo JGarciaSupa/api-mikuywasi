@@ -722,6 +722,13 @@
       "when": 1795200000000,
       "tag": "0102_add_courtesies",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1795300000000,
+      "tag": "0103_create_void_authorizations",
+      "breakpoints": true
     }
   ]
 }

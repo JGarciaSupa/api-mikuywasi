@@ -28,7 +28,7 @@ import { reverseDischargeForOrder } from './../warehouse/sales-discharge.service
 import { reverseOrderSaleMovement, getActiveSessionForUser } from './../documents/cash.service';
 import { resolveForRegister } from './activation.service';
 import { recalcSplitTotals } from './../documents/order-splits.service';
-import { authorizeByPassword } from './../documents/security-auth.service';
+import { authorizeVoid, type VoidTarget } from './../documents/void-authorizations.service';
 import type { AuditActor } from './../warehouse/types';
 import { clearOrderDiscount } from './../documents/order-discount-clear';
 import { assertStockAvailable, adjustProductStock, restoreProductStockForOrder } from './../../shared/product-stock.service';
@@ -513,7 +513,9 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
 // ── Anulación: motivo (catálogo/libre) + contraseña de autorización ──────────────
 
 // skipPassword: el usuario tiene seguridad.anular_sin_contrasena (lo resuelve el controller).
-export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; skipPassword?: boolean; }
+// requireAuthorization: el usuario no tiene permiso para anular; se exige autorización aunque la caja no la pida.
+// authCode: código de 6 dígitos de la autorización remota por WhatsApp (alternativa a la contraseña).
+export interface DeleteOpts { reasonId?: number; motivo?: string; password?: string; authCode?: string; skipPassword?: boolean; requireAuthorization?: boolean; }
 
 // Caja cuyas activaciones rigen la anulación. Mismo criterio que el POS (MenuPage →
 // effectiveRegisterId): la del turno propio del actor; si no tiene (mozo, o sin turno), la
@@ -550,7 +552,8 @@ async function resolveDeleteAuthorization(
   actorUserId: number | undefined,
   branchId: number,
   opts: DeleteOpts,
-  codes: { reasonCatalog: string; password: string; authSubAction: string },
+  codes: { reasonCatalog: string; password: string },
+  target: VoidTarget,
 ): Promise<{ reasonId: number | null; motivo: string | null; authorizedById: number | null }> {
   let effective: Record<string, boolean> = {};
   const registerId = await resolveActivationRegisterId(db, actorUserId, branchId);
@@ -577,12 +580,16 @@ async function resolveDeleteAuthorization(
     throw new Error('Debes indicar un motivo');
   }
 
-  // Contraseña de autorización (si la activación está ON), salvo quien puede anular sin ella.
+  // Autorización (contraseña de supervisor o código por WhatsApp) si la activación está ON, salvo
+  // quien puede anular sin ella; o siempre, si el usuario no tiene permiso para anular.
   let authorizedById: number | null = null;
-  if (effective[codes.password] && !opts.skipPassword) {
-    const auth = await authorizeByPassword(codes.authSubAction, opts.password ?? '');
-    if (!auth) throw new Error('Contraseña de autorización inválida');
-    authorizedById = auth.userId;
+  if (opts.requireAuthorization || (effective[codes.password] && !opts.skipPassword)) {
+    authorizedById = await authorizeVoid(target, { password: opts.password, authCode: opts.authCode }, actorUserId);
+    if (!authorizedById) {
+      throw new Error(opts.authCode
+        ? 'Contraseña de autorización inválida o código vencido o ya usado. Si el código venció, solicita uno nuevo.'
+        : 'Contraseña de autorización inválida');
+    }
   }
 
   return { reasonId, motivo, authorizedById };
@@ -619,8 +626,7 @@ export async function cancelOrder(orderId: string, actor?: AuditActor, opts: Del
   const gate = await resolveDeleteAuthorization(db, actor?.userId, order.branchId, opts, {
     reasonCatalog: 'ORDER_DELETE_REASON_CATALOG',
     password: 'PASSWORD_DELETE_ORDER',
-    authSubAction: 'seguridad.autorizar_eliminar_pedido',
-  });
+  }, { type: 'order', orderId });
 
   await reverseDischargeForOrder(orderId);
   await restoreProductStockForOrder(db, orderId);
@@ -689,8 +695,7 @@ export async function annulOrderItem(
   const gate = await resolveDeleteAuthorization(db, actor?.userId, order.branchId, opts, {
     reasonCatalog: 'ORDER_PRODUCT_DELETE_REASON_CATALOG',
     password: 'PASSWORD_DELETE_PRODUCT',
-    authSubAction: 'seguridad.autorizar_eliminar_producto',
-  });
+  }, { type: 'item', orderId, orderItemId });
   // Anular un ítem retira el descuento del pedido (se vuelve a aplicar sobre lo que queda)
   await clearOrderDiscount(db, orderId);
 

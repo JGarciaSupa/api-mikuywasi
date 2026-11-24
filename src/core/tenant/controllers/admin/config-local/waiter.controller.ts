@@ -183,11 +183,15 @@ export const cancelOrderController = async (c: Context) => {
       return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
     }
     const body = await c.req.json().catch(() => ({}));
+    // Sin permiso para anular pedidos: se puede igual con la autorización de un supervisor
+    const canCancel = hasPermission(c, 'mozo.cancelar_pedido') || hasPermission(c, 'pedidos.anular');
     const result = await waiterOrderService.cancelOrder(orderId, getAuditActor(c), {
       reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
       motivo: body?.motivo,
       password: body?.password,
+      authCode: typeof body?.authCode === 'string' ? body.authCode : undefined,
       skipPassword: hasPermission(c, 'seguridad.anular_sin_contrasena'),
+      requireAuthorization: !canCancel,
     });
     return c.json({ success: true, data: result });
   } catch (error: any) {
@@ -216,6 +220,7 @@ export const annulOrderItemController = async (c: Context) => {
       reasonId: body?.reasonId ? Number(body.reasonId) : undefined,
       motivo: body?.motivo,
       password: body?.password,
+      authCode: typeof body?.authCode === 'string' ? body.authCode : undefined,
       skipPassword: hasPermission(c, 'seguridad.anular_sin_contrasena'),
     }, body?.quantity != null ? Number(body.quantity) : undefined);
     return c.json({ success: true, data: result });
