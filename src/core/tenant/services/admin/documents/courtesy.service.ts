@@ -140,10 +140,18 @@ async function ensureCourtesySeries(tx: Tx, registerId: number): Promise<number>
     }
     return existing.id;
   }
+  // Las series son únicas por tipo de comprobante en el tenant (cash_reg_doc_series_type_series_idx):
+  // cada caja toma la siguiente libre (CT01, CT02…). Antes toda caja intentaba CT01 y, desde la
+  // segunda caja, la cortesía fallaba con un error interno.
+  const used = await tx.select({ series: cashRegisterDocumentSeries.series }).from(cashRegisterDocumentSeries)
+    .where(eq(cashRegisterDocumentSeries.receiptTypeCode, COURTESY_RECEIPT_CODE));
+  const taken = new Set(used.map((u) => u.series));
+  let n = 1;
+  while (taken.has(`CT${String(n).padStart(2, '0')}`)) n += 1;
   const [created] = await tx.insert(cashRegisterDocumentSeries).values({
     registerId,
     receiptTypeCode: COURTESY_RECEIPT_CODE,
-    series: 'CT01',
+    series: `CT${String(n).padStart(2, '0')}`,
     description: 'Cortesía (documento interno)',
     initialSequential: 1,
     lastSequential: 0,

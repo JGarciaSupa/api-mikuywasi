@@ -6,7 +6,7 @@ import { type TaxConfig, resolveBranchMainTaxRate } from '../../shared/taxes.ser
 export type DocumentType = 'factura' | 'boleta' | 'nota_de_venta';
 // El pivote acepta además nota_de_credito (documento fiscal auto).
 export type ReceiptDocumentType = 'factura' | 'boleta' | 'nota_de_venta' | 'nota_de_credito' | 'cortesia';
-// Serie interna de cortesías (CT01 por caja): no se ofrece en el cobro, la usa solo el flujo de cortesía.
+// Serie interna de cortesías (CT01, CT02… una por caja): no se ofrece en el cobro, la usa solo el flujo de cortesía.
 export const COURTESY_RECEIPT_CODE = 'CORTESIA';
 
 // Traduce el código del tipo de comprobante del MAESTRO (SUNAT) al enum interno.

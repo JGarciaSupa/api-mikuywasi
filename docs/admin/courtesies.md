@@ -21,7 +21,7 @@ El código es de esa cortesía y de quien la pidió, vence a los 30 min y se con
 Errores: 403 contraseña o código inválido; 422 motivo inválido, tope superado, pedido cerrado, con descuento o dividido.
 
 ## Documento interno de cortesía (`billing_documents.document_type = 'cortesia'`)
-- Serie **CT01** por caja (código de comprobante `CORTESIA`), creada al primer uso. **No** se ofrece en el cobro
+- Serie **CTnn** por caja (CT01, CT02…, la siguiente libre del tenant; código de comprobante `CORTESIA`), creada al primer uso. **No** se ofrece en el cobro
   (`available-types` la excluye) ni va a SUNAT.
 - Total 0; `courtesy_amount` = valor de referencia y `courtesy_motivo`. Las líneas llevan su valor de referencia.
 - **Producto suelto:** las líneas en cortesía **no** van al comprobante (boleta/factura/nota de venta); al emitirlo
