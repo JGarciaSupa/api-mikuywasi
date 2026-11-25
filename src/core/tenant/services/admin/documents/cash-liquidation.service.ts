@@ -183,12 +183,17 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
   const matchesUser = (name: string | null) => !user || (name ?? '') === user;
 
   // ── 00 Documentos generados ──
-  const paidAtByKey = new Map<string, { at: Date | null; amount: number }>();
+  // Cobrado por documento (propina incluida) y la propina aparte, para que Venta + Propina = Cobrado
+  const paidAtByKey = new Map<string, { at: Date | null; amount: number; tip: number }>();
   for (const m of movements) {
     if (m.movement.movementType !== 'income' || !m.movement.orderId) continue;
     const key = docKey(m.movement.orderId, m.movement.splitId);
     const prev = paidAtByKey.get(key);
-    paidAtByKey.set(key, { at: prev?.at ?? m.movement.createdAt, amount: round2((prev?.amount ?? 0) + toNum(m.movement.amount)) });
+    paidAtByKey.set(key, {
+      at: prev?.at ?? m.movement.createdAt,
+      amount: round2((prev?.amount ?? 0) + toNum(m.movement.amount)),
+      tip: round2((prev?.tip ?? 0) + toNum(m.movement.tipAmount)),
+    });
   }
   const sessionDocs = [...docs.filter(belongs), ...creditNoteDocs]
     .map((d) => ({ ...d, user: d.documentType === 'nota_de_credito' ? userOf(null, null, d.createdBy) : userOf(d.orderId, d.splitId, d.createdBy) }));
@@ -208,6 +213,7 @@ export async function getCashSessionLiquidation(sessionId: number, user?: string
         taxAmount: toNum(d.taxAmount),
         paidAt: paid?.at ?? null,
         paidAmount: paid?.amount ?? null,
+        paidTip: paid?.tip ?? null,
         user: d.user,
         status: d.status,
         paymentPending: d.paymentPending && !d.paymentCollectedAt,

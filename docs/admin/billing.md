@@ -18,6 +18,9 @@ Datos enriquecidos para generar en el frontend el PDF A4 (`ComprobantePDF`) y el
   "data": {
     "document": { /* fila de billing_documents (incluye emisorRuc, emisorName, emisorAddress) */ },
     "lines": [ /* billing_document_lines + taxes (desglose por impuesto) */ ],
+    // Solo nota de venta del pedido completo: productos en cortesía (precio 0, no forman parte del total).
+    // En boleta/factura va [] (la representación impresa debe coincidir con el XML de SUNAT).
+    "courtesyLines": [ { "quantity": 1, "productName": "…", "shortName": null, "notes": null, "courtesyAmount": "48.00", "courtesyMotivo": "…" } ],
     "taxBreakdown": [ /* totales por impuesto */ ],
     "emisor": { "ruc": "20123456789", "name": "RAZÓN SOCIAL", "address": "…", "logoUrl": "https://…" | null },
     "branch": { "name": "…", "phone": null, "email": null, "address": "…" },

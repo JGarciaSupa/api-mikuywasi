@@ -1590,9 +1590,27 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     };
   }
 
+  // Productos en cortesía del pedido: solo en la NOTA DE VENTA del pedido completo (documento interno,
+  // no va a SUNAT). En boleta/factura no se imprimen: la representación impresa debe coincidir con el XML.
+  const courtesyLines = doc.documentType === 'nota_de_venta' && doc.splitId == null
+    ? (await db
+        .select({
+          quantity: orderItems.quantity,
+          productName: orderItems.productName,
+          shortName: orderItems.shortName,
+          notes: orderItems.notes,
+          courtesyAmount: orderItems.courtesyAmount,
+          courtesyMotivo: orderItems.courtesyMotivo,
+        })
+        .from(orderItems)
+        .where(and(eq(orderItems.orderId, doc.orderId), eq(orderItems.isCourtesy, true), isNull(orderItems.deletedAt)))
+        .orderBy(orderItems.id))
+    : [];
+
   return {
     document: finalDoc,
     lines,
+    courtesyLines,
     taxBreakdown,
     emisor,
     branch: {
