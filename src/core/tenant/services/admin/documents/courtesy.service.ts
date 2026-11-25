@@ -8,7 +8,7 @@ import { toNum, roundMoney } from '../warehouse/shared/numbers';
 import { resolveLineTaxes, type TaxConfig, type TaxSnapshotEntry } from '../../shared/taxes.service';
 import { recalcOrderTotals } from '../config-local/waiter-order.service';
 import { getActiveSessionForUserInBranch } from './cash.service';
-import { authorizeByPassword } from './security-auth.service';
+import { authorizeVoid } from './void-authorizations.service';
 import { COURTESY_RECEIPT_CODE } from './billing-series.service';
 import { resolveEmisor } from './billing.service';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
@@ -28,6 +28,8 @@ type OrderItemRow = typeof orderItems.$inferSelect;
 export interface CourtesyInput {
   reasonId: number;
   password?: string;
+  /** Código de 6 dígitos que el supervisor aprobó por WhatsApp (void_authorizations, tipo courtesy) */
+  authCode?: string;
   skipPassword?: boolean;
 }
 
@@ -47,11 +49,22 @@ function assertWithinCap(reason: typeof reasons.$inferSelect, amount: number) {
   }
 }
 
-async function authorizeCourtesy(input: CourtesyInput): Promise<number | null> {
+// Contraseña de un supervisor (seguridad.autorizar_cortesia) o el código de WhatsApp de esa misma
+// cortesía (pedido completo o producto) pedido por el mismo usuario; el código se consume al usarlo.
+// El código puede llegar en `authCode` o escrito en el campo de contraseña.
+async function authorizeCourtesy(
+  input: CourtesyInput,
+  target: { orderId: string; orderItemId?: number },
+  requesterId: number | undefined,
+): Promise<number | null> {
   if (input.skipPassword) return null;
-  const auth = await authorizeByPassword('seguridad.autorizar_cortesia', input.password ?? '');
-  if (!auth) throw new Error('Contraseña de autorización inválida');
-  return auth.userId;
+  const authorizedById = await authorizeVoid(
+    { type: 'courtesy', ...target },
+    { password: input.password, authCode: input.authCode ?? input.password },
+    requesterId,
+  );
+  if (!authorizedById) throw new Error('Contraseña de autorización inválida o código vencido o ya usado');
+  return authorizedById;
 }
 
 async function loadOpenOrder(db: Db, orderId: string) {
@@ -238,9 +251,10 @@ export async function giveOrderCourtesy(orderId: string, input: CourtesyInput, a
   const totalAmount = r2(newAmount + lines.filter((l) => l.isCourtesy).reduce((s, l) => s + toNum(l.courtesyAmount), 0));
   assertWithinCap(reason, newAmount);
 
-  const authorizedById = await authorizeCourtesy(input);
   const session = await getActiveSessionForUserInBranch(actor?.userId, order.branchId);
   if (!session || session.registerId == null) throw new Error('Necesitas un turno de caja abierto para registrar la cortesía');
+  // Después del turno: un código de WhatsApp no se consume si la cortesía no puede registrarse
+  const authorizedById = await authorizeCourtesy(input, { orderId }, actor?.userId);
 
   const at = new Date();
   const docId = await db.transaction(async (tx) => {
@@ -303,7 +317,7 @@ export async function giveItemCourtesy(orderId: string, itemId: number, input: C
 
   const reason = await loadCourtesyReason(db, order.branchId, input.reasonId);
   assertWithinCap(reason, amount);
-  const authorizedById = await authorizeCourtesy(input);
+  const authorizedById = await authorizeCourtesy(input, { orderId, orderItemId: itemId }, actor?.userId);
 
   await db.transaction(async (tx) => {
     await markLineCourtesy(tx, line, { reasonId: reason.id, motivo: reason.description, byId: actor?.userId ?? null, authorizedById, at: new Date() });

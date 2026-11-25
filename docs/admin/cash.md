@@ -193,7 +193,7 @@ Cuerpo: `{ movementType: 'expense'|'income'|'withdrawal'|'deposit', amount > 0, 
 
 `kpis.totalIncome` = ventas netas (cobros − reversos) + ingresos de caja; `kpis.totalExpense` = solo gastos registrados a mano.
 Ajustes automáticos aparte: `totalReversal` (anulación / cambio de documento), `totalRefund` (devoluciones), `paymentChangeMoves`.
-`topExpenseConcepts` agrupa los gastos manuales por categoría (o concepto). Los movimientos traen `kind` y `category`.
+`topExpenseConcepts` agrupa los egresos manuales (gastos y retiros de efectivo) por categoría (o concepto; un retiro sin categoría sale como `Retiro: <concepto>`). Los movimientos traen `kind` y `category`.
 
 ## Anular y volver a cobrar (cambio de documento)
 

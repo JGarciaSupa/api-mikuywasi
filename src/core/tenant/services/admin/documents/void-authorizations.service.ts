@@ -1,17 +1,18 @@
 import { createHash, randomBytes, randomInt } from 'crypto';
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import { billingDocuments, branches, orderItems, orders, users, voidAuthorizations } from '../../../../../db/tenant/schema';
 import { getTenantDb } from '../../../../../utils/tenant-context';
 import { writeAuditLog } from '../warehouse/shared/audit.service';
 import type { AuditActor } from '../warehouse/types';
 import { authorizeByPassword } from './security-auth.service';
 
-// Autorización remota de anulaciones (pedido, producto enviado o comprobante) por WhatsApp.
+// Autorización remota de anulaciones (pedido, producto enviado o comprobante) y de cortesías
+// (pedido completo o un producto) por WhatsApp.
 // Mismo modelo que el cierre de turno (cash-terminals.service): el token del enlace y el código
 // solo se guardan como hash SHA-256 y se muestran una única vez. El código vale para esa anulación
 // y para quien la pidió.
 
-export type VoidType = 'order' | 'item' | 'document';
+export type VoidType = 'order' | 'item' | 'document' | 'courtesy';
 
 export interface VoidTarget {
   type: VoidType;
@@ -28,6 +29,7 @@ export const VOID_APPROVER_PERMISSION: Record<VoidType, string> = {
   order: 'seguridad.autorizar_eliminar_pedido',
   item: 'seguridad.autorizar_eliminar_producto',
   document: 'seguridad.autorizar_anular_documento',
+  courtesy: 'seguridad.autorizar_cortesia',
 };
 
 const sha256 = (value: string) => createHash('sha256').update(value.trim()).digest('hex');
@@ -75,7 +77,8 @@ export async function createVoidRequest(
     summary = { orderNumber: order.trackingCode ?? order.id, tableName: order.tableName, amount: order.total };
 
     let orderItemId: number | null = null;
-    if (input.type === 'item') {
+    // Cortesía de un producto: el producto es opcional (sin él, es la cortesía del pedido completo)
+    if (input.type === 'item' || (input.type === 'courtesy' && input.orderItemId)) {
       if (!input.orderItemId) throw new VoidAuthorizationError('Producto (orderItemId) es requerido');
       const [oi] = await db
         .select({ id: orderItems.id, orderId: orderItems.orderId, productName: orderItems.productName, quantity: orderItems.quantity, unitPrice: orderItems.unitPrice, deletedAt: orderItems.deletedAt })
@@ -163,7 +166,7 @@ export async function approveVoidRequest(requestToken: string, password: string,
       .where(eq(voidAuthorizations.id, req.id));
     const left = MAX_FAILED_ATTEMPTS - failed;
     throw new VoidAuthorizationError(
-      left > 0 ? `Contraseña incorrecta o sin permiso para autorizar anulaciones. Te quedan ${left} intento(s).` : 'Contraseña incorrecta. La solicitud se bloqueó; hay que pedir una nueva.',
+      left > 0 ? `Contraseña incorrecta o sin permiso para autorizar ${req.type === 'courtesy' ? 'cortesías' : 'anulaciones'}. Te quedan ${left} intento(s).` : 'Contraseña incorrecta. La solicitud se bloqueó; hay que pedir una nueva.',
       left > 0 ? 403 : 423,
     );
   }
@@ -181,6 +184,9 @@ export async function approveVoidRequest(requestToken: string, password: string,
   const what = req.type === 'document' ? `del comprobante ${s.documentNumber ?? req.documentId}`
     : req.type === 'item' ? `de ${s.productName ?? 'un producto'} del pedido ${s.orderNumber ?? req.orderId}`
     : `del pedido ${s.orderNumber ?? req.orderId}`;
+  const action = req.type === 'courtesy'
+    ? `Cortesía remota ${s.productName ? `de ${s.productName} ` : ''}del pedido ${s.orderNumber ?? req.orderId}`
+    : `Anulación remota ${what}`;
   await writeAuditLog({
     tableName: 'void_authorizations',
     operation: 'UPDATE',
@@ -189,7 +195,7 @@ export async function approveVoidRequest(requestToken: string, password: string,
     userId: auth.userId,
     userName: approver?.name ?? null,
     module: req.type === 'document' ? 'facturacion' : 'pedidos',
-    description: `Anulación remota ${what} autorizada por ${approver?.name ?? `usuario ${auth.userId}`}`,
+    description: `${action} autorizada por ${approver?.name ?? `usuario ${auth.userId}`}`,
     ipAddress: ip ?? null,
   });
 
@@ -206,9 +212,11 @@ async function consumeVoidCode(target: VoidTarget, code: string, requesterId: nu
   const clean = code.replace(/\D/g, '');
   const targetCond = target.type === 'document'
     ? eq(voidAuthorizations.documentId, target.documentId ?? -1)
-    : target.type === 'item'
+    : target.type === 'item' || (target.type === 'courtesy' && target.orderItemId)
       ? and(eq(voidAuthorizations.orderId, target.orderId ?? ''), eq(voidAuthorizations.orderItemId, target.orderItemId ?? -1))
-      : eq(voidAuthorizations.orderId, target.orderId ?? '');
+      : target.type === 'courtesy'
+        ? and(eq(voidAuthorizations.orderId, target.orderId ?? ''), isNull(voidAuthorizations.orderItemId))
+        : eq(voidAuthorizations.orderId, target.orderId ?? '');
   const [req] = await db
     .select()
     .from(voidAuthorizations)

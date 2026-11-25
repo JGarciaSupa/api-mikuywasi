@@ -168,8 +168,9 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
     .where(and(movesWhere, sql`(${cashMovements.movementType} = 'income' OR ${isReversal})`, sql`NOT ${isPaymentChange}`))
     .groupBy(cashMovements.paymentMethod);
 
-  // Gastos de caja por categoría (o concepto si no tiene): solo los registrados a mano
-  const expenseLabel = sql<string>`COALESCE(${reasons.description}, ${cashMovements.concept})`;
+  // Egresos de caja por categoría (o concepto si no tiene): los registrados a mano, gastos y
+  // retiros de efectivo (sin categoría, el retiro se distingue con el prefijo "Retiro:")
+  const expenseLabel = sql<string>`COALESCE(${reasons.description}, CASE WHEN ${cashMovements.movementType} = 'withdrawal' THEN 'Retiro: ' || ${cashMovements.concept} ELSE ${cashMovements.concept} END)`;
   const topExpenseConcepts = await db
     .select({
       label: expenseLabel,
@@ -179,7 +180,7 @@ export const getCashReportSummary = async (filters: CashReportFilters) => {
     .from(cashMovements)
     .innerJoin(cashSessions, eq(cashMovements.sessionId, cashSessions.id))
     .leftJoin(reasons, eq(cashMovements.reasonId, reasons.id))
-    .where(and(movesWhere, sql`${movementKindExpr} = 'manual_expense'`))
+    .where(and(movesWhere, sql`${movementKindExpr} IN ('manual_expense', 'withdrawal')`))
     .groupBy(sql`1`)
     .orderBy(desc(amountExpr))
     .limit(10);

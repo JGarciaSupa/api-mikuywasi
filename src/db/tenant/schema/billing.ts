@@ -134,7 +134,8 @@ export const billingDocumentLines = pgTable('billing_document_lines', {
 // válido solo para esa anulación y para quien la pidió. Mismo modelo que cash_close_authorizations.
 export const voidAuthorizations = pgTable('void_authorizations', {
 	id: serial('id').primaryKey(),
-	type: varchar('type', { length: 20, enum: ['order', 'item', 'document'] as const }).notNull(),
+	// courtesy = cortesía (pedido completo o, con orderItemId, un producto); varchar sin CHECK: no requiere migración
+	type: varchar('type', { length: 20, enum: ['order', 'item', 'document', 'courtesy'] as const }).notNull(),
 	orderId: varchar('order_id', { length: 12 }).references(() => orders.id),
 	orderItemId: integer('order_item_id').references(() => orderItems.id),
 	documentId: integer('document_id').references(() => billingDocuments.id),

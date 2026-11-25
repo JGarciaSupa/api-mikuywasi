@@ -8,11 +8,17 @@ Migración `0102_add_courtesies`.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| POST | `/waiter/orders/:id/courtesy` | `{ reasonId, password? }` — cortesía del pedido completo: las líneas quedan en 0 (`courtesy_amount` = su valor), el pedido se cierra (`paid`/`completed`, `payment_method = 'Cortesía'`, `collected_session_id` = turno de quien la da) **sin ingreso de caja**, la mesa pasa a `dirty` y se emite el documento interno de cortesía. No aplica con delivery, descuento o cuentas divididas |
-| POST | `/waiter/orders/:id/items/:itemId/courtesy` | `{ reasonId, password? }` — cortesía de un producto del pedido abierto: la línea queda en 0 |
+| POST | `/waiter/orders/:id/courtesy` | `{ reasonId, password?, authCode? }` — cortesía del pedido completo: las líneas quedan en 0 (`courtesy_amount` = su valor), el pedido se cierra (`paid`/`completed`, `payment_method = 'Cortesía'`, `collected_session_id` = turno de quien la da) **sin ingreso de caja**, la mesa pasa a `dirty` y se emite el documento interno de cortesía. No aplica con delivery, descuento o cuentas divididas |
+| POST | `/waiter/orders/:id/items/:itemId/courtesy` | `{ reasonId, password?, authCode? }` — cortesía de un producto del pedido abierto: la línea queda en 0 |
 | DELETE | `/waiter/orders/:id/items/:itemId/courtesy` | Quita la cortesía del producto (vuelve a su precio, impuestos recalculados) |
 
-Errores: 403 contraseña inválida; 422 motivo inválido, tope superado, pedido cerrado, con descuento o dividido.
+**Autorización remota por WhatsApp** (igual que las anulaciones, ver `void-authorizations.md`): en lugar de
+escribir la contraseña en el equipo, se pide `POST /void-authorizations` con `{ type: 'courtesy', orderId }` (pedido
+completo) o `{ type: 'courtesy', orderId, orderItemId }` (un producto); el supervisor con `seguridad.autorizar_cortesia`
+aprueba en su celular y le pasa un código de 6 dígitos al cajero, que lo envía en `authCode` (o escrito en `password`).
+El código es de esa cortesía y de quien la pidió, vence a los 30 min y se consume al registrarla.
+
+Errores: 403 contraseña o código inválido; 422 motivo inválido, tope superado, pedido cerrado, con descuento o dividido.
 
 ## Documento interno de cortesía (`billing_documents.document_type = 'cortesia'`)
 - Serie **CT01** por caja (código de comprobante `CORTESIA`), creada al primer uso. **No** se ofrece en el cobro

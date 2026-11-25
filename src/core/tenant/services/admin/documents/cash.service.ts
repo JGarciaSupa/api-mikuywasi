@@ -386,16 +386,19 @@ export async function getCashSessionById(id: number) {
       movement: cashMovements,
       orderTotal: orders.total,
       orderTrackingCode: orders.trackingCode,
+      // Categoría del ingreso/egreso manual (para el comprobante firmado y el ticket de cierre)
+      reasonName: reasons.description,
     })
     .from(cashMovements)
     .leftJoin(orders, eq(cashMovements.orderId, orders.id))
+    .leftJoin(reasons, eq(cashMovements.reasonId, reasons.id))
     .where(eq(cashMovements.sessionId, id))
     .orderBy(desc(cashMovements.createdAt));
 
   // Libro de caja (ledger): se usan los valores CONGELADOS del movimiento
   // (monto/método tal como se registraron al cobrar). orderTotal va solo como
   // referencia informativa; cambios posteriores al pedido NO alteran el arqueo.
-  const movements = rows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal, orderTrackingCode: r.orderTrackingCode }));
+  const movements = rows.map((r) => ({ ...r.movement, orderTotal: r.orderTotal, orderTrackingCode: r.orderTrackingCode, reasonName: r.reasonName }));
 
   // Ventas GENERADAS por esta sesión: ingresos de órdenes donde el usuario de
   // esta sesión fue quien creó el pedido (orders.cashSessionId = id).

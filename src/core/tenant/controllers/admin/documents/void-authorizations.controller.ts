@@ -11,7 +11,7 @@ function voidAuthError(c: Context, e: unknown, fallback: string) {
   return jsonError(c, e, fallback);
 }
 
-const VOID_TYPES: voids.VoidType[] = ['order', 'item', 'document'];
+const VOID_TYPES: voids.VoidType[] = ['order', 'item', 'document', 'courtesy'];
 
 // POST /void-authorizations — el cajero o mozo pide autorización remota para anular
 export const createVoidRequest = async (c: Context) => {

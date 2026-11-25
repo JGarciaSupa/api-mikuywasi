@@ -16,12 +16,18 @@ En los tres endpoints, el body acepta además `authCode` (string de 6 dígitos).
 
 Quién aprueba (contraseña en el enlace): usuarios con `seguridad.autorizar_eliminar_pedido` (pedido), `seguridad.autorizar_eliminar_producto` (producto) o `seguridad.autorizar_anular_documento` (comprobante), y siempre `rol_admin`.
 
+## Cortesías
+
+El mismo flujo autoriza **cortesías** (`type: 'courtesy'`): pedido completo (`orderId`) o un producto (`orderId` +
+`orderItemId`). Aprueba quien tiene `seguridad.autorizar_cortesia` (y `rol_admin`); el código se envía en `authCode`
+de `POST /waiter/orders/:id/courtesy` o `POST /waiter/orders/:id/items/:itemId/courtesy` (ver `courtesies.md`).
+
 ## POST `/api/admin/void-authorizations` (con sesión)
 
 Crea la solicitud. Cualquier usuario autenticado.
 
 ```json
-{ "type": "order" | "item" | "document", "orderId": "abc123", "orderItemId": 15, "documentId": 42, "motivo": "Cliente se retiró", "quantity": 1 }
+{ "type": "order" | "item" | "document" | "courtesy", "orderId": "abc123", "orderItemId": 15, "documentId": 42, "motivo": "Cliente se retiró", "quantity": 1 }
 ```
 - `order`: `orderId`. `item`: `orderId` + `orderItemId` (+ `quantity` opcional). `document`: `documentId`.
 

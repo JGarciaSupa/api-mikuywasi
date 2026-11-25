@@ -1,4 +1,4 @@
-import { orders, orderItems, kitchenStations, printers, orderItemExtras, productExtras, users, branches } from '@/db/tenant/schema';
+import { orders, orderItems, kitchenStations, printers, orderItemExtras, productExtras, productExtraGroups, users, branches } from '@/db/tenant/schema';
 import { eq, and, inArray, isNull } from 'drizzle-orm';
 import { getTenantDb } from '@/utils/tenant-context';
 import { resolveEffectiveStations } from '../config-local/kitchen-station.service';
@@ -83,20 +83,34 @@ export async function getOrderDispatchPayload(orderId: string, branchId: number)
         .select({
           orderItemId: orderItemExtras.orderItemId,
           extraName: productExtras.name,
+          groupName: productExtraGroups.name,
           qty: orderItemExtras.qty,
         })
         .from(orderItemExtras)
         .leftJoin(productExtras, eq(orderItemExtras.extraId, productExtras.id))
+        .leftJoin(productExtraGroups, eq(productExtras.groupId, productExtraGroups.id))
         .where(inArray(orderItemExtras.orderItemId, itemIds))
+        .orderBy(orderItemExtras.id)
     : [];
 
+  // Comanda: cada extra con su grupo ("Salsa: Fudge"); varios del mismo grupo van en una línea
+  // ("Salsa: Fudge, Chocolate") para que cocina sepa qué configuración eligió el cliente.
   const extrasByItem = new Map<number, string[]>();
+  const groupsByItem = new Map<number, Map<string, string[]>>();
   for (const row of extrasRows) {
-    const list = extrasByItem.get(row.orderItemId) ?? [];
-    if (row.extraName) {
-      list.push(`${row.qty > 1 ? row.qty + 'x ' : ''}${row.extraName}`);
-    }
-    extrasByItem.set(row.orderItemId, list);
+    if (!row.extraName) continue;
+    const groups = groupsByItem.get(row.orderItemId) ?? new Map<string, string[]>();
+    const key = row.groupName?.trim() ?? '';
+    const names = groups.get(key) ?? [];
+    names.push(`${row.qty > 1 ? row.qty + 'x ' : ''}${row.extraName}`);
+    groups.set(key, names);
+    groupsByItem.set(row.orderItemId, groups);
+  }
+  for (const [orderItemId, groups] of groupsByItem) {
+    extrasByItem.set(
+      orderItemId,
+      [...groups].map(([group, names]) => (group ? `${group}: ${names.join(', ')}` : names.join(', '))),
+    );
   }
 
   // Group items by printer/station
