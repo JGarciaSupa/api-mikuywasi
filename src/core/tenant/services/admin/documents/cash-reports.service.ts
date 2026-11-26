@@ -20,7 +20,7 @@ export interface CashReportFilters {
   timezone?: string;
   registerId?: number;
   userId?: number; // cajero del turno
-  /** Turno puntual (solo lo aplican anulaciones y paloteo: pedidos creados en ese turno) */
+  /** Turno puntual: todos los reportes (resumen, turnos, movimientos, anulaciones, paloteo y export) */
   sessionId?: number;
 }
 
@@ -33,6 +33,7 @@ const sessionConditions = (f: CashReportFilters) => {
     gte(cashSessions.openedAt, f.startDate),
     lte(cashSessions.openedAt, f.endDate),
   ];
+  if (f.sessionId) conditions.push(eq(cashSessions.id, f.sessionId));
   if (f.registerId) conditions.push(eq(cashSessions.registerId, f.registerId));
   if (f.userId) conditions.push(eq(cashSessions.userId, f.userId));
   return conditions;
@@ -64,6 +65,7 @@ const movementConditions = (f: CashReportFilters) => {
     gte(cashMovements.createdAt, f.startDate),
     lte(cashMovements.createdAt, f.endDate),
   ];
+  if (f.sessionId) conditions.push(eq(cashSessions.id, f.sessionId));
   if (f.registerId) conditions.push(eq(cashSessions.registerId, f.registerId));
   if (f.userId) conditions.push(eq(cashSessions.userId, f.userId));
   return conditions;

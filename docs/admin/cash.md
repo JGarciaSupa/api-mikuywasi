@@ -193,6 +193,7 @@ Cuerpo: `{ movementType: 'expense'|'income'|'withdrawal'|'deposit', amount > 0, 
 
 `kpis.totalIncome` = ventas netas (cobros − reversos) + ingresos de caja; `kpis.totalExpense` = solo gastos registrados a mano.
 Ajustes automáticos aparte: `totalReversal` (anulación / cambio de documento), `totalRefund` (devoluciones), `paymentChangeMoves`.
+Filtro opcional `sessionId` (turno puntual) en **todos** los reportes de `/cash/reports/*` (summary, sessions, movements, voids, production, export); el admin manda además las fechas de apertura y cierre de ese turno. Sin `sessionId`, nada cambia.
 `topExpenseConcepts` agrupa los egresos manuales (gastos y retiros de efectivo) por categoría (o concepto; un retiro sin categoría sale como `Retiro: <concepto>`). Los movimientos traen `kind` y `category`.
 
 ## Anular y volver a cobrar (cambio de documento)
