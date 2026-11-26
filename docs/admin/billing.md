@@ -104,6 +104,7 @@ Solo para el pedido completo (no con `splitId`). Sin permiso → 403; sucursal s
 
 `POST /api/billing/documents/:id/void` — cuerpo `{ reason, cancelOrder?, password? }` (sin cambios de contrato).
 
+- Sin `cancelOrder`, el pedido se reactiva para volver a cobrarse: pedido completo → `unpaid` y activo; **cuenta dividida** → la cuenta vuelve a `unpaid`, el pago del pedido se recalcula (`unpaid`/`review_pending`) y, si el pedido estaba `completed`, vuelve a `confirmed` (mesa) o `ready_for_pickup` con la mesa ocupada.
 - `reason` es texto: el admin lo arma con un motivo del catálogo `reasons` de tipo `document_void` (o «Otro» libre) más un detalle opcional.
 - Al anular se guarda `billing_documents.voided_by` (nombre del usuario que anuló, migración `0093`), junto a `voided_at` y `voided_reason`. Los listados (`GET /api/billing/documents`) y el detalle del pedido lo devuelven como `voidedBy` (`null` en anulaciones anteriores a la migración).
 - Auditoría: la anulación queda en `audit_log` con `operation = 'VOID'`, módulo `facturacion`, usuario e IP. El middleware de auditoría registra además como `VOID` cualquier mutación cuya ruta termine en `/void`, `/cancel` o `/annul` (pedidos, ítems y documentos de almacén), para poder filtrar todas las anulaciones.

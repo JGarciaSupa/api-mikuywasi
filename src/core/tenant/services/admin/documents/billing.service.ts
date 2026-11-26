@@ -1908,6 +1908,22 @@ export async function voidDocument(
           updatedAt: new Date(),
         }).where(eq(tables.id, order.tableId));
       }
+    } else if (order && doc.splitId != null && order.status === 'completed') {
+      // Cuenta dividida: la cuenta ya volvió a "sin pagar" y syncOrderPaymentStatus recalculó el
+      // pago del pedido (unpaid / review_pending). Si el pedido se había cerrado al cobrar todas
+      // las cuentas, se reactiva para poder cobrar de nuevo esa cuenta desde el POS.
+      await db.update(orders).set({
+        status: order.tableId ? 'confirmed' : 'ready_for_pickup',
+        updatedAt: new Date(),
+      }).where(eq(orders.id, doc.orderId));
+
+      if (order.tableId) {
+        await db.update(tables).set({
+          statusCode: 'occupied',
+          statusUpdatedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(tables.id, order.tableId));
+      }
     }
   }
 
