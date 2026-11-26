@@ -28,12 +28,19 @@ const parseFilters = (c: Context): { filters?: UserReportFilters; error?: string
     return { error: 'startDate no puede ser mayor que endDate' };
   }
 
+  const sessionIdRaw = c.req.query('sessionId');
+  const sessionId = sessionIdRaw ? parseInt(sessionIdRaw, 10) : undefined;
+  if (sessionIdRaw && (sessionId == null || isNaN(sessionId))) {
+    return { error: 'sessionId debe ser numérico' };
+  }
+
   return {
     filters: {
       branchId,
       startDate,
       endDate,
       timezone: c.req.query('timezone'),
+      sessionId,
     },
   };
 };

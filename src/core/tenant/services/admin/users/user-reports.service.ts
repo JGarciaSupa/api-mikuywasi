@@ -25,7 +25,20 @@ export interface UserReportFilters {
   startDate: Date;
   endDate: Date;
   timezone?: string;
+  // Turno puntual (opcional): pedidos generados en ese turno, sus movimientos de caja,
+  // el propio turno y los comprobantes de sus pedidos
+  sessionId?: number;
 }
+
+// Filtros por turno de cada tabla (vacíos sin sessionId: comportamiento de siempre)
+const inSession = {
+  orders: (f: UserReportFilters) => (f.sessionId ? [eq(orders.cashSessionId, f.sessionId)] : []),
+  movements: (f: UserReportFilters) => (f.sessionId ? [eq(cashMovements.sessionId, f.sessionId)] : []),
+  sessions: (f: UserReportFilters) => (f.sessionId ? [eq(cashSessions.id, f.sessionId)] : []),
+  documents: (f: UserReportFilters) => (f.sessionId
+    ? [sql`EXISTS (SELECT 1 FROM orders o WHERE o.id = ${billingDocuments.orderId} AND (o.cash_session_id = ${f.sessionId} OR o.collected_session_id = ${f.sessionId}))`]
+    : []),
+};
 
 const resolveTz = (tz?: string) => (tz && TZ_REGEX.test(tz) ? tz : DEFAULT_TZ);
 
@@ -41,6 +54,7 @@ const tipsByWaiter = (f: UserReportFilters, userId?: number) => {
     eq(cashMovements.movementType, 'income'),
     gte(cashMovements.createdAt, f.startDate),
     lte(cashMovements.createdAt, f.endDate),
+    ...inSession.movements(f),
     sql`CAST(${cashMovements.tipAmount} AS DECIMAL) > 0`,
     sql`NOT EXISTS (SELECT 1 FROM cash_movements r WHERE r.session_id = ${cashMovements.sessionId} AND r.movement_type = 'expense'
       AND r.reference = 'reverso' AND r.order_id IS NOT DISTINCT FROM ${cashMovements.orderId} AND r.split_id IS NOT DISTINCT FROM ${cashMovements.splitId})`,
@@ -70,6 +84,7 @@ const waiterOrderConditions = (userId: number, f: UserReportFilters) => [
   eq(orders.branchId, f.branchId),
   gte(orders.createdAt, f.startDate),
   lte(orders.createdAt, f.endDate),
+  ...inSession.orders(f),
   ne(orders.status, 'cancelled'),
   sql`${waiterOwnerExpr} = ${userId}`,
 ];
@@ -106,6 +121,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       eq(orders.branchId, filters.branchId),
       gte(orders.createdAt, filters.startDate),
       lte(orders.createdAt, filters.endDate),
+      ...inSession.orders(filters),
       eq(orders.status, 'cancelled'),
       sql`${waiterOwnerExpr} = ${userId}`,
     ));
@@ -155,6 +171,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
     eq(cashSessions.userId, userId),
     gte(cashMovements.createdAt, filters.startDate),
     lte(cashMovements.createdAt, filters.endDate),
+    ...inSession.movements(filters),
     eq(cashMovements.movementType, 'income'),
   );
 
@@ -192,6 +209,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       eq(cashSessions.userId, userId),
       gte(cashSessions.openedAt, filters.startDate),
       lte(cashSessions.openedAt, filters.endDate),
+      ...inSession.sessions(filters),
     ))
     .orderBy(desc(cashSessions.openedAt))
     .limit(50);
@@ -204,6 +222,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       eq(orders.branchId, filters.branchId),
       gte(orders.createdAt, filters.startDate),
       lte(orders.createdAt, filters.endDate),
+      ...inSession.orders(filters),
       ne(orders.status, 'cancelled'),
       eq(orders.driverId, userId),
     ));
@@ -219,6 +238,7 @@ export const getUserReportSummary = async (userId: number, filters: UserReportFi
       eq(billingDocuments.branchId, filters.branchId),
       gte(billingDocuments.issuedAt, filters.startDate),
       lte(billingDocuments.issuedAt, filters.endDate),
+      ...inSession.documents(filters),
       eq(billingDocuments.status, 'issued'),
       eq(billingDocuments.createdBy, user.name),
     ));
@@ -294,6 +314,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       eq(orders.branchId, filters.branchId),
       gte(orders.createdAt, filters.startDate),
       lte(orders.createdAt, filters.endDate),
+      ...inSession.orders(filters),
       ne(orders.status, 'cancelled'),
     ))
     .groupBy(sql`1`);
@@ -310,11 +331,13 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       eq(cashMovements.sessionId, cashSessions.id),
       gte(cashMovements.createdAt, filters.startDate),
       lte(cashMovements.createdAt, filters.endDate),
+      ...inSession.movements(filters),
     ))
     .where(and(
       eq(cashSessions.branchId, filters.branchId),
       gte(cashSessions.openedAt, filters.startDate),
       lte(cashSessions.openedAt, filters.endDate),
+      ...inSession.sessions(filters),
     ))
     .groupBy(cashSessions.userId);
 
@@ -328,6 +351,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       eq(cashSessions.branchId, filters.branchId),
       gte(cashSessions.openedAt, filters.startDate),
       lte(cashSessions.openedAt, filters.endDate),
+      ...inSession.sessions(filters),
     ))
     .groupBy(cashSessions.userId);
 
@@ -339,6 +363,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       eq(orders.branchId, filters.branchId),
       gte(orders.createdAt, filters.startDate),
       lte(orders.createdAt, filters.endDate),
+      ...inSession.orders(filters),
       ne(orders.status, 'cancelled'),
     ))
     .groupBy(orders.driverId);
@@ -355,6 +380,7 @@ export const getUserReportRanking = async (filters: UserReportFilters) => {
       eq(billingDocuments.branchId, filters.branchId),
       gte(billingDocuments.issuedAt, filters.startDate),
       lte(billingDocuments.issuedAt, filters.endDate),
+      ...inSession.documents(filters),
       eq(billingDocuments.status, 'issued'),
     ))
     .groupBy(billingDocuments.createdBy);

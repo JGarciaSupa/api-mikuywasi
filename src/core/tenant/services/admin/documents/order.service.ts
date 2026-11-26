@@ -54,6 +54,8 @@ export interface GetOrdersFilters {
   // (vía cash_sessions.userId). El controller solo lo pasa cuando el usuario NO
   // tiene el permiso administracion.ver_todos_los_pedidos. Sin él, se ve todo.
   visibilityUserId?: number;
+  // Turno: pedidos generados (cash_session_id) o cobrados (collected_session_id) en ese turno
+  sessionId?: number;
 }
 
 /**
@@ -70,7 +72,8 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     startDate,
     endDate,
     branchId,
-    visibilityUserId
+    visibilityUserId,
+    sessionId
   } = filters;
 
   const offset = (page - 1) * limit;
@@ -99,6 +102,10 @@ export const getOrders = async (filters: GetOrdersFilters) => {
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
     conditions.push(lte(orders.createdAt, end));
+  }
+
+  if (sessionId) {
+    conditions.push(or(eq(orders.cashSessionId, sessionId), eq(orders.collectedSessionId, sessionId))!);
   }
 
   if (search) {

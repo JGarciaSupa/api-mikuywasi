@@ -74,6 +74,8 @@ export interface ListDocumentsFilters {
   search?: string;
   // true = solo comprobantes con pago pendiente aún no cobrado
   paymentPending?: boolean;
+  // Turno donde se cobró el comprobante (misma regla que la columna "Turno" del listado)
+  sessionId?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1053,6 +1055,17 @@ export async function listDocuments(filters: ListDocumentsFilters) {
   const { page = 1, limit = 20 } = filters;
   const offset = (page - 1) * limit;
 
+  // Turno donde se cobró (misma regla que getOrderPaymentSession): el del primer ingreso en caja del
+  // pedido/cuenta, sin contar las correcciones por cambio de forma de pago; si no hay, orders.collected_session_id.
+  const paidSessionIdSql = sql<number | null>`coalesce((
+    select cm.session_id from cash_movements cm
+    where cm.order_id = ${billingDocuments.orderId}
+      and cm.split_id is not distinct from ${billingDocuments.splitId}
+      and cm.movement_type = 'income'
+      and cm.reference is distinct from 'cambio_forma_pago'
+    order by cm.id asc limit 1
+  ), ${orders.collectedSessionId})`;
+
   const conditions: any[] = [];
 
   if (filters.branchId) conditions.push(eq(billingDocuments.branchId, filters.branchId));
@@ -1080,18 +1093,9 @@ export async function listDocuments(filters: ListDocumentsFilters) {
     );
   }
 
-  const where = conditions.length ? and(...conditions) : undefined;
+  if (filters.sessionId) conditions.push(sql`${paidSessionIdSql} = ${filters.sessionId}`);
 
-  // Turno donde se cobró (misma regla que getOrderPaymentSession): el del primer ingreso en caja del
-  // pedido/cuenta, sin contar las correcciones por cambio de forma de pago; si no hay, orders.collected_session_id.
-  const paidSessionIdSql = sql<number | null>`coalesce((
-    select cm.session_id from cash_movements cm
-    where cm.order_id = ${billingDocuments.orderId}
-      and cm.split_id is not distinct from ${billingDocuments.splitId}
-      and cm.movement_type = 'income'
-      and cm.reference is distinct from 'cambio_forma_pago'
-    order by cm.id asc limit 1
-  ), ${orders.collectedSessionId})`;
+  const where = conditions.length ? and(...conditions) : undefined;
 
   const baseQuery = db
     .select({

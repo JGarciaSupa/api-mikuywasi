@@ -3,6 +3,10 @@
 > Documento parcial: por ahora solo describe el endpoint `/receipt`. El resto de
 > rutas de facturación está en `src/core/tenant/routes/admin/documents/billing/index.ts`.
 
+## GET `/api/billing/documents` — filtro por turno
+
+`sessionId` (opcional): comprobantes cobrados en ese turno (misma regla que la columna "Turno": turno del primer ingreso en caja del pedido/cuenta, o `orders.collected_session_id`).
+
 ## GET `/api/billing/documents/:id/receipt`
 
 Datos enriquecidos para generar en el frontend el PDF A4 (`ComprobantePDF`) y el ticket térmico.

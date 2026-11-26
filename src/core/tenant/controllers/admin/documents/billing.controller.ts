@@ -141,6 +141,7 @@ export const listDocumentsController = async (c: Context) => {
       buyerDoc: q.buyerDoc,
       search: q.search,
       paymentPending: q.paymentPending === 'true',
+      sessionId: q.sessionId && Number.isInteger(Number(q.sessionId)) ? Number(q.sessionId) : undefined,
     });
     return c.json({ success: true, ...result });
   } catch (error: any) {

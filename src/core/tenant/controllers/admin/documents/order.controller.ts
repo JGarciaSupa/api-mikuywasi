@@ -22,6 +22,9 @@ export const getOrdersController = async (c: Context) => {
     // usuario. Otros consumidores del mismo endpoint (ej. tickets del menú operativo)
     // no lo envían, por lo que su comportamiento no cambia.
     const scopeToUser = c.req.query('scopeToUser') === 'true';
+    // Turno (opcional): pedidos generados o cobrados en ese turno
+    const sessionIdRaw = Number(c.req.query('sessionId'));
+    const sessionId = Number.isInteger(sessionIdRaw) && sessionIdRaw > 0 ? sessionIdRaw : undefined;
 
     if (!branchIdQuery) {
       return c.json({
@@ -54,6 +57,7 @@ export const getOrdersController = async (c: Context) => {
       endDate,
       branchId,
       visibilityUserId,
+      sessionId,
     });
 
     return c.json({

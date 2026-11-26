@@ -105,3 +105,8 @@ Elimina al usuario permanentemente y borra su foto de perfil de R2.
   "message": "Usuario eliminado con éxito"
 }
 ```
+
+
+## Reportes de usuarios: filtro por turno
+
+`/staff/reports/*` acepta `sessionId` (opcional): limita ventas a los pedidos generados en ese turno, cobros a sus movimientos, turnos a ese turno y comprobantes a los de sus pedidos. Sin `sessionId`, nada cambia.

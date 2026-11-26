@@ -18,6 +18,7 @@ Obtiene las órdenes del tenant autenticado con soporte para filtros y paginaci�
   - `paymentStatus` (opcional): Filtrar por pago (`unpaid`, `paid`, `review_pending`).
   - `search` (opcional): Búsqueda por nombre de cliente, teléfono o código de orden.
   - `startDate/endDate` (opcional): Filtro por rango de fechas (formato YYYY-MM-DD).
+  - `sessionId` (opcional): Turno de caja; pedidos generados (`cash_session_id`) o cobrados (`collected_session_id`) en ese turno.
 
 ### Respuesta Exitosa (200 OK)
 ```json
