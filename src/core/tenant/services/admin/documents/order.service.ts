@@ -1,4 +1,4 @@
-import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted, orderPayments, paymentMethods, orderSplits } from '../../../../../db/tenant/schema';
+import { orders, orderItems, orderItemExtras, productExtras, customers, customerContacts, customerAddresses, cashSessions, cashRegisters, users, billingDocuments, billingDocumentLines, tables, ordersItemsDeleted, orderPayments, paymentMethods, orderSplits, salesChannels } from '../../../../../db/tenant/schema';
 
 import { eq, and, desc, asc, sql, count, like, or, gte, lte, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -468,6 +468,37 @@ export const updateOrderWaiter = async (id: string, waiterId: number | null) => 
     .where(and(eq(orders.id, id)))
     .returning();
 
+  return updated;
+};
+
+/**
+ * Corregir los comensales (pax) de un pedido abierto. Si el canal exige pax, al menos 1 adulto.
+ */
+export const updateOrderPax = async (id: string, paxAdults: number | null, paxChildren: number | null) => {
+  const db = getTenantDb();
+  await assertOrderNotTransferred(db, id);
+
+  const [order] = await db
+    .select({ id: orders.id, status: orders.status, salesChannelId: orders.salesChannelId })
+    .from(orders)
+    .where(eq(orders.id, id));
+  if (!order) return null;
+  if (order.status === 'completed' || order.status === 'cancelled') {
+    throw new Error('Solo se pueden editar los comensales de un pedido abierto');
+  }
+  if (order.salesChannelId != null && (!paxAdults || paxAdults < 1)) {
+    const [channel] = await db
+      .select({ requirePax: salesChannels.requirePax })
+      .from(salesChannels)
+      .where(eq(salesChannels.id, order.salesChannelId));
+    if (channel?.requirePax) throw new Error('Indica al menos un comensal adulto');
+  }
+
+  const [updated] = await db
+    .update(orders)
+    .set({ paxAdults: paxAdults || null, paxChildren: paxChildren || null, updatedAt: new Date() })
+    .where(eq(orders.id, id))
+    .returning();
   return updated;
 };
 

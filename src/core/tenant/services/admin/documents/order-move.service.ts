@@ -8,6 +8,7 @@ import {
   tables,
   billingDocuments,
   cashSessions,
+  salesChannels,
 } from '@/db/tenant/schema';
 import { getTenantDb } from '@/utils/tenant-context';
 import { getActiveSessionForBranch, getActiveSessionForUserInBranch } from './cash.service';
@@ -22,6 +23,10 @@ const EDITABLE_STATUSES = ['pending', 'confirmed', 'preparing'];
 const toNum = (v: unknown) => { const n = Number(v ?? 0); return Number.isFinite(n) ? n : 0; };
 const round = (v: number) => Number(v.toFixed(2));
 
+type Db = ReturnType<typeof getTenantDb>;
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type DbOrTx = Db | Tx;
+
 type TaxSnap = { key: string; label: string; sunatCode?: string; rate: number; calculationType?: string; defaultActive?: boolean; isActive: boolean; amount?: number };
 
 export interface MoveItemInput { orderItemId: number; quantity: number }
@@ -31,6 +36,10 @@ export interface MoveOrderInput {
   items?: MoveItemInput[]; // ausente/vacío = mover TODO el pedido
   userId: number;
   ownWaiterId?: number | null; // restringido a sus mesas ("Meseros solo ven sus mesas")
+  // Comensales que pasan a la mesa destino en un movimiento PARCIAL (se restan del origen).
+  // Ausentes = sin traslado de pax (comportamiento anterior). En la fusión total pasan todos.
+  paxAdults?: number | null;
+  paxChildren?: number | null;
   ip?: string | null;
 }
 
@@ -38,7 +47,7 @@ export interface MoveOrderInput {
 
 // Pedido activo (dine_in, no terminal, más reciente) de una mesa, o null.
 async function getActiveOrderForTable(
-  db: ReturnType<typeof getTenantDb>,
+  db: DbOrTx,
   tableId: number,
   branchId: number,
 ) {
@@ -65,7 +74,7 @@ async function assertNoBilling(db: ReturnType<typeof getTenantDb>, orderId: stri
 }
 
 // Recalcula subtotal/retención/total del pedido (mismo criterio que waiter-order.recalcOrderTotals).
-async function recalcTotals(db: ReturnType<typeof getTenantDb>, orderId: string) {
+async function recalcTotals(db: DbOrTx, orderId: string) {
   const ois = await db.select().from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
   const subtotal = ois.reduce((s, i) => s + toNum(i.totalPrice), 0);
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
@@ -103,7 +112,7 @@ function prorateTax(snapshot: TaxSnap[] | null, ratio: number): TaxSnap[] | null
 }
 
 // Genera un trackingCode único (año + secuencia), mismo criterio que createOrder.
-async function genTrackingCode(db: ReturnType<typeof getTenantDb>): Promise<string> {
+async function genTrackingCode(db: DbOrTx): Promise<string> {
   const year = String(new Date().getFullYear());
   const [row] = await db
     .select({ maxSeq: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${orders.trackingCode} FROM 5) AS INTEGER)), 0)` })
@@ -116,7 +125,7 @@ async function genTrackingCode(db: ReturnType<typeof getTenantDb>): Promise<stri
 // Mueve ítems (total o parcial) del pedido origen al destino, clonando la fila completa
 // (impuestos/costo/extras) y prorrateando cuando es cantidad parcial.
 async function moveItems(
-  db: ReturnType<typeof getTenantDb>,
+  db: DbOrTx,
   sourceOrderId: string,
   targetOrderId: string,
   moves: MoveItemInput[],
@@ -217,6 +226,11 @@ async function resolveMoveSession(
 export async function moveOrderToTable(input: MoveOrderInput) {
   const db = getTenantDb();
   const { orderId, targetTableId, items, userId, ownWaiterId, ip } = input;
+  const reqPaxAdults = input.paxAdults == null ? null : Math.floor(Number(input.paxAdults));
+  const reqPaxChildren = input.paxChildren == null ? null : Math.floor(Number(input.paxChildren));
+  if ((reqPaxAdults != null && (!Number.isFinite(reqPaxAdults) || reqPaxAdults < 0)) || (reqPaxChildren != null && (!Number.isFinite(reqPaxChildren) || reqPaxChildren < 0))) {
+    throw new Error('Los comensales deben ser números enteros positivos');
+  }
 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
@@ -250,82 +264,146 @@ export async function moveOrderToTable(input: MoveOrderInput) {
   }
 
   const isTotal = !items || items.length === 0;
-  let targetOrderId: string;
 
-  if (isTotal && !destActive) {
-    // TOTAL → mesa LIBRE: reasignar la mesa del mismo pedido (conserva el pedido).
-    await db.update(orders).set({ tableId: targetTableId, tableName: target.name, updatedAt: new Date() }).where(eq(orders.id, orderId));
-    targetOrderId = orderId;
-  } else {
-    // Los demás casos mueven ítems. Determinar el pedido destino.
-    if (destActive) {
-      targetOrderId = destActive.id;
+  // ¿El canal exige pax? Se valida que ninguna mesa con productos quede sin comensales.
+  const [channel] = order.salesChannelId != null
+    ? await db.select({ requirePax: salesChannels.requirePax }).from(salesChannels).where(eq(salesChannels.id, order.salesChannelId))
+    : [];
+  const requirePax = !!channel?.requirePax;
+
+  // Todo en una transacción: pedido destino, ítems, totales, comensales y mesas, o nada.
+  const { targetOrderId, movedPax } = await db.transaction(async (tx) => {
+    let targetOrderId: string;
+    let movedPax: { adults: number; children: number } | null = null;
+
+    if (isTotal && !destActive) {
+      // TOTAL → mesa LIBRE: reasignar la mesa del mismo pedido (conserva el pedido y sus pax).
+      await tx.update(orders).set({ tableId: targetTableId, tableName: target.name, updatedAt: new Date() }).where(eq(orders.id, orderId));
+      targetOrderId = orderId;
     } else {
-      // PARCIAL → mesa LIBRE: crear pedido destino con cabecera clonada del origen.
-      targetOrderId = nanoid(12);
-      const trackingCode = await genTrackingCode(db);
-      await db.insert(orders).values({
-        id: targetOrderId,
-        branchId: order.branchId,
-        customerId: order.customerId,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        customerAddress: order.customerAddress,
-        orderFor: order.orderFor,
-        deliveryType: 'dine_in',
-        deliveryInfo: order.deliveryInfo,
-        salesChannelId: order.salesChannelId,
-        salesChannelName: order.salesChannelName,
-        tableId: target.id,
-        tableName: target.name,
-        waiterId: order.waiterId,
-        cashSessionId: order.cashSessionId,
-        subtotal: '0.00',
-        deliveryFee: '0.00',
-        retentionPercentage: order.retentionPercentage ?? '0.00',
-        retentionAmount: '0.00',
-        total: '0.00',
-        trackingCode,
-        status: order.status,
-        paymentStatus: 'unpaid',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // Los demás casos mueven ítems. Determinar el pedido destino.
+      if (destActive) {
+        targetOrderId = destActive.id;
+      } else {
+        // PARCIAL → mesa LIBRE: crear pedido destino con cabecera clonada del origen.
+        targetOrderId = nanoid(12);
+        const trackingCode = await genTrackingCode(tx);
+        await tx.insert(orders).values({
+          id: targetOrderId,
+          branchId: order.branchId,
+          customerId: order.customerId,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          customerAddress: order.customerAddress,
+          orderFor: order.orderFor,
+          deliveryType: 'dine_in',
+          deliveryInfo: order.deliveryInfo,
+          salesChannelId: order.salesChannelId,
+          salesChannelName: order.salesChannelName,
+          tableId: target.id,
+          tableName: target.name,
+          waiterId: order.waiterId,
+          cashSessionId: order.cashSessionId,
+          subtotal: '0.00',
+          deliveryFee: '0.00',
+          retentionPercentage: order.retentionPercentage ?? '0.00',
+          retentionAmount: '0.00',
+          total: '0.00',
+          trackingCode,
+          status: order.status,
+          paymentStatus: 'unpaid',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      // Ítems a mover: los indicados o todos (total → ocupada).
+      let moves: MoveItemInput[];
+      if (isTotal) {
+        const all = await tx.select({ id: orderItems.id, quantity: orderItems.quantity }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
+        moves = all.map((i) => ({ orderItemId: i.id, quantity: i.quantity }));
+      } else {
+        moves = items!;
+      }
+
+      await moveItems(tx, orderId, targetOrderId, moves);
+
+      // Recalcular totales/impuestos de ambos pedidos.
+      await recalcTotals(tx, targetOrderId);
+      await recalcTotals(tx, orderId);
+
+      // Si el origen quedó sin ítems, se cierra (sin revertir stock: los ítems se movieron).
+      const remaining = await tx.select({ id: orderItems.id }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt))).limit(1);
+      const sourceEmpty = remaining.length === 0;
+      if (sourceEmpty) {
+        await tx.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId));
+      }
+
+      // Comensales: se TRASLADAN (lo que gana el destino lo pierde el origen), nunca se copian,
+      // para que el aforo de la sucursal no cuente a nadie dos veces ni pierda a nadie.
+      const srcAdults = order.paxAdults;
+      const srcChildren = order.paxChildren ?? 0;
+      let moveAdults: number;
+      let moveChildren: number;
+      if (sourceEmpty) {
+        // El origen se cierra: todos sus comensales pasan al destino.
+        moveAdults = srcAdults ?? 0;
+        moveChildren = order.paxChildren ?? 0;
+        if (!destActive && reqPaxAdults != null && srcAdults == null) {
+          moveAdults = reqPaxAdults;
+          moveChildren = reqPaxChildren ?? 0;
+        }
+      } else {
+        moveAdults = reqPaxAdults ?? 0;
+        moveChildren = reqPaxChildren ?? 0;
+        if (srcAdults != null) {
+          if (moveAdults > srcAdults) throw new Error(`Solo hay ${srcAdults} adulto(s) en la mesa de origen`);
+          if (moveChildren > srcChildren) throw new Error(`Solo hay ${srcChildren} niño(s) en la mesa de origen`);
+          if (requirePax && srcAdults - moveAdults < 1) {
+            throw new Error('La mesa de origen debe quedar con al menos un comensal adulto');
+          }
+        }
+      }
+      if (requirePax && !destActive && reqPaxAdults != null && moveAdults < 1) {
+        throw new Error('Indica al menos un comensal adulto para la mesa destino');
+      }
+
+      if (moveAdults > 0 || moveChildren > 0) {
+        movedPax = { adults: moveAdults, children: moveChildren };
+        const destBase = destActive
+          ? { adults: destActive.paxAdults, children: destActive.paxChildren }
+          : { adults: null as number | null, children: null as number | null };
+        await tx.update(orders).set({
+          paxAdults: (destBase.adults ?? 0) + moveAdults || null,
+          paxChildren: (destBase.children ?? 0) + moveChildren || null,
+          updatedAt: new Date(),
+        }).where(eq(orders.id, targetOrderId));
+        if (!sourceEmpty && srcAdults != null) {
+          await tx.update(orders).set({
+            paxAdults: srcAdults - moveAdults || null,
+            paxChildren: srcChildren - moveChildren || null,
+            updatedAt: new Date(),
+          }).where(eq(orders.id, orderId));
+        }
+      }
     }
 
-    // Ítems a mover: los indicados o todos (total → ocupada).
-    let moves: MoveItemInput[];
-    if (isTotal) {
-      const all = await db.select({ id: orderItems.id, quantity: orderItems.quantity }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt)));
-      moves = all.map((i) => ({ orderItemId: i.id, quantity: i.quantity }));
-    } else {
-      moves = items!;
+    // Sincronizar estado de mesas.
+    await tx.update(tables).set({ statusCode: 'in_kitchen', statusUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(tables.id, targetTableId));
+    if (order.tableId != null && order.tableId !== targetTableId) {
+      const sourceStillActive = await getActiveOrderForTable(tx, order.tableId, order.branchId);
+      if (!sourceStillActive) {
+        await tx.update(tables).set({ statusCode: 'available', statusUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(tables.id, order.tableId));
+      }
     }
 
-    await moveItems(db, orderId, targetOrderId, moves);
+    return { targetOrderId, movedPax };
+  });
 
-    // Recalcular totales/impuestos de ambos pedidos.
-    await recalcTotals(db, targetOrderId);
-    await recalcTotals(db, orderId);
-
-    // Si el origen quedó sin ítems, se cierra (sin revertir stock: los ítems se movieron).
-    const remaining = await db.select({ id: orderItems.id }).from(orderItems).where(and(eq(orderItems.orderId, orderId), isNull(orderItems.deletedAt))).limit(1);
-    if (remaining.length === 0) {
-      await db.update(orders).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId));
-    }
-
-    // Rearmar descargas de stock para coherencia de costos (best-effort).
+  // Rearmar descargas de stock para coherencia de costos (best-effort, fuera de la transacción).
+  if (targetOrderId !== orderId) {
     await rebuildDischarge(orderId, { userId });
     await rebuildDischarge(targetOrderId, { userId });
-  }
-
-  // Sincronizar estado de mesas.
-  await db.update(tables).set({ statusCode: 'in_kitchen', statusUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(tables.id, targetTableId));
-  if (order.tableId != null && order.tableId !== targetTableId) {
-    const sourceStillActive = await getActiveOrderForTable(db, order.tableId, order.branchId);
-    if (!sourceStillActive) {
-      await db.update(tables).set({ statusCode: 'available', statusUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(tables.id, order.tableId));
-    }
   }
 
   await writeAuditLog({
@@ -335,7 +413,7 @@ export async function moveOrderToTable(input: MoveOrderInput) {
     module: 'Pedidos',
     userId,
     description: `Movimiento de pedido ${orderId} a la mesa ${target.name}${isTotal ? ' (todo)' : ' (parcial)'}`,
-    afterData: { sourceOrderId: orderId, targetOrderId, targetTableId, items: items ?? 'all' },
+    afterData: { sourceOrderId: orderId, targetOrderId, targetTableId, items: items ?? 'all', movedPax },
     ipAddress: ip ?? null,
   });
 

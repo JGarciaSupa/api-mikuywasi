@@ -302,6 +302,37 @@ export const updateWaiterOrderWaiterController = async (c: Context) => {
 };
 
 /**
+ * PATCH /api/admin/waiter/orders/:id/pax  { paxAdults, paxChildren? }
+ * Corregir los comensales de un pedido abierto.
+ */
+export const updateWaiterOrderPaxController = async (c: Context) => {
+  try {
+    const orderId = c.req.param('id');
+    if (!orderId) {
+      return c.json({ success: false, message: 'ID de pedido requerido' }, 400);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const toPax = (v: unknown) => (v == null || v === '' ? null : Number(v));
+    const paxAdults = toPax(body?.paxAdults);
+    const paxChildren = toPax(body?.paxChildren);
+    for (const v of [paxAdults, paxChildren]) {
+      if (v != null && (!Number.isInteger(v) || v < 0 || v > 999)) {
+        return c.json({ success: false, message: 'Los comensales deben ser números enteros entre 0 y 999' }, 400);
+      }
+    }
+    const updated = await orderService.updateOrderPax(orderId, paxAdults, paxChildren);
+    if (!updated) {
+      return c.json({ success: false, message: 'Pedido no encontrado' }, 404);
+    }
+    return c.json({ success: true, data: updated, message: 'Comensales actualizados' });
+  } catch (error: any) {
+    const msg = safeMessage(error, 'Error al actualizar los comensales del pedido');
+    const status = /comensal|pedido abierto|transferido/i.test(msg) ? 422 : 500;
+    return c.json({ success: false, message: msg }, status);
+  }
+};
+
+/**
  * PATCH /api/admin/waiter/orders/:id/payment-status
  * Actualizar estado de pago desde la vista de mesero.
  */

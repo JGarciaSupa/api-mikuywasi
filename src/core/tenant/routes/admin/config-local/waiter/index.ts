@@ -13,6 +13,7 @@ import {
   updateWaiterOrderStatusController,
   updateWaiterOrderPaymentStatusController,
   updateWaiterOrderWaiterController,
+  updateWaiterOrderPaxController,
 } from '../../../../controllers/admin/config-local/waiter.controller';
 import { validateCreateOrderFromToken } from '../../../../validations/client/order.validation';
 import { payOrderWithMultiplePaymentsController, listOrderPaymentsController } from '../../../../controllers/admin/documents/order-payments.controller';
@@ -45,6 +46,7 @@ routes.post('/orders/:id/courtesy', canGiveCourtesy, validateCourtesy, giveOrder
 routes.post('/orders/:id/items/:itemId/courtesy', canGiveCourtesy, validateCourtesy, giveItemCourtesyController);
 routes.delete('/orders/:id/items/:itemId/courtesy', canGiveCourtesy, removeItemCourtesyController);
 routes.patch('/orders/:id/waiter', updateWaiterOrderWaiterController);
+routes.patch('/orders/:id/pax', updateWaiterOrderPaxController);
 routes.patch('/orders/:id/items', editOrderItemController);
 routes.post('/orders/:id/items/:itemId/annul', annulOrderItemController);
 // Anular un pedido completo: con mozo.cancelar_pedido o pedidos.anular; sin ellos, exige la

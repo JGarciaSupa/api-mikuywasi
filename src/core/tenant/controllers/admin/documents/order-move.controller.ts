@@ -5,7 +5,7 @@ import { FOREIGN_TABLE_MESSAGE, orderTableScope } from '../../../middleware/wait
 
 const getIp = (c: Context) => c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? null;
 
-// PATCH /orders/:id/move-to-table  { targetTableId, items?: [{ orderItemId, quantity }] }
+// PATCH /orders/:id/move-to-table  { targetTableId, items?: [{ orderItemId, quantity }], paxAdults?, paxChildren? }
 export const moveOrderToTableController = async (c: Context) => {
   try {
     const userId = getCurrentUserId(c);
@@ -28,13 +28,19 @@ export const moveOrderToTableController = async (c: Context) => {
     const scope = await orderTableScope(c, orderId);
     if (scope.foreign) return c.json({ success: false, message: FOREIGN_TABLE_MESSAGE }, 403);
 
-    const data = await moveService.moveOrderToTable({ orderId, targetTableId, items, userId, ownWaiterId: scope.ownUserId, ip: getIp(c) });
+    // Comensales que pasan al destino (opcionales; se restan del origen)
+    const optInt = (v: unknown) => (v == null || v === '' ? null : Number(v));
+    const paxAdults = optInt(body?.paxAdults);
+    const paxChildren = optInt(body?.paxChildren);
+
+    const data = await moveService.moveOrderToTable({ orderId, targetTableId, items, userId, ownWaiterId: scope.ownUserId, paxAdults, paxChildren, ip: getIp(c) });
     return c.json({ success: true, message: 'Pedido movido', data });
   } catch (error: any) {
     const msg = error.message || 'Error al mover el pedido';
     const status = /turno de caja abierto/i.test(msg) ? 409
       : /no está habilitado|otra sucursal|inhabilitada|transferido|otro mozo/i.test(msg) ? 403
       : /no encontrad[oa]/i.test(msg) ? 404
+      : /comensal|adulto|niño/i.test(msg) ? 422
       : 400;
     return c.json({ success: false, message: msg }, status);
   }

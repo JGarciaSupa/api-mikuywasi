@@ -178,9 +178,19 @@ Conciliación: `paid` ⇒ hay ingreso en caja (`collectedSessionId`) y desglose 
 - **Edición posterior:** editar o anular un producto **retira el descuento** automáticamente (hay que volver a aplicarlo).
 - **SUNAT:** las líneas viajan netas con su IGV, sin cambios en el facturador. El receipt incluye `meta.discountAmount` y `meta.discountMotivo` (informativo).
 
+## Editar comensales (pax) de un pedido
+
+`PATCH /api/admin/waiter/orders/:id/pax` — `authMiddleware` + "Meseros solo ven sus mesas" (mismo nivel que `PATCH /waiter/orders/:id/waiter`).
+
+- **Body:** `{ paxAdults: number | null, paxChildren?: number | null }` (enteros 0–999; 0 se guarda como `null`).
+- Solo pedidos abiertos (no `completed`/`cancelled`) y no transferidos a caja. Si el canal exige pax: `paxAdults ≥ 1` (422 `Indica al menos un comensal adulto`).
+- **Respuesta:** `{ success: true, data: <pedido>, message: 'Comensales actualizados' }`.
+
 ## Mover pedido a otra mesa
 
 `PATCH /api/admin/orders/:id/move-to-table` — permiso `pedidos.mover_mesa`.
 
-- **Body:** `{ targetTableId, items?: [{ orderItemId, quantity }] }` (sin `items` se mueve todo el pedido).
+- **Body:** `{ targetTableId, items?: [{ orderItemId, quantity }], paxAdults?, paxChildren? }` (sin `items` se mueve todo el pedido).
+- **Comensales (pax):** se **trasladan**, no se copian. `paxAdults`/`paxChildren` = los que pasan a la mesa destino en un movimiento parcial; se restan del pedido origen. Fusión total (todo → mesa ocupada): pasan todos los del origen automáticamente. Todo → mesa libre: el pedido conserva sus pax. Validaciones (422): no mover más de los que tiene el origen; si el canal exige pax, el origen que sigue con productos debe quedar con ≥ 1 adulto y una mesa libre debe recibir ≥ 1 adulto. Si el origen no tenía pax (pedido antiguo), solo se asignan al destino. Sin estos campos, un movimiento parcial no traslada pax (comportamiento anterior).
+- El movimiento (pedido destino, ítems, totales, pax y estado de mesas) se hace en una transacción; la descarga de stock se rearma después.
 - **Activación:** `ENABLE_TABLE_MOVE` de la caja del turno del pedido; si ese turno ya cerró, la del turno del usuario en la sucursal o la de cualquier turno abierto de la sucursal. El mozo no necesita turno propio. Sin ningún turno abierto en la sucursal: `No hay un turno de caja abierto en la sucursal`.
