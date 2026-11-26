@@ -18,7 +18,7 @@ const CLOSED_STATUSES = ['cancelled', 'completed'];
  * deja de estar completa sola y el pedido vuelve a la cola — antes la fila de
  * confirmación quedaba puesta para siempre y el plato nuevo no lo veía nadie.
  */
-async function syncOrderPreparation(db: Db, orderId: string) {
+export async function syncOrderPreparation(db: Db, orderId: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error('Pedido no encontrado');
 

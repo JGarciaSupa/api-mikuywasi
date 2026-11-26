@@ -178,6 +178,12 @@ Conciliación: `paid` ⇒ hay ingreso en caja (`collectedSessionId`) y desglose 
 - **Edición posterior:** editar o anular un producto **retira el descuento** automáticamente (hay que volver a aplicarlo).
 - **SUNAT:** las líneas viajan netas con su IGV, sin cambios en el facturador. El receipt incluye `meta.discountAmount` y `meta.discountMotivo` (informativo).
 
+## Editar productos de un pedido (mozo)
+
+`PATCH /api/admin/waiter/orders/:id/items` — `{ action: 'add' | 'update' | 'remove', ... }`.
+
+- Se edita en `pending`, `confirmed` y `preparing`. **Agregar** (`add`) también se permite en `ready_for_pickup` (la mesa pide algo más después de que cocina terminó): el pedido vuelve a `preparing` y las estaciones afectadas dejan de estar confirmadas (`syncOrderPreparation`), así cocina ve el producto nuevo. Modificar o quitar sigue sin permitirse en `ready_for_pickup`.
+
 ## Editar comensales (pax) de un pedido
 
 `PATCH /api/admin/waiter/orders/:id/pax` — `authMiddleware` + "Meseros solo ven sus mesas" (mismo nivel que `PATCH /waiter/orders/:id/waiter`).

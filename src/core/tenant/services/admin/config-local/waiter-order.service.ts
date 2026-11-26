@@ -39,6 +39,7 @@ import {
   resolveEffectiveTaxes,
   resolveLineTaxes,
 } from './../../shared/taxes.service';
+import { syncOrderPreparation } from './kitchen.service';
 
 const EDITABLE_STATUSES = ['pending', 'confirmed', 'preparing'] as const;
 type EditableStatus = (typeof EDITABLE_STATUSES)[number];
@@ -238,7 +239,10 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
   if (!order) throw new Error(`Pedido ${orderId} no encontrado`);
   assertNotTransferred(order, orderId);
-  assertEditable(order.status, orderId);
+  // Un pedido ya listo en cocina admite AGREGAR productos (la mesa pide algo más):
+  // al agregar, el pedido vuelve a la cola de cocina (ver syncOrderPreparation).
+  const addingToReadyOrder = input.action === 'add' && order.status === 'ready_for_pickup';
+  if (!addingToReadyOrder) assertEditable(order.status, orderId);
   // Editar ítems retira el descuento del pedido (se vuelve a aplicar sobre el pedido nuevo)
   await clearOrderDiscount(db, orderId);
 
@@ -363,6 +367,8 @@ export async function editOrderItem(orderId: string, input: EditOrderItemInput) 
           }
         }
       }
+
+      if (addingToReadyOrder) await syncOrderPreparation(db, orderId);
 
       return newItem;
     }
