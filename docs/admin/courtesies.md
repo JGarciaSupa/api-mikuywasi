@@ -35,5 +35,5 @@ Errores: 403 contraseña o código inválido; 422 motivo inválido, tope superad
 - `GET /cash/sessions/:id` → `courtesies: { count, amount }`. Liquidación (`/cash/sessions/:id/liquidation`) →
   `courtesies[]` y `summary.courtesies`; liquidación por cajero → `courtesiesCount/courtesiesAmount`.
 - No suman a ventas, al efectivo ni a los reportes de facturación (`emittedConditions` excluye `cortesia`).
-  El registro de ventas solo lista 01/03/07 y notas de venta. El paloteo cuenta las cantidades (importe 0).
+  El registro de ventas solo lista 01/03/07 y notas de venta. El paloteo de producción cuenta las cantidades y las valora a su precio de venta real (`courtesy_amount`): mide lo que salió de cocina/barra, no lo vendido. La venta, la liquidación y el registro de ventas siguen en 0.
 - Recibo: `meta.printValuedCourtesies` = activación de caja `print_valued_courtesies` (imprimir el valor de referencia).

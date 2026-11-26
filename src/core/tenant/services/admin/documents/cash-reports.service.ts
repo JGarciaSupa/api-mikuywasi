@@ -464,7 +464,9 @@ export const getCashReportProduction = async (filters: CashReportFilters) => {
     .select({
       productName: orderItems.productName,
       quantity: quantityExpr,
-      total: sql<string>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)), 0)`,
+      // Paloteo de PRODUCCIÓN: lo que salió de cocina/barra a su valor de venta real. Una línea en
+      // cortesía tiene total 0 (no es venta) pero su valor queda en courtesy_amount: se usa ese.
+      total: sql<string>`COALESCE(SUM(CASE WHEN ${orderItems.isCourtesy} THEN CAST(${orderItems.courtesyAmount} AS DECIMAL) ELSE CAST(${orderItems.totalPrice} AS DECIMAL) END), 0)`,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
