@@ -18,6 +18,8 @@ Datos enriquecidos para generar en el frontend el PDF A4 (`ComprobantePDF`) y el
   "data": {
     "document": { /* fila de billing_documents (incluye emisorRuc, emisorName, emisorAddress) */ },
     "lines": [ /* billing_document_lines + taxes (desglose por impuesto) */ ],
+    // Nota de venta: si la línea no trae alternativesDesc, se completa con los extras del ítem agrupados
+    // como en la comanda ("Presentación: Cono · Salsa: Fudge"). Boleta/factura: tal cual se guardó (= XML).
     // Solo nota de venta del pedido completo: productos en cortesía (precio 0, no forman parte del total).
     // En boleta/factura va [] (la representación impresa debe coincidir con el XML de SUNAT).
     "courtesyLines": [ { "quantity": 1, "productName": "…", "shortName": null, "notes": null, "courtesyAmount": "48.00", "courtesyMotivo": "…" } ],

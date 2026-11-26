@@ -7,6 +7,9 @@ import {
   brands,
   orders,
   orderItems,
+  orderItemExtras,
+  productExtras,
+  productExtraGroups,
   orderSplits,
   orderPayments,
   tables,
@@ -1431,6 +1434,52 @@ export async function getDocumentPdf(id: number): Promise<Buffer> {
 
 // ── Receipt (datos enriquecidos para generar PDF/ticket) ──────────────────────
 
+// Extras y alternativas de cada ítem en texto: "Presentación: Cono · Salsa: Fudge, Chocolate".
+async function loadOrderItemExtrasDesc(itemIds: number[]): Promise<Map<number, string>> {
+  const result = new Map<number, string>();
+  if (!itemIds.length) return result;
+  const db = getTenantDb();
+  const [extrasRows, altRows] = await Promise.all([
+    db.select({
+      orderItemId: orderItemExtras.orderItemId,
+      extraName: productExtras.name,
+      groupName: productExtraGroups.name,
+      qty: orderItemExtras.qty,
+    })
+      .from(orderItemExtras)
+      .leftJoin(productExtras, eq(orderItemExtras.extraId, productExtras.id))
+      .leftJoin(productExtraGroups, eq(productExtras.groupId, productExtraGroups.id))
+      .where(inArray(orderItemExtras.orderItemId, itemIds))
+      .orderBy(orderItemExtras.id),
+    db.select({ id: orderItems.id, selectedAlternatives: orderItems.selectedAlternatives })
+      .from(orderItems)
+      .where(inArray(orderItems.id, itemIds)),
+  ]);
+
+  const groupsByItem = new Map<number, Map<string, string[]>>();
+  for (const row of extrasRows) {
+    if (!row.extraName) continue;
+    const groups = groupsByItem.get(row.orderItemId) ?? new Map<string, string[]>();
+    const key = row.groupName?.trim() ?? '';
+    const names = groups.get(key) ?? [];
+    names.push(`${row.qty > 1 ? row.qty + 'x ' : ''}${row.extraName}`);
+    groups.set(key, names);
+    groupsByItem.set(row.orderItemId, groups);
+  }
+  const altsByItem = new Map(altRows.map((r) => [
+    r.id,
+    Array.isArray(r.selectedAlternatives) ? r.selectedAlternatives.map((a) => a?.name).filter(Boolean) as string[] : [],
+  ]));
+
+  for (const itemId of itemIds) {
+    const parts = [...(groupsByItem.get(itemId) ?? new Map<string, string[]>())]
+      .map(([group, names]) => (group ? `${group}: ${names.join(', ')}` : names.join(', ')));
+    parts.push(...(altsByItem.get(itemId) ?? []));
+    if (parts.length) result.set(itemId, parts.join(' · '));
+  }
+  return result;
+}
+
 export async function getDocumentReceipt(id: number, userId?: number) {
   const db = getTenantDb();
 
@@ -1459,8 +1508,17 @@ export async function getDocumentReceipt(id: number, userId?: number) {
     : [];
   const snapshotByItemId = new Map(receiptItems.map((r) => [r.id, r.taxSnapshot as TaxSnapshotEntry[] | null]));
 
+  // Nota de venta (documento interno, no va a SUNAT): cada producto muestra los extras que eligió
+  // el cliente, agrupados como en la comanda ("Salsa: Fudge, Chocolate"). Boleta y factura no
+  // cambian: su representación impresa debe coincidir con la descripción enviada en el XML.
+  const extrasDescByItemId = doc.documentType === 'nota_de_venta'
+    ? await loadOrderItemExtrasDesc(receiptItemIds)
+    : new Map<number, string>();
+
   const lines = rawLines.map((l) => ({
     ...l,
+    alternativesDesc: l.alternativesDesc
+      ?? (l.orderItemId != null ? extrasDescByItemId.get(l.orderItemId) ?? null : null),
     taxes: (l.orderItemId != null ? snapshotByItemId.get(l.orderItemId) : null) ?? null,
   }));
   const taxBreakdown = aggregateTaxBreakdown(lines.map((l) => l.taxes));
